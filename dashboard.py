@@ -1,61 +1,64 @@
 import streamlit as st
 import pandas as pd
-import glob
-import os
+import plotly.express as px
+import smtplib
+from email.message import EmailMessage
 
-# Page configuration
-st.set_page_config(page_title="Plant Temperature Monitor", layout="wide")
+# --- CONFIGURATION ---
+st.set_page_config(page_title="Plant Temperature Dashboard", layout="wide")
+THRESHOLD = 8.0  # Set your safety limit
 
-def get_latest_data():
-    # Find all Excel files in the directory
-    files = glob.glob("*.xlsx")
-    if not files:
-        return None
-    
-    all_data = []
-    
-    for file in files:
-        # Read each file
-        df = pd.read_excel(file)
-        df.columns = df.columns.str.strip()
-        
-        # Required columns
-        target_cols = ['Time', 'Dough Cooler1 Temp', 'Dough Cooler2 Temp', 'Perishable Cooler Te']
-        
-        # Only process files that have all these columns
-        if all(col in df.columns for col in target_cols):
-            df = df[target_cols].copy()
-            # Convert to numeric, handle errors
-            for col in target_cols[1:]:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-            all_data.append(df)
-            
-    if not all_data:
-        return None
-        
-    # Combine all files into one master dataframe
-    combined_df = pd.concat(all_data, ignore_index=True)
-    
-    # Clean: Remove duplicates and sort by Time
-    combined_df = combined_df.drop_duplicates(subset=['Time']).sort_values(by='Time')
-    
-    return combined_df
+# --- DATA LOADING ---
+@st.cache_data(ttl=60)
+def load_data():
+    # Replace 'plant_data.xlsx' with your actual filename
+    df = pd.read_excel('plant_data.xlsx', engine='openpyxl')
+    df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+    return df
 
-st.title("Plant Temperature Dashboard")
+# --- ALERT SYSTEM ---
+def send_alert(cooler_name, temp):
+    msg = EmailMessage()
+    msg.set_content(f"CRITICAL: {cooler_name} reached {temp:.2f}°C, exceeding safety limit of {THRESHOLD}°C.")
+    msg['Subject'] = f"ALERT: {cooler_name} Temperature"
+    msg['From'] = "kushgoel9998email@gmail.com"
+    msg['To'] = "recipient@example.com"
+    # Use your SMTP server details
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login("kushgoel9998@gmail.com", "your_app_password")
+            server.send_message(msg)
+    except Exception as e:
+        st.error(f"Alert could not be sent: {e}")
 
-data = get_latest_data()
+# --- DASHBOARD LOGIC ---
+st.title("Plant Temperature Monitoring")
+df = load_data()
 
-if data is not None:
-    # Use the most recent entry for the top metrics
-    latest = data.iloc[-1]
-    
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Dough Cooler 1", f"{latest['Dough Cooler1 Temp']:.2f}°C")
-    col2.metric("Dough Cooler 2", f"{latest['Dough Cooler2 Temp']:.2f}°C")
-    col3.metric("Perishable Cooler", f"{latest['Perishable Cooler Te']:.2f}°C")
+# Initialize Alert Tracking in Session State
+if 'alert_sent' not in st.session_state:
+    st.session_state.alert_sent = {col: False for col in ["Dough Cooler 1", "Dough Cooler 2"]}
 
-    # Display aggregated Trend Chart
-    st.subheader("Historical Temperature Trends (All Files Combined)")
-    st.line_chart(data.set_index('Time'))
-else:
-    st.error("No valid .xlsx files found in the folder!")
+# Metric Cards
+cols = st.columns(3)
+coolers = {"Dough Cooler 1": cols[0], "Dough Cooler 2": cols[1], "Perishable Cooler": cols[2]}
+
+for name, col in coolers.items():
+    current_temp = df[name].iloc[-1]
+    with col:
+        st.metric(name, f"{current_temp:.2f}°C")
+        # Alert logic
+        if name != "Perishable Cooler" and current_temp > THRESHOLD:
+            st.error("Threshold Exceeded!")
+            if not st.session_state.alert_sent[name]:
+                send_alert(name, current_temp)
+                st.session_state.alert_sent[name] = True
+        elif current_temp == 0:
+            st.warning("Sensor Inactive")
+
+# Visualization
+st.subheader("Historical Trends")
+df_melted = df.melt(id_vars="Timestamp", var_name="Cooler", value_name="Temperature")
+fig = px.line(df_melted, x="Timestamp", y="Temperature", color="Cooler", template="plotly_dark")
+fig.update_yaxes(range=[-5, 15])
+st.plotly_chart(fig, use_container_width=True)
