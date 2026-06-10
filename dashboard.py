@@ -6,38 +6,42 @@ from email.message import EmailMessage
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Plant Temperature Dashboard", layout="wide")
-THRESHOLD = 5.0  # Set your safety limit
+THRESHOLD = 5.0
+SENDER = "kushgoel9998@gmail.com"
+PASSWORD = "UJ7iK8oL9pP1aA2s" 
+RECIPIENT = "narendra.saraswat@jublfood.com"
+
+# --- ALERT FUNCTION ---
+def send_alert(cooler_name, temp):
+    msg = EmailMessage()
+    msg.set_content(f"CRITICAL: {cooler_name} has reached {temp:.2f}°C, exceeding the safe limit of {THRESHOLD}°C.")
+    msg['Subject'] = f"ALERT: {cooler_name} Temperature Breach"
+    msg['From'] = SENDER
+    msg['To'] = RECIPIENT
+
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(SENDER, PASSWORD)
+            server.send_message(msg)
+        print(f"SUCCESS: Alert email sent to {RECIPIENT} for {cooler_name}")
+    except Exception as e:
+        print(f"ERROR: {e}")
+        st.error(f"Alert service unavailable: {e}")
 
 # --- DATA LOADING ---
 @st.cache_data(ttl=60)
 def load_data():
-    # Replace 'plant_data.xlsx' with your actual filename
     df = pd.read_excel('plant_data.xlsx', engine='openpyxl')
     df['Timestamp'] = pd.to_datetime(df['Timestamp'])
     return df
 
-# --- ALERT SYSTEM ---
-def send_alert(cooler_name, temp):
-    msg = EmailMessage()
-    msg.set_content(f"CRITICAL: {cooler_name} reached {temp:.2f}°C, exceeding safety limit of {THRESHOLD}°C.")
-    msg['Subject'] = f"ALERT: {cooler_name} Temperature"
-    msg['From'] = "kushgoel9998email@gmail.com"
-    msg['To'] = "narendra.saraswat@jublfood.com"
-    # Use your SMTP server details
-    try:
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login("kushgoel9998@gmail.com", "123")
-            server.send_message(msg)
-    except Exception as e:
-        st.error(f"Alert could not be sent: {e}")
-
-# --- DASHBOARD LOGIC ---
+# --- DASHBOARD UI ---
 st.title("Plant Temperature Monitoring")
 df = load_data()
 
-# Initialize Alert Tracking in Session State
+# Initialize Alert Tracking
 if 'alert_sent' not in st.session_state:
-    st.session_state.alert_sent = {col: False for col in ["Dough Cooler 1", "Dough Cooler 2"]}
+    st.session_state.alert_sent = {"Dough Cooler 1": False, "Dough Cooler 2": False}
 
 # Metric Cards
 cols = st.columns(3)
@@ -47,12 +51,18 @@ for name, col in coolers.items():
     current_temp = df[name].iloc[-1]
     with col:
         st.metric(name, f"{current_temp:.2f}°C")
-        # Alert logic
-        if name != "Perishable Cooler" and current_temp > THRESHOLD:
-            st.error("Threshold Exceeded!")
-            if not st.session_state.alert_sent[name]:
-                send_alert(name, current_temp)
-                st.session_state.alert_sent[name] = True
+        
+        # Threshold Logic
+        if name in ["Dough Cooler 1", "Dough Cooler 2"]:
+            if current_temp > THRESHOLD:
+                st.error("Threshold Exceeded!")
+                if not st.session_state.alert_sent[name]:
+                    send_alert(name, current_temp)
+                    st.session_state.alert_sent[name] = True
+            else:
+                # Reset if back to safe range
+                st.session_state.alert_sent[name] = False
+        
         elif current_temp == 0:
             st.warning("Sensor Inactive")
 
