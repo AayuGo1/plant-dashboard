@@ -26,7 +26,6 @@ def send_alert(cooler_name, temp):
         print(f"SUCCESS: Alert email sent to {RECIPIENT} for {cooler_name}")
     except Exception as e:
         print(f"ERROR: {e}")
-        st.error(f"Alert service unavailable: {e}")
 
 # --- DATA LOADING ---
 @st.cache_data(ttl=60)
@@ -36,31 +35,31 @@ def load_data():
     return df
 
 # --- DASHBOARD UI ---
-st.title("Plant Temperature Monitoring")
+st.title("🌡️ Plant Temperature Monitoring")
 df = load_data()
 
-# Initialize Alert Tracking
 if 'alert_sent' not in st.session_state:
     st.session_state.alert_sent = {"Dough Cooler 1": False, "Dough Cooler 2": False}
 
-# Metric Cards
 cols = st.columns(3)
 coolers = {"Dough Cooler 1": cols[0], "Dough Cooler 2": cols[1], "Perishable Cooler": cols[2]}
 
 for name, col in coolers.items():
-    current_temp = df[name].iloc[-1]
+    # Force data to numeric to ensure comparison works
+    current_temp = pd.to_numeric(df[name].iloc[-1], errors='coerce')
+    
     with col:
         st.metric(name, f"{current_temp:.2f}°C")
         
-        # Threshold Logic
         if name in ["Dough Cooler 1", "Dough Cooler 2"]:
-            if current_temp > THRESHOLD:
-                st.error("Threshold Exceeded!")
+            # Check Threshold
+            if pd.notnull(current_temp) and current_temp > THRESHOLD:
+                st.error(f"ALERT: {name} threshold exceeded!")
                 if not st.session_state.alert_sent[name]:
                     send_alert(name, current_temp)
                     st.session_state.alert_sent[name] = True
             else:
-                # Reset if back to safe range
+                # Reset status if temp is back to safe range
                 st.session_state.alert_sent[name] = False
         
         elif current_temp == 0:
