@@ -1,70 +1,61 @@
 import streamlit as st
 import pandas as pd
-import plotly.express as px
-import os
 import glob
-from datetime import datetime
+import os
 
-# --- PAGE SETUP ---
-st.set_page_config(page_title="Plant Temperature Dashboard", layout="wide")
-st.title("🌡️ Plant Temperature Monitoring (Multi-Source)")
+# Page configuration
+st.set_page_config(page_title="Plant Temperature Monitor", layout="wide")
 
-# --- DYNAMIC DATA LOADING ---
-def load_and_combine_data():
-    # Automatically finds all .xlsx files in the folder
+def get_latest_data():
+    # Find all Excel files in the directory
     files = glob.glob("*.xlsx")
-    data_frames = []
+    if not files:
+        return None
+    
+    all_data = []
     
     for file in files:
-        if os.path.exists(file):
-            df = pd.read_excel(file, engine='openpyxl')
-            # Clean headers to prevent spacing errors
-            df.columns = df.columns.str.strip()
-            data_frames.append(df)
-            
-    if data_frames:
-        combined_df = pd.concat(data_frames, ignore_index=True)
+        # Read each file
+        df = pd.read_excel(file)
+        df.columns = df.columns.str.strip()
         
-        # Smart detection for time columns
-        time_cols = ['Timestamp', 'Time', 'Date']
-        found_time = next((col for col in time_cols if col in combined_df.columns), None)
+        # Required columns
+        target_cols = ['Time', 'Dough Cooler1 Temp', 'Dough Cooler2 Temp', 'Perishable Cooler Te']
         
-        if found_time:
-            combined_df['Timestamp'] = pd.to_datetime(combined_df[found_time])
-        else:
-            combined_df['Timestamp'] = pd.to_datetime(combined_df.iloc[:, 0])
+        # Only process files that have all these columns
+        if all(col in df.columns for col in target_cols):
+            df = df[target_cols].copy()
+            # Convert to numeric, handle errors
+            for col in target_cols[1:]:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+            all_data.append(df)
             
-        return combined_df.sort_values('Timestamp')
-    return None
+    if not all_data:
+        return None
+        
+    # Combine all files into one master dataframe
+    combined_df = pd.concat(all_data, ignore_index=True)
+    
+    # Clean: Remove duplicates and sort by Time
+    combined_df = combined_df.drop_duplicates(subset=['Time']).sort_values(by='Time')
+    
+    return combined_df
 
-# --- UI & LOGIC ---
-df = load_and_combine_data()
+st.title("🏭 Plant Temperature Aggregated Dashboard")
 
-if df is not None:
-    # Display Metrics
-    cols = st.columns(3)
-    coolers = {"Dough Cooler 1": cols[0], "Dough Cooler 2": cols[1]}
+data = get_latest_data()
 
-    for name, col in coolers.items():
-        if name in df.columns:
-            # Force numeric, treat errors as NaN
-            val = pd.to_numeric(df[name], errors='coerce').iloc[-1]
-            with col:
-                st.metric(name, f"{val:.2f}°C" if pd.notnull(val) else "N/A")
-                # Visual Alert
-                if pd.notnull(val) and val > 5.0:
-                    st.error("⚠️ THRESHOLD EXCEEDED")
-        else:
-            st.warning(f"Column '{name}' not found.")
+if data is not None:
+    # Use the most recent entry for the top metrics
+    latest = data.iloc[-1]
+    
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Dough Cooler 1", f"{latest['Dough Cooler1 Temp']:.2f}°C")
+    col2.metric("Dough Cooler 2", f"{latest['Dough Cooler2 Temp']:.2f}°C")
+    col3.metric("Perishable Cooler", f"{latest['Perishable Cooler Te']:.2f}°C")
 
-    # Visualization
-    st.subheader("Historical Temperature Trends")
-    df_melted = df.melt(id_vars="Timestamp", var_name="Cooler", value_name="Temperature")
-    fig = px.line(df_melted, x="Timestamp", y="Temperature", color="Cooler", template="plotly_dark")
-    st.plotly_chart(fig, use_container_width=True)
-
-    # Allow users to see the underlying data structure
-    with st.expander("View Raw Data Table"):
-        st.dataframe(df)
+    # Display aggregated Trend Chart
+    st.subheader("Historical Temperature Trends (All Files Combined)")
+    st.line_chart(data.set_index('Time'))
 else:
-    st.error("No Excel files found. Please upload your DataLog files to the repository.")
+    st.error("No valid .xlsx files found in the folder!")
