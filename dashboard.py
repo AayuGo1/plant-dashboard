@@ -1,36 +1,27 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import smtplib
-from email.message import EmailMessage
+from datetime import datetime
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Plant Monitoring", layout="wide")
-THRESHOLD = 0.0
-SENDER = "kushgoel9998@gmail.com
-PASSWORD = "1234567890123456" 
-RECIPIENT = "narendra.saraswat@jublfood.com"
-
-# --- ALERT FUNCTION ---
-def send_alert(cooler_name, temp):
-    msg = EmailMessage()
-    msg.set_content(f"CRITICAL: {cooler_name} temperature is {temp:.2f}°C.")
-    msg['Subject'] = f"ALERT: {cooler_name} Breach"
-    msg['From'] = SENDER
-    msg['To'] = RECIPIENT
-    try:
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login(SENDER, PASSWORD)
-            server.send_message(msg)
-        st.sidebar.success(f"Email sent for {cooler_name}")
-    except Exception as e:
-        st.sidebar.error(f"Email Error: {e}")
+THRESHOLD = 5.0
 
 # --- DATA LOADING ---
-df = pd.read_excel('plant_data.xlsx', engine='openpyxl')
+@st.cache_data(ttl=60)
+def load_data():
+    df = pd.read_excel('plant_data.xlsx', engine='openpyxl')
+    df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+    return df
+
+# --- LOGGING FUNCTION (New Requirement) ---
+def log_alarm(name, temp):
+    with open("alarm_log.txt", "a") as f:
+        f.write(f"{datetime.now()}: {name} exceeded limit at {temp:.2f}°C\n")
 
 # --- UI & LOGIC ---
-st.title("Plant Temperature Monitoring")
+st.title("🌡️ Plant Temperature Monitoring")
+df = load_data()
 
 if 'alert_sent' not in st.session_state:
     st.session_state.alert_sent = {"Dough Cooler 1": False, "Dough Cooler 2": False}
@@ -38,17 +29,23 @@ if 'alert_sent' not in st.session_state:
 cols = st.columns(3)
 coolers = {"Dough Cooler 1": cols[0], "Dough Cooler 2": cols[1]}
 
-for i, (name, col) in enumerate(coolers.items()):
-    # Force convert to float
+for name, col in coolers.items():
     val = float(df[name].iloc[-1])
     with col:
         st.metric(name, f"{val:.2f}°C")
         
-        # Threshold logic
+        # Local Alert Logic
         if val > THRESHOLD:
-            st.error("THRESHOLD EXCEEDED")
+            st.error("⚠️ THRESHOLD EXCEEDED")
             if not st.session_state.alert_sent[name]:
-                send_alert(name, val)
+                log_alarm(name, val) # Save to file instead of emailing
                 st.session_state.alert_sent[name] = True
         else:
             st.session_state.alert_sent[name] = False
+
+# Visualization
+st.subheader("Historical Trends")
+df_melted = df.melt(id_vars="Timestamp", var_name="Cooler", value_name="Temperature")
+fig = px.line(df_melted, x="Timestamp", y="Temperature", color="Cooler", template="plotly_dark")
+fig.update_yaxes(range=[-5, 15])
+st.plotly_chart(fig, use_container_width=True)
