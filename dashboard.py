@@ -41,7 +41,7 @@ def get_latest_data():
     
     return combined_df
 
-st.title("🏭 Plant Temperature Dashboard")
+st.title("Plant Temperature Dashboard")
 
 data = get_latest_data()
 
