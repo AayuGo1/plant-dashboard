@@ -1,64 +1,70 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import smtplib
-from email.message import EmailMessage
+import os
+import glob
+from datetime import datetime
 
-# --- CONFIGURATION ---
+# --- PAGE SETUP ---
 st.set_page_config(page_title="Plant Temperature Dashboard", layout="wide")
-THRESHOLD = 8.0  # Set your safety limit
+st.title("🌡️ Plant Temperature Monitoring (Multi-Source)")
 
-# --- DATA LOADING ---
-@st.cache_data(ttl=60)
-def load_data():
-    # Replace 'plant_data.xlsx' with your actual filename
-    df = pd.read_excel('plant_data.xlsx', engine='openpyxl')
-    df['Timestamp'] = pd.to_datetime(df['Timestamp'])
-    return df
+# --- DYNAMIC DATA LOADING ---
+def load_and_combine_data():
+    # Automatically finds all .xlsx files in the folder
+    files = glob.glob("*.xlsx")
+    data_frames = []
+    
+    for file in files:
+        if os.path.exists(file):
+            df = pd.read_excel(file, engine='openpyxl')
+            # Clean headers to prevent spacing errors
+            df.columns = df.columns.str.strip()
+            data_frames.append(df)
+            
+    if data_frames:
+        combined_df = pd.concat(data_frames, ignore_index=True)
+        
+        # Smart detection for time columns
+        time_cols = ['Timestamp', 'Time', 'Date']
+        found_time = next((col for col in time_cols if col in combined_df.columns), None)
+        
+        if found_time:
+            combined_df['Timestamp'] = pd.to_datetime(combined_df[found_time])
+        else:
+            combined_df['Timestamp'] = pd.to_datetime(combined_df.iloc[:, 0])
+            
+        return combined_df.sort_values('Timestamp')
+    return None
 
-# --- ALERT SYSTEM ---
-def send_alert(cooler_name, temp):
-    msg = EmailMessage()
-    msg.set_content(f"CRITICAL: {cooler_name} reached {temp:.2f}°C, exceeding safety limit of {THRESHOLD}°C.")
-    msg['Subject'] = f"ALERT: {cooler_name} Temperature"
-    msg['From'] = "your_email@gmail.com"
-    msg['To'] = "recipient@example.com"
-    # Use your SMTP server details
-    try:
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login("your_email@gmail.com", "your_app_password")
-            server.send_message(msg)
-    except Exception as e:
-        st.error(f"Alert could not be sent: {e}")
+# --- UI & LOGIC ---
+df = load_and_combine_data()
 
-# --- DASHBOARD LOGIC ---
-st.title("🌡️ Plant Temperature Monitoring")
-df = load_data()
+if df is not None:
+    # Display Metrics
+    cols = st.columns(3)
+    coolers = {"Dough Cooler 1": cols[0], "Dough Cooler 2": cols[1]}
 
-# Initialize Alert Tracking in Session State
-if 'alert_sent' not in st.session_state:
-    st.session_state.alert_sent = {col: False for col in ["Dough Cooler 1", "Dough Cooler 2"]}
+    for name, col in coolers.items():
+        if name in df.columns:
+            # Force numeric, treat errors as NaN
+            val = pd.to_numeric(df[name], errors='coerce').iloc[-1]
+            with col:
+                st.metric(name, f"{val:.2f}°C" if pd.notnull(val) else "N/A")
+                # Visual Alert
+                if pd.notnull(val) and val > 5.0:
+                    st.error("⚠️ THRESHOLD EXCEEDED")
+        else:
+            st.warning(f"Column '{name}' not found.")
 
-# Metric Cards
-cols = st.columns(3)
-coolers = {"Dough Cooler 1": cols[0], "Dough Cooler 2": cols[1], "Perishable Cooler": cols[2]}
+    # Visualization
+    st.subheader("Historical Temperature Trends")
+    df_melted = df.melt(id_vars="Timestamp", var_name="Cooler", value_name="Temperature")
+    fig = px.line(df_melted, x="Timestamp", y="Temperature", color="Cooler", template="plotly_dark")
+    st.plotly_chart(fig, use_container_width=True)
 
-for name, col in coolers.items():
-    current_temp = df[name].iloc[-1]
-    with col:
-        st.metric(name, f"{current_temp:.2f}°C")
-        # Alert logic
-        if name != "Perishable Cooler" and current_temp > THRESHOLD:
-            st.error("Threshold Exceeded!")
-            if not st.session_state.alert_sent[name]:
-                send_alert(name, current_temp)
-                st.session_state.alert_sent[name] = True
-        elif current_temp == 0:
-            st.warning("Sensor Inactive")
-
-# Visualization
-st.subheader("Historical Trends")
-df_melted = df.melt(id_vars="Timestamp", var_name="Cooler", value_name="Temperature")
-fig = px.line(df_melted, x="Timestamp", y="Temperature", color="Cooler", template="plotly_dark")
-fig.update_yaxes(range=[-5, 15])
-st.plotly_chart(fig, use_container_width=True)
+    # Allow users to see the underlying data structure
+    with st.expander("View Raw Data Table"):
+        st.dataframe(df)
+else:
+    st.error("No Excel files found. Please upload your DataLog files to the repository.")
