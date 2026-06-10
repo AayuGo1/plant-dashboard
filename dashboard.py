@@ -6,7 +6,7 @@ from email.message import EmailMessage
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Plant Temperature Dashboard", layout="wide")
-THRESHOLD = 8.0  # Set your safety limit
+THRESHOLD = 5.0  # Set your safety limit
 
 # --- DATA LOADING ---
 @st.cache_data(ttl=60)
@@ -22,11 +22,11 @@ def send_alert(cooler_name, temp):
     msg.set_content(f"CRITICAL: {cooler_name} reached {temp:.2f}°C, exceeding safety limit of {THRESHOLD}°C.")
     msg['Subject'] = f"ALERT: {cooler_name} Temperature"
     msg['From'] = "kushgoel9998email@gmail.com"
-    msg['To'] = "recipient@example.com"
+    msg['To'] = "narendra.saraswat@jublfood.com"
     # Use your SMTP server details
     try:
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
-            server.login("kushgoel9998@gmail.com", "your_app_password")
+            server.login("kushgoel9998@gmail.com", "123")
             server.send_message(msg)
     except Exception as e:
         st.error(f"Alert could not be sent: {e}")
