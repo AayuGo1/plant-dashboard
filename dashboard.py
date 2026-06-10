@@ -6,7 +6,7 @@ from email.message import EmailMessage
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="Plant Temperature Dashboard", layout="wide")
-THRESHOLD = 5.0
+THRESHOLD = 0.0
 SENDER = "kushgoel9998@gmail.com"
 PASSWORD = "UJ7iK8oL9pP1aA2s" 
 RECIPIENT = "narendra.saraswat@jublfood.com"
