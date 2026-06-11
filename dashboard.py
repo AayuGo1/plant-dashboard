@@ -173,12 +173,12 @@ with st.container():
         sm3.metric("Net Financial Optimization", f"INR {savings_sum:,.2f}")
         
         # Plot full screen area projection chart
-        st.markdown("<h5 style='color:#555;'>Comparative Infrastructure Draw Profiles</h5>", unsafe_allowed_html=False)
+        st.markdown("##### Comparative Infrastructure Draw Profiles")
         chart_power_data = p_df.set_index('Date')[['Dunkin Blast', 'CLC Blast']]
         st.area_chart(chart_power_data, height=250)
         
         # Plot savings block columns
-        st.markdown("<h5 style='color:#555;'>Daily Financial Efficiency Margins</h5>", unsafe_allowed_html=False)
+        st.markdown("##### Daily Financial Efficiency Margins")
         st.bar_chart(p_df.set_index('Date')['Savings'], color="#66BB6A", height=180)
             
         with st.expander("¼ View Detailed Sheet 1 Row Ledger"):
@@ -208,7 +208,7 @@ with st.container():
             r_df[col] = pd.to_numeric(r_df[col], errors='coerce').fillna(0)
             
         if kwh_cols:
-            st.markdown("<h5 style='color:#555;'>Measured Running Capacity Performance (KWH Logs)</h5>", unsafe_allowed_html=False)
+            st.markdown("##### Measured Running Capacity Performance (KWH Logs)")
             # Use the primary KWH column for visual rendering
             st.bar_chart(r_df.set_index(first_col)[kwh_cols[0]], color="#FFA726", height=220)
             
@@ -235,7 +235,7 @@ with st.container():
         # Ensure 'Saving in hrs' column is cast completely to numbers to prevent plotting glitches
         if 'Saving in hrs' in c_df.columns:
             c_df['Saving in hrs'] = pd.to_numeric(c_df['Saving in hrs'], errors='coerce').fillna(0)
-            st.markdown("<h5 style='color:#555;'>Calculated Maintenance Savings Windows (Hours)</h5>", unsafe_allowed_html=False)
+            st.markdown("##### Calculated Maintenance Savings Windows (Hours)")
             st.line_chart(c_df.set_index(c_df.columns[0])['Saving in hrs'], color="#AB47BC", height=200)
             
         with st.expander("¼ View Detailed Sheet 3 Transition Sequences"):
@@ -282,7 +282,7 @@ if compressor_sheet is not None:
             avg_hours = comp_work_df[hour_cols[0]].mean()
             st.metric(label=f"Mean Continuous Duty Cycles", value=f"{avg_hours:.2f} Hrs/Day")
             
-        st.markdown("<h5 style='color:#555;'>Compressor Running Capacity Progression Trend</h5>", unsafe_allow_html=False)
+        st.markdown("##### Compressor Running Capacity Progression Trend")
         st.line_chart(comp_work_df.set_index(date_col)[hour_cols], height=240)
         
     # --- SEQUENCE TRANSITIONS DISPLAY MATRIX ---
