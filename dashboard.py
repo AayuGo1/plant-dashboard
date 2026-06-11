@@ -3,7 +3,7 @@ import pandas as pd
 import glob
 import os
 
-# Set clean, wide page layout
+# Clean, wide layout execution
 st.set_page_config(page_title="Plant Operations Dashboard", layout="wide")
 
 # --- CUSTOM DATE CLEANER FOR POWER CONSUMPTION SHEET ---
@@ -16,7 +16,7 @@ def parse_power_sheet_date(val):
     if '-' in val:
         parts = val.split('-')
         if len(parts) == 3:
-            # Fixes the quirk where April 1-12 looks like '2026-01-04'
+            # Fixes formatting quirk where April 1-12 looks like '2026-01-04'
             if parts[0] == '2026' and parts[2] == '04':
                 return pd.Timestamp(year=2026, month=4, day=int(parts[1]))
             else:
@@ -101,7 +101,7 @@ def load_compressor_data():
 st.title("🏭 Plant Operations Master Dashboard")
 st.markdown("---")
 
-# UPPER BLOCK: TEMPERATURE CHRONOLOGY (July 1 to July 6, 2026)
+# UPPER BLOCK: TEMPERATURE CHRONOLOGY
 st.header("📈 Temperature Monitoring System (July 2026)")
 temp_df = load_temperature_data()
 
@@ -116,10 +116,38 @@ if temp_df is not None:
     # Full container width trend monitoring
     st.line_chart(temp_df.set_index('Time'))
 else:
-    st.error("Missing Data Error: Ensure all DataLog_*.csv files are located in the folder.")
+    st.error("Missing Data Error: Ensure all DataLog_*.csv files are located in the execution path.")
 
 st.markdown("---")
 
 
-# LOWER BLOCK: TWO-COLUMN DATA INTERFACE DIRECTLY BELOW THE CHART
-st.header("⚡ Energy Metrics
+# LOWER BLOCK: TWO-COLUMN DATA INTERFACE (Directly below chart)
+st.header("⚡ Energy Metrics & Equipment Utilization")
+
+col_left, col_right = st.columns(2)
+
+# LEFT COLUMN: POWER TRACKING
+with col_left:
+    st.subheader("Daily Power Consumption & Value Savings Ledger")
+    power_df = load_power_data()
+    if power_df is not None:
+        st.dataframe(power_df, use_container_width=True, hide_index=True)
+    else:
+        st.error("Unable to load Power Consumption log structures.")
+
+# RIGHT COLUMN: SYSTEM RUNTIME & SEQUENCES
+with col_right:
+    st.subheader("Cold Storage Active Running Hours (KWH)")
+    runtime_df = load_runtime_data()
+    if runtime_df is not None:
+        st.dataframe(runtime_df, use_container_width=True, hide_index=True)
+    else:
+        st.error("Unable to load Cold Storage Runtime logs.")
+        
+    st.markdown("---")
+    st.subheader("Compressor Transition Matrix")
+    compressor_df = load_compressor_data()
+    if compressor_df is not None:
+        st.dataframe(compressor_df, use_container_width=True, hide_index=True)
+    else:
+        st.error("Unable to load Compressor Sequence charts.")
