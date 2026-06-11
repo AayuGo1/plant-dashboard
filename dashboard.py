@@ -173,12 +173,12 @@ with st.container():
         sm3.metric("Net Financial Optimization", f"INR {savings_sum:,.2f}")
         
         # Plot full screen area projection chart
-        st.markdown("<h5 style='color:#555;'>Comparative Infrastructure Draw Profiles</h5>", unsafe_allow_html=True)
+        st.markdown("<h5 style='color:#555;'>Comparative Infrastructure Draw Profiles</h5>", unsafe_allowed_html=False)
         chart_power_data = p_df.set_index('Date')[['Dunkin Blast', 'CLC Blast']]
         st.area_chart(chart_power_data, height=250)
         
         # Plot savings block columns
-        st.markdown("<h5 style='color:#555;'>Daily Financial Efficiency Margins</h5>", unsafe_allow_html=True)
+        st.markdown("<h5 style='color:#555;'>Daily Financial Efficiency Margins</h5>", unsafe_allowed_html=False)
         st.bar_chart(p_df.set_index('Date')['Savings'], color="#66BB6A", height=180)
             
         with st.expander("¼ View Detailed Sheet 1 Row Ledger"):
@@ -208,7 +208,7 @@ with st.container():
             r_df[col] = pd.to_numeric(r_df[col], errors='coerce').fillna(0)
             
         if kwh_cols:
-            st.markdown("<h5 style='color:#555;'>Measured Running Capacity Performance (KWH Logs)</h5>", unsafe_allow_html=True)
+            st.markdown("<h5 style='color:#555;'>Measured Running Capacity Performance (KWH Logs)</h5>", unsafe_allowed_html=False)
             # Use the primary KWH column for visual rendering
             st.bar_chart(r_df.set_index(first_col)[kwh_cols[0]], color="#FFA726", height=220)
             
@@ -235,10 +235,65 @@ with st.container():
         # Ensure 'Saving in hrs' column is cast completely to numbers to prevent plotting glitches
         if 'Saving in hrs' in c_df.columns:
             c_df['Saving in hrs'] = pd.to_numeric(c_df['Saving in hrs'], errors='coerce').fillna(0)
-            st.markdown("<h5 style='color:#555;'>Calculated Maintenance Savings Windows (Hours)</h5>", unsafe_allow_html=True)
+            st.markdown("<h5 style='color:#555;'>Calculated Maintenance Savings Windows (Hours)</h5>", unsafe_allowed_html=False)
             st.line_chart(c_df.set_index(c_df.columns[0])['Saving in hrs'], color="#AB47BC", height=200)
             
         with st.expander("¼ View Detailed Sheet 3 Transition Sequences"):
             st.dataframe(c_df, use_container_width=True, hide_index=True)
     else:
         st.error("Sheet 3 could not be extracted from the target file repository.")
+
+st.markdown("<hr style='border:1px solid #E6E8EC;margin:40px 0;'>", unsafe_allow_html=True)
+
+
+# ==========================================================
+# SYSTEM FRAME 3: NEW COMPRESSOR WORKING HOURS ANALYTICS
+# ==========================================================
+st.markdown("### 🌀 Dedicated Compressor Duty-Cycle Dashboard")
+
+if compressor_sheet is not None:
+    comp_work_df = compressor_sheet.copy()
+    
+    # Isolate key operational data columns (Clean string header formatting)
+    comp_work_df.columns = comp_work_df.columns.str.strip()
+    date_col = comp_work_df.columns[0]
+    
+    # Drop structural text rows & clean index timestamps
+    comp_work_df = comp_work_df[comp_work_df[date_col].astype(str).str.lower().str.contains('date') == False]
+    comp_work_df[date_col] = comp_work_df[date_col].apply(parse_power_sheet_date)
+    comp_work_df = comp_work_df.dropna(subset=[date_col]).sort_values(by=date_col)
+    
+    # Dynamically find column metrics tracking runtime hours or statuses
+    hour_cols = [c for c in comp_work_df.columns if 'hrs' in c.lower() or 'hours' in c.lower() or 'run' in c.lower()]
+    seq_cols = [c for c in comp_work_df.columns if 'sequence' in c.lower() or 'transition' in c.lower() or 'status' in c.lower() or 'type' in c.lower()]
+    
+    # Convert active numeric rows to calculation frames
+    for col in hour_cols:
+        comp_work_df[col] = pd.to_numeric(comp_work_df[col], errors='coerce').fillna(0)
+        
+    # --- RENDER ANALYTICS MODULE GRIDS ---
+    c_kpi1, c_kpi2 = st.columns(2)
+    
+    if hour_cols:
+        with c_kpi1:
+            total_hours = comp_work_df[hour_cols[0]].sum()
+            st.metric(label=f"Total Asset Runtime Block ({hour_cols[0]})", value=f"{total_hours:,.1f} Hrs")
+        with c_kpi2:
+            avg_hours = comp_work_df[hour_cols[0]].mean()
+            st.metric(label=f"Mean Continuous Duty Cycles", value=f"{avg_hours:.2f} Hrs/Day")
+            
+        st.markdown("<h5 style='color:#555;'>Compressor Running Capacity Progression Trend</h5>", unsafe_allow_html=False)
+        st.line_chart(comp_work_df.set_index(date_col)[hour_cols], height=240)
+        
+    # --- SEQUENCE TRANSITIONS DISPLAY MATRIX ---
+    st.markdown("#### 🔄 Sequence Logic Engine & Transitions")
+    
+    # Fallback compilation to build out sequence logic states if specialized columns don't match string metrics
+    display_cols = [date_col] + hour_cols + seq_cols
+    # Ensure distinct column selection filtering constraints
+    display_cols = list(dict.fromkeys([c for c in display_cols if c in comp_work_df.columns]))
+    
+    st.caption("Active operational timeline state change matrix isolated directly from raw metrics logs:")
+    st.dataframe(comp_work_df[display_cols], use_container_width=True, hide_index=True)
+else:
+    st.error("Compressor Matrix Error: Unable to compute historical working sequences because target log structures are missing.")
