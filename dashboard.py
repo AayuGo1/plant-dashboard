@@ -144,7 +144,6 @@ if temp_df is not None:
         """, unsafe_allow_html=True)
     
     st.markdown("<br>", unsafe_allow_html=True)
-    # Python 3.14 Compatible Chart Wrapper
     st.line_chart(temp_df.set_index('Time'))
 else:
     st.error("Missing Data Error: Verify that 'DataLog_*.csv' files populate your OneDrive folder.")
@@ -197,7 +196,7 @@ with st.container():
         
         # Plot savings block columns
         st.markdown("##### Daily Financial Efficiency Margins")
-        st.bar_chart(filtered_p_df.set_index('Date')['Savings'], color="#66BB6A")
+        st.bar_chart(filtered_p_df.set_index('Date')['Savings'])
             
         # Automatically save a copy of this clean data back to OneDrive for Power Automate to pick up
         filtered_p_df.to_csv(os.path.join(ONEDRIVE_PATH, "Clean_Daily_Power_Metrics.csv"), index=False)
@@ -230,7 +229,7 @@ with st.container():
             
         if kwh_cols:
             st.markdown("##### Measured Running Capacity Performance (KWH Logs)")
-            st.bar_chart(r_df.set_index(first_col)[kwh_cols[0]], color="#FFA726")
+            st.bar_chart(r_df.set_index(first_col)[kwh_cols[0]])
             
         with st.expander("¼ View Detailed Sheet 2 Operational Logs"):
             st.dataframe(r_df, use_container_width=True, hide_index=True)
@@ -256,7 +255,7 @@ with st.container():
         if 'Saving in hrs' in c_df.columns:
             c_df['Saving in hrs'] = pd.to_numeric(c_df['Saving in hrs'], errors='coerce').fillna(0)
             st.markdown("##### Calculated Maintenance Savings Windows (Hours)")
-            st.line_chart(c_df.set_index(c_df.columns[0])['Saving in hrs'], color="#AB47BC")
+            st.line_chart(c_df.set_index(c_df.columns[0])['Saving in hrs'])
             
         with st.expander("¼ View Detailed Sheet 3 Data Ledger"):
             st.dataframe(c_df, use_container_width=True, hide_index=True)
