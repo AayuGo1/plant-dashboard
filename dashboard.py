@@ -1,6 +1,3 @@
-Here is the complete, corrected code for your Streamlit application.
-The typos in the st.markdown parameters (unsafe_allowed_html changed to unsafe_allow_html) have been fixed throughout the entire script so it will now execute without throwing a TypeError.
-```python
 import streamlit as st
 import pandas as pd
 import glob
@@ -245,5 +242,3 @@ with st.container():
             st.dataframe(c_df, use_container_width=True, hide_index=True)
     else:
         st.error("Sheet 3 could not be extracted from the target file repository.")
-
-```
