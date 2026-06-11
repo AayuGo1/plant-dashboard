@@ -9,7 +9,7 @@ st.set_page_config(page_title="Plant Operational Intelligence Hub", layout="wide
 # --- CUSTOM ENGINE TO REPAIR MIXED DATE FORMATS IN POWER CONSUMPTION DATA ---
 def parse_power_sheet_date(val):
     val = str(val).strip()
-    if not val or val == 'nan' or val.lower() == 'date':
+    if not val or val == 'nan' or val.lower() == 'date' or val.lower() == 'total':
         return pd.NaT
     
     if ' ' in val:
@@ -78,6 +78,12 @@ def load_excel_sheet(sheet_name, row_header):
     try:
         df = pd.read_excel(excel_file, sheet_name=sheet_name, header=row_header, engine='openpyxl')
         df = df.dropna(axis=1, how='all')
+        
+        # Strip trailing text summary rows if they exist in the workbook sheets
+        if not df.empty:
+            first_col = df.columns[0]
+            df = df[df[first_col].astype(str).str.strip().str.lower() != 'total']
+            
         return df
     except Exception as e:
         st.sidebar.error(f"Error loading {sheet_name}: {e}")
@@ -163,9 +169,12 @@ with st.container():
         p_df['CLC Blast'] = pd.to_numeric(p_df['CLC Blast'], errors='coerce').fillna(0)
         p_df['Savings'] = pd.to_numeric(p_df['Savings'], errors='coerce').fillna(0)
         
-        dunkin_sum = p_df['Dunkin Blast'].sum()
-        clc_sum = p_df['CLC Blast'].sum()
-        savings_sum = p_df['Savings'].sum()
+        # Quality Control: Filter out values that represent absolute historical totals instead of daily deltas
+        filtered_p_df = p_df[p_df['Dunkin Blast'] < 500000].copy()
+        
+        dunkin_sum = filtered_p_df['Dunkin Blast'].sum()
+        clc_sum = filtered_p_df['CLC Blast'].sum()
+        savings_sum = filtered_p_df['Savings'].sum()
         
         sm1, sm2, sm3 = st.columns(3)
         sm1.metric("Dunkin Blast Load Accumulation", f"{dunkin_sum:,.1f} kWh")
@@ -174,15 +183,15 @@ with st.container():
         
         # Plot full screen area projection chart
         st.markdown("##### Comparative Infrastructure Draw Profiles")
-        chart_power_data = p_df.set_index('Date')[['Dunkin Blast', 'CLC Blast']]
+        chart_power_data = filtered_p_df.set_index('Date')[['Dunkin Blast', 'CLC Blast']]
         st.area_chart(chart_power_data, height=250)
         
         # Plot savings block columns
         st.markdown("##### Daily Financial Efficiency Margins")
-        st.bar_chart(p_df.set_index('Date')['Savings'], color="#66BB6A", height=180)
+        st.bar_chart(filtered_p_df.set_index('Date')['Savings'], color="#66BB6A", height=180)
             
         with st.expander("¼ View Detailed Sheet 1 Row Ledger"):
-            st.dataframe(p_df, use_container_width=True, hide_index=True)
+            st.dataframe(filtered_p_df, use_container_width=True, hide_index=True)
     else:
         st.error("Sheet 1 could not be extracted from the target file repository.")
 
@@ -198,7 +207,7 @@ with st.container():
     if runtime_sheet is not None:
         r_df = runtime_sheet.copy()
         first_col = r_df.columns[0]
-        r_df = r_df[r_df[first_col].astype(str).str.contains('Date|From') == False]
+        r_df = r_df[r_df[first_col].astype(str).str.contains('Date|From|Total') == False]
         r_df[first_col] = r_df[first_col].apply(parse_power_sheet_date)
         r_df = r_df.dropna(subset=[first_col]).sort_values(by=first_col)
         
@@ -209,7 +218,6 @@ with st.container():
             
         if kwh_cols:
             st.markdown("##### Measured Running Capacity Performance (KWH Logs)")
-            # Use the primary KWH column for visual rendering
             st.bar_chart(r_df.set_index(first_col)[kwh_cols[0]], color="#FFA726", height=220)
             
         with st.expander("¼ View Detailed Sheet 2 Operational Logs"):
@@ -221,14 +229,14 @@ st.markdown("<hr style='border:1px dashed #E6E8EC;margin:35px 0;'>", unsafe_allo
 
 
 # --------------------------------------------------------
-# STACK LAYER C: EXCEL SHEET 3 - COMPRESSOR SEQUENCING
+# STACK LAYER C: EXCEL SHEET 3 - COMPRESSOR TRACKING (SAVINGS)
 # --------------------------------------------------------
 with st.container():
-    st.markdown("#### 📉 Compressor Sequential Transitions & Savings Window (Sheet 3)")
+    st.markdown("#### 📉 Compressor Maintenance Optimization (Sheet 3)")
     
     if compressor_sheet is not None:
         c_df = compressor_sheet.copy()
-        c_df = c_df[c_df.iloc[:, 0].astype(str).str.strip().str.lower() != 'date']
+        c_df = c_df[c_df.iloc[:, 0].astype(str).str.strip().str.lower().str.contains('date|total') == False]
         c_df.iloc[:, 0] = c_df.iloc[:, 0].apply(parse_power_sheet_date)
         c_df = c_df.dropna(subset=[c_df.columns[0]]).sort_values(by=c_df.columns[0])
         
@@ -238,7 +246,7 @@ with st.container():
             st.markdown("##### Calculated Maintenance Savings Windows (Hours)")
             st.line_chart(c_df.set_index(c_df.columns[0])['Saving in hrs'], color="#AB47BC", height=200)
             
-        with st.expander("¼ View Detailed Sheet 3 Transition Sequences"):
+        with st.expander("¼ View Detailed Sheet 3 Data Ledger"):
             st.dataframe(c_df, use_container_width=True, hide_index=True)
     else:
         st.error("Sheet 3 could not be extracted from the target file repository.")
@@ -247,53 +255,56 @@ st.markdown("<hr style='border:1px solid #E6E8EC;margin:40px 0;'>", unsafe_allow
 
 
 # ==========================================================
-# SYSTEM FRAME 3: NEW COMPRESSOR WORKING HOURS ANALYTICS
+# SYSTEM FRAME 3: COMPRESSOR DAILY WORKING TIMINGS & LINE GRAPH
 # ==========================================================
-st.markdown("### 🌀 Dedicated Compressor Duty-Cycle Dashboard")
+st.markdown("### 🌀 Compressor Daily Working Timings")
 
 if compressor_sheet is not None:
-    comp_work_df = compressor_sheet.copy()
+    comp_timing_df = compressor_sheet.copy()
     
-    # Isolate key operational data columns (Clean string header formatting)
-    comp_work_df.columns = comp_work_df.columns.str.strip()
-    date_col = comp_work_df.columns[0]
+    # Standardize column header strings
+    comp_timing_df.columns = comp_timing_df.columns.str.strip()
+    date_col = comp_timing_df.columns[0]
     
-    # Drop structural text rows & clean index timestamps
-    comp_work_df = comp_work_df[comp_work_df[date_col].astype(str).str.lower().str.contains('date') == False]
-    comp_work_df[date_col] = comp_work_df[date_col].apply(parse_power_sheet_date)
-    comp_work_df = comp_work_df.dropna(subset=[date_col]).sort_values(by=date_col)
+    # Purge dirty tracking text rows & clean dates
+    comp_timing_df = comp_timing_df[comp_timing_df[date_col].astype(str).str.lower().str.contains('date|total') == False]
+    comp_timing_df[date_col] = comp_timing_df[date_col].apply(parse_power_sheet_date)
+    comp_timing_df = comp_timing_df.dropna(subset=[date_col]).sort_values(by=date_col)
     
-    # Dynamically find column metrics tracking runtime hours or statuses
-    hour_cols = [c for c in comp_work_df.columns if 'hrs' in c.lower() or 'hours' in c.lower() or 'run' in c.lower()]
-    seq_cols = [c for c in comp_work_df.columns if 'sequence' in c.lower() or 'transition' in c.lower() or 'status' in c.lower() or 'type' in c.lower()]
-    
-    # Convert active numeric rows to calculation frames
-    for col in hour_cols:
-        comp_work_df[col] = pd.to_numeric(comp_work_df[col], errors='coerce').fillna(0)
+    # Automatically locate column keeping track of operational running hours
+    run_hours_col = None
+    for col in comp_timing_df.columns:
+        if 'run' in col.lower() or 'working' in col.lower() or 'operating' in col.lower() or 'hrs' in col.lower() or 'hours' in col.lower():
+            if 'saving' not in col.lower():  # Skip the savings metrics column
+                run_hours_col = col
+                break
+                
+    # Fallback plan if column names are completely custom/generic
+    if not run_hours_col and len(comp_timing_df.columns) > 1:
+        run_hours_col = comp_timing_df.columns[1]
+
+    if run_hours_col:
+        # Cast data values directly to clean floats
+        comp_timing_df[run_hours_col] = pd.to_numeric(comp_timing_df[run_hours_col], errors='coerce').fillna(0)
         
-    # --- RENDER ANALYTICS MODULE GRIDS ---
-    c_kpi1, c_kpi2 = st.columns(2)
-    
-    if hour_cols:
-        with c_kpi1:
-            total_hours = comp_work_df[hour_cols[0]].sum()
-            st.metric(label=f"Total Asset Runtime Block ({hour_cols[0]})", value=f"{total_hours:,.1f} Hrs")
-        with c_kpi2:
-            avg_hours = comp_work_df[hour_cols[0]].mean()
-            st.metric(label=f"Mean Continuous Duty Cycles", value=f"{avg_hours:.2f} Hrs/Day")
-            
-        st.markdown("##### Compressor Running Capacity Progression Trend")
-        st.line_chart(comp_work_df.set_index(date_col)[hour_cols], height=240)
+        # Format the DataFrame specifically to show "How many hours it worked on which day"
+        summary_display_df = comp_timing_df[[date_col, run_hours_col]].copy()
+        summary_display_df.columns = ['Operational Date', 'Hours Worked (hrs)']
         
-    # --- SEQUENCE TRANSITIONS DISPLAY MATRIX ---
-    st.markdown("#### 🔄 Sequence Logic Engine & Transitions")
-    
-    # Fallback compilation to build out sequence logic states if specialized columns don't match string metrics
-    display_cols = [date_col] + hour_cols + seq_cols
-    # Ensure distinct column selection filtering constraints
-    display_cols = list(dict.fromkeys([c for c in display_cols if c in comp_work_df.columns]))
-    
-    st.caption("Active operational timeline state change matrix isolated directly from raw metrics logs:")
-    st.dataframe(comp_work_df[display_cols], use_container_width=True, hide_index=True)
+        # --- RENDER KPI SUMMARY CARD ---
+        total_worked_hours = summary_display_df['Hours Worked (hrs)'].sum()
+        st.metric(label="Total Combined Compressor Production Load", value=f"{total_worked_hours:,.1f} Hours")
+        
+        # --- RENDER RUNTIME LINE GRAPH ---
+        st.markdown("##### 📈 Compressor Daily Run-Time Trend Graph")
+        chart_data = summary_display_df.set_index('Operational Date')['Hours Worked (hrs)']
+        st.line_chart(chart_data, color="#00D2FF", height=280)
+        
+        # --- RENDER DAY-BY-DAY DATAFRAME LEDGER ---
+        st.markdown("##### 📅 Detailed Running Timings Log")
+        st.caption("Breakdown tracking exactly how many hours the compressor asset worked on each individual day:")
+        st.dataframe(summary_display_df, use_container_width=True, hide_index=True)
+    else:
+        st.warning("Could not identify a valid runtime hours column inside Sheet 3.")
 else:
-    st.error("Compressor Matrix Error: Unable to compute historical working sequences because target log structures are missing.")
+    st.error("Compressor Timing Error: Unable to display metrics because Sheet 3 could not be parsed.")
