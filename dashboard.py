@@ -144,7 +144,8 @@ if temp_df is not None:
         """, unsafe_allow_html=True)
     
     st.markdown("<br>", unsafe_allow_html=True)
-    st.line_chart(temp_df.set_index('Time'), height=320)
+    # Python 3.14 Compatible Chart Wrapper
+    st.line_chart(temp_df.set_index('Time'))
 else:
     st.error("Missing Data Error: Verify that 'DataLog_*.csv' files populate your OneDrive folder.")
 
@@ -192,11 +193,11 @@ with st.container():
         # Plot full screen area projection chart
         st.markdown("##### Comparative Infrastructure Draw Profiles")
         chart_power_data = filtered_p_df.set_index('Date')[['Dunkin Blast', 'CLC Blast']]
-        st.area_chart(chart_power_data, height=250)
+        st.area_chart(chart_power_data)
         
         # Plot savings block columns
         st.markdown("##### Daily Financial Efficiency Margins")
-        st.bar_chart(filtered_p_df.set_index('Date')['Savings'], color="#66BB6A", height=180)
+        st.bar_chart(filtered_p_df.set_index('Date')['Savings'], color="#66BB6A")
             
         # Automatically save a copy of this clean data back to OneDrive for Power Automate to pick up
         filtered_p_df.to_csv(os.path.join(ONEDRIVE_PATH, "Clean_Daily_Power_Metrics.csv"), index=False)
@@ -229,7 +230,7 @@ with st.container():
             
         if kwh_cols:
             st.markdown("##### Measured Running Capacity Performance (KWH Logs)")
-            st.bar_chart(r_df.set_index(first_col)[kwh_cols[0]], color="#FFA726", height=220)
+            st.bar_chart(r_df.set_index(first_col)[kwh_cols[0]], color="#FFA726")
             
         with st.expander("¼ View Detailed Sheet 2 Operational Logs"):
             st.dataframe(r_df, use_container_width=True, hide_index=True)
@@ -255,7 +256,7 @@ with st.container():
         if 'Saving in hrs' in c_df.columns:
             c_df['Saving in hrs'] = pd.to_numeric(c_df['Saving in hrs'], errors='coerce').fillna(0)
             st.markdown("##### Calculated Maintenance Savings Windows (Hours)")
-            st.line_chart(c_df.set_index(c_df.columns[0])['Saving in hrs'], color="#AB47BC", height=200)
+            st.line_chart(c_df.set_index(c_df.columns[0])['Saving in hrs'], color="#AB47BC")
             
         with st.expander("¼ View Detailed Sheet 3 Data Ledger"):
             st.dataframe(c_df, use_container_width=True, hide_index=True)
@@ -309,7 +310,7 @@ if compressor_sheet is not None:
         # --- RENDER RUNTIME LINE GRAPH ---
         st.markdown("##### 📈 Compressor Daily Run-Time Trend Graph")
         chart_data = summary_display_df.set_index('Operational Date')['Hours Worked (hrs)']
-        st.line_chart(chart_data, color="#00D2FF", height=280)
+        st.line_chart(chart_data, color="#00D2FF")
         
         # --- RENDER DAY-BY-DAY DATAFRAME LEDGER ---
         st.markdown("##### 📅 Detailed Running Timings Log")
