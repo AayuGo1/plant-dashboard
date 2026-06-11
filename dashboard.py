@@ -1,3 +1,6 @@
+Here is the complete, corrected code for your Streamlit application.
+The typos in the st.markdown parameters (unsafe_allowed_html changed to unsafe_allow_html) have been fixed throughout the entire script so it will now execute without throwing a TypeError.
+```python
 import streamlit as st
 import pandas as pd
 import glob
@@ -92,7 +95,7 @@ st.markdown("""
         <h1 style="color:#FFFFFF;margin:0;font-size:32px;font-family:sans-serif;letter-spacing:-0.5px;">🏭 Plant Operations Intelligence Hub</h1>
         <p style="color:#A3A3C2;margin:6px 0 0 0;font-size:15px;">Thermal Management Telemetry & Infrastructure Energy Audits</p>
     </div>
-""", unsafe_allowed_html=True)
+""", unsafe_allow_html=True)
 
 # ==========================================================
 # SYSTEM FRAME 1: TEMPERATURE TELEMETRY PANEL (TOP BANNER)
@@ -111,7 +114,7 @@ if temp_df is not None:
                 <span style="color:#6C757D;font-size:13px;font-weight:600;text-transform:uppercase;">Dough Cooler 1</span>
                 <h2 style="margin:8px 0 0 0;color:#1A1D20;font-size:28px;">{latest_row['Dough Cooler1 Temp']:.2f} °C</h2>
             </div>
-        """, unsafe_allowed_html=True)
+        """, unsafe_allow_html=True)
         
     with kpi2:
         st.markdown(f"""
@@ -119,7 +122,7 @@ if temp_df is not None:
                 <span style="color:#6C757D;font-size:13px;font-weight:600;text-transform:uppercase;">Dough Cooler 2</span>
                 <h2 style="margin:8px 0 0 0;color:#1A1D20;font-size:28px;">{latest_row['Dough Cooler2 Temp']:.2f} °C</h2>
             </div>
-        """, unsafe_allowed_html=True)
+        """, unsafe_allow_html=True)
         
     with kpi3:
         st.markdown(f"""
@@ -127,14 +130,14 @@ if temp_df is not None:
                 <span style="color:#6C757D;font-size:13px;font-weight:600;text-transform:uppercase;">Perishable Storage</span>
                 <h2 style="margin:8px 0 0 0;color:#1A1D20;font-size:28px;">{latest_row['Perishable Cooler Temp']:.2f} °C</h2>
             </div>
-        """, unsafe_allowed_html=True)
+        """, unsafe_allow_html=True)
     
-    st.markdown("<br>", unsafe_allowed_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
     st.line_chart(temp_df.set_index('Time'), height=320)
 else:
     st.error("Missing Data Error: Verify that 'DataLog_*.csv' files populate your root project folder.")
 
-st.markdown("<hr style='border:1px solid #E6E8EC;margin:40px 0;'>", unsafe_allowed_html=True)
+st.markdown("<hr style='border:1px solid #E6E8EC;margin:40px 0;'>", unsafe_allow_html=True)
 
 
 # ==========================================================
@@ -173,12 +176,12 @@ with st.container():
         sm3.metric("Net Financial Optimization", f"INR {savings_sum:,.2f}")
         
         # Plot full screen area projection chart
-        st.markdown("<h5 style='color:#555;'>Comparative Infrastructure Draw Profiles</h5>", unsafe_allowed_html=True)
+        st.markdown("<h5 style='color:#555;'>Comparative Infrastructure Draw Profiles</h5>", unsafe_allow_html=True)
         chart_power_data = p_df.set_index('Date')[['Dunkin Blast', 'CLC Blast']]
         st.area_chart(chart_power_data, height=250)
         
         # Plot savings block columns
-        st.markdown("<h5 style='color:#555;'>Daily Financial Efficiency Margins</h5>", unsafe_allowed_html=True)
+        st.markdown("<h5 style='color:#555;'>Daily Financial Efficiency Margins</h5>", unsafe_allow_html=True)
         st.bar_chart(p_df.set_index('Date')['Savings'], color="#66BB6A", height=180)
             
         with st.expander("¼ View Detailed Sheet 1 Row Ledger"):
@@ -186,7 +189,7 @@ with st.container():
     else:
         st.error("Sheet 1 could not be extracted from the target file repository.")
 
-st.markdown("<hr style='border:1px dashed #E6E8EC;margin:35px 0;'>", unsafe_allowed_html=True)
+st.markdown("<hr style='border:1px dashed #E6E8EC;margin:35px 0;'>", unsafe_allow_html=True)
 
 
 # --------------------------------------------------------
@@ -208,7 +211,7 @@ with st.container():
             r_df[col] = pd.to_numeric(r_df[col], errors='coerce').fillna(0)
             
         if kwh_cols:
-            st.markdown("<h5 style='color:#555;'>Measured Running Capacity Performance (KWH Logs)</h5>", unsafe_allowed_html=True)
+            st.markdown("<h5 style='color:#555;'>Measured Running Capacity Performance (KWH Logs)</h5>", unsafe_allow_html=True)
             # Use the primary KWH column for visual rendering
             st.bar_chart(r_df.set_index(first_col)[kwh_cols[0]], color="#FFA726", height=220)
             
@@ -217,7 +220,7 @@ with st.container():
     else:
         st.error("Sheet 2 could not be extracted from the target file repository.")
 
-st.markdown("<hr style='border:1px dashed #E6E8EC;margin:35px 0;'>", unsafe_allowed_html=True)
+st.markdown("<hr style='border:1px dashed #E6E8EC;margin:35px 0;'>", unsafe_allow_html=True)
 
 
 # --------------------------------------------------------
@@ -235,10 +238,12 @@ with st.container():
         # Ensure 'Saving in hrs' column is cast completely to numbers to prevent plotting glitches
         if 'Saving in hrs' in c_df.columns:
             c_df['Saving in hrs'] = pd.to_numeric(c_df['Saving in hrs'], errors='coerce').fillna(0)
-            st.markdown("<h5 style='color:#555;'>Calculated Maintenance Savings Windows (Hours)</h5>", unsafe_allowed_html=True)
+            st.markdown("<h5 style='color:#555;'>Calculated Maintenance Savings Windows (Hours)</h5>", unsafe_allow_html=True)
             st.line_chart(c_df.set_index(c_df.columns[0])['Saving in hrs'], color="#AB47BC", height=200)
             
         with st.expander("¼ View Detailed Sheet 3 Transition Sequences"):
             st.dataframe(c_df, use_container_width=True, hide_index=True)
     else:
         st.error("Sheet 3 could not be extracted from the target file repository.")
+
+```
