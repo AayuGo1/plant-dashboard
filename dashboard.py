@@ -213,41 +213,20 @@ else:
 st.markdown("<hr style='border:1px dashed #E6E8EC;margin:35px 0;'>", unsafe_allow_html=True)
 
 
-# ==========================================================
-# SYSTEM FRAME 3: COMPRESSOR DAILY WORKING TIMINGS
-# ==========================================================
-st.markdown("### 🌀 Compressor Daily Working Timings")
-
+# --- LAYER C: SHEET 3 COMPRESSOR SAVINGS ---
+st.markdown("#### 📉 Compressor Maintenance Optimization (Sheet 3)")
 if compressor_sheet is not None and not compressor_sheet.empty:
-    comp_timing_df = compressor_sheet.copy()
-    comp_timing_df.columns = comp_timing_df.columns.str.strip()
-    date_col = comp_timing_df.columns[0]
+    c_df = compressor_sheet.copy()
+    c_df = c_df[c_df.iloc[:, 0].astype(str).str.strip().str.lower().str.contains('date|total') == False]
+    c_df.iloc[:, 0] = c_df.iloc[:, 0].apply(parse_power_sheet_date)
+    c_df = c_df.dropna(subset=[c_df.columns[0]]).sort_values(by=c_df.columns[0])
     
-    comp_timing_df = comp_timing_df[comp_timing_df[date_col].astype(str).str.lower().str.contains('date|total') == False]
-    comp_timing_df[date_col] = comp_timing_df[date_col].apply(parse_power_sheet_date)
-    comp_timing_df = comp_timing_df.dropna(subset=[date_col]).sort_values(by=date_col)
-    
-    run_hours_col = None
-    for col in comp_timing_df.columns:
-        if any(k in col.lower() for k in ['run', 'working', 'operating', 'hrs', 'hours']) and 'saving' not in col.lower():
-            run_hours_col = col
-            break
-            
-    if not run_hours_col and len(comp_timing_df.columns) > 1:
-        run_hours_col = comp_timing_df.columns[1]
-
-    if run_hours_col and not comp_timing_df.empty:
-        comp_timing_df[run_hours_col] = pd.to_numeric(comp_timing_df[run_hours_col], errors='coerce').fillna(0)
-        summary_display_df = comp_timing_df[[date_col, run_hours_col]].copy()
-        summary_display_df.columns = ['Operational Date', 'Hours Worked (hrs)']
+    if 'Saving in hrs' in c_df.columns:
+        c_df['Saving in hrs'] = pd.to_numeric(c_df['Saving in hrs'], errors='coerce').fillna(0)
+        st.markdown("##### Calculated Maintenance Savings Windows (Hours)")
+        st.line_chart(c_df.set_index(c_df.columns[0])['Saving in hrs'])
         
-        total_worked_hours = summary_display_df['Hours Worked (hrs)'].sum()
-        st.metric(label="Total Combined Compressor Production Load", value=f"{total_worked_hours:,.1f} Hours")
-        
-        st.markdown("##### 📈 Compressor Daily Run-Time Trend Graph")
-        st.line_chart(summary_display_df.set_index('Operational Date')['Hours Worked (hrs)'])
-        
-        with st.expander("📅 View Detailed Running Timings Log"):
-            st.dataframe(summary_display_df, use_container_width=True, hide_index=True)
+    with st.expander("¼ View Detailed Sheet 3 Data Ledger"):
+        st.dataframe(c_df, use_container_width=True, hide_index=True)
 else:
     st.info("ℹ️ 'Power consumption freon.xlsx' (Sheet3) not detected or empty.")
