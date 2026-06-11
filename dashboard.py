@@ -3,20 +3,20 @@ import pandas as pd
 import glob
 import os
 
-# Clean, wide layout execution
+# Clean, wide layout execution for plant telemetry
 st.set_page_config(page_title="Plant Operations Dashboard", layout="wide")
 
-# --- CUSTOM DATE CLEANER FOR POWER CONSUMPTION SHEET ---
+# --- CUSTOM ENGINE TO REPAIR MIXED DATE FORMATS IN POWER CONSUMPTION DATA ---
 def parse_power_sheet_date(val):
     val = str(val).strip()
-    if not val or val == 'nan':
+    if not val or val == 'nan' or val.lower() == 'date':
         return pd.NaT
     if '/' in val:
         return pd.to_datetime(val, dayfirst=True, errors='coerce')
     if '-' in val:
         parts = val.split('-')
         if len(parts) == 3:
-            # Fixes formatting quirk where April 1-12 looks like '2026-01-04'
+            # Resolves formatting quirk where April 1-12 logs read as '2026-01-04'
             if parts[0] == '2026' and parts[2] == '04':
                 return pd.Timestamp(year=2026, month=4, day=int(parts[1]))
             else:
@@ -42,15 +42,19 @@ def load_temperature_data():
         if all(col in df.columns for col in target_cols):
             df = df[target_cols].copy()
             
-            # Clean numerical telemetry data & fill hardware sensor 'NOP' drop-outs
+            # Clean numerical telemetry data & strip out hidden NOP strings with variable spacing
             for col in target_cols[1:]:
+                if df[col].dtype == object:
+                    df[col] = df[col].astype(str).str.replace(r'.*NOP.*', '', regex=True)
+                
                 df[col] = pd.to_numeric(df[col], errors='coerce')
+                # Bridge sensor drop-outs smoothly with forward and backward fill padding
                 df[col] = df[col].ffill().bfill()
             
             # Enforce strict day-first timestamp parsing
             df['Time'] = pd.to_datetime(df['Time'], dayfirst=True, errors='coerce')
             
-            # HARD OVERRIDE: Re-align files (01-06 to 06-06) strictly into July 1st - July 6th
+            # HARD OVERRIDE: Re-align files (01-06 to 06-06) strictly into July 1st - July 6th, 2026
             df['Time'] = df['Time'].apply(lambda x: x.replace(month=7) if pd.notnull(x) else x)
             all_dfs.append(df)
             
@@ -64,34 +68,11 @@ def load_temperature_data():
 @st.cache_data
 def load_power_data():
     try:
+        # Real headers are on row index 1 (Date, Dunkin Blast, Total, Savings...)
         df = pd.read_csv('Power consumption freon.xlsx - Sheet1.csv', header=1)
         df = df.dropna(axis=1, how='all')
         df['Date'] = df['Date'].apply(parse_power_sheet_date)
         return df.dropna(subset=['Date']).sort_values(by='Date')
-    except:
-        return None
-
-
-@st.cache_data
-def load_runtime_data():
-    try:
-        df = pd.read_csv('Power consumption freon.xlsx - Sheet2.csv', header=2)
-        df = df.dropna(axis=1, how='all')
-        first_col = df.columns[0]
-        df[first_col] = pd.to_datetime(df[first_col], errors='coerce')
-        return df.dropna(subset=[first_col]).sort_values(by=first_col)
-    except:
-        return None
-
-
-@st.cache_data
-def load_compressor_data():
-    try:
-        df = pd.read_csv('Power consumption freon.xlsx - Sheet3.csv', header=2)
-        df = df.dropna(axis=1, how='all')
-        df = df[df.iloc[:, 0] != 'Date']
-        df.iloc[:, 0] = pd.to_datetime(df.iloc[:, 0], errors='coerce')
-        return df.dropna(subset=[df.columns[0]]).sort_values(by=df.columns[0])
     except:
         return None
 
@@ -101,7 +82,7 @@ def load_compressor_data():
 st.title("🏭 Plant Operations Master Dashboard")
 st.markdown("---")
 
-# UPPER BLOCK: TEMPERATURE CHRONOLOGY
+# UPPER BLOCK: TEMPERATURE CHRONOLOGY (July 1 to July 6, 2026)
 st.header("📈 Temperature Monitoring System (July 2026)")
 temp_df = load_temperature_data()
 
@@ -113,41 +94,19 @@ if temp_df is not None:
     kpi2.metric("Latest Dough Cooler 2", f"{latest_row['Dough Cooler2 Temp']:.2f} °C")
     kpi3.metric("Latest Perishable Cooler", f"{latest_row['Perishable Cooler Temp']:.2f} °C")
     
-    # Full container width trend monitoring
+    # Full container width trend monitoring chart
     st.line_chart(temp_df.set_index('Time'))
 else:
-    st.error("Missing Data Error: Ensure all DataLog_*.csv files are located in the execution path.")
+    st.error("Missing Data Error: Ensure all DataLog_*.csv files are located in the execution directory.")
 
 st.markdown("---")
 
+# LOWER BLOCK: POWER CONSUMPTION DATA DISPLAY (Directly below temperature chart)
+st.header("⚡ Power Consumption Data Ledger")
+power_df = load_power_data()
 
-# LOWER BLOCK: TWO-COLUMN DATA INTERFACE (Directly below chart)
-st.header("⚡ Energy Metrics & Equipment Utilization")
-
-col_left, col_right = st.columns(2)
-
-# LEFT COLUMN: POWER TRACKING
-with col_left:
-    st.subheader("Daily Power Consumption & Value Savings Ledger")
-    power_df = load_power_data()
-    if power_df is not None:
-        st.dataframe(power_df, use_container_width=True, hide_index=True)
-    else:
-        st.error("Unable to load Power Consumption log structures.")
-
-# RIGHT COLUMN: SYSTEM RUNTIME & SEQUENCES
-with col_right:
-    st.subheader("Cold Storage Active Running Hours (KWH)")
-    runtime_df = load_runtime_data()
-    if runtime_df is not None:
-        st.dataframe(runtime_df, use_container_width=True, hide_index=True)
-    else:
-        st.error("Unable to load Cold Storage Runtime logs.")
-        
-    st.markdown("---")
-    st.subheader("Compressor Transition Matrix")
-    compressor_df = load_compressor_data()
-    if compressor_df is not None:
-        st.dataframe(compressor_df, use_container_width=True, hide_index=True)
-    else:
-        st.error("Unable to load Compressor Sequence charts.")
+if power_df is not None:
+    st.markdown("### Daily Power Consumption & Operational Value Savings Matrix")
+    st.dataframe(power_df, use_container_width=True, hide_index=True)
+else:
+    st.error("Unable to load Power Consumption log structures. Verify that 'Power consumption freon.xlsx - Sheet1.csv' is saved alongside app.py.")
