@@ -6,6 +6,12 @@ import os
 # Configure wide responsive structural grid
 st.set_page_config(page_title="Plant Operational Intelligence Hub", layout="wide")
 
+# --- PATH CONFIGURATION ---
+# Points directly to your local OneDrive sync folder (use forward slashes)
+ONEDRIVE_PATH = "C:/Users/YourName/OneDrive - CompanyName/Plant_Reports/"
+os.makedirs(ONEDRIVE_PATH, exist_ok=True)
+
+
 # --- CUSTOM ENGINE TO REPAIR MIXED DATE FORMATS IN POWER CONSUMPTION DATA ---
 def parse_power_sheet_date(val):
     val = str(val).strip()
@@ -35,7 +41,8 @@ def parse_power_sheet_date(val):
 
 @st.cache_data
 def load_temperature_data():
-    files = glob.glob("DataLog_*.csv")
+    # Looks for data logs directly inside your synced OneDrive folder
+    files = glob.glob(os.path.join(ONEDRIVE_PATH, "DataLog_*.csv"))
     if not files:
         return None
     
@@ -59,7 +66,7 @@ def load_temperature_data():
             
             df['Time'] = pd.to_datetime(df['Time'], dayfirst=True, errors='coerce')
             
-            # HARD OVERRIDE: Re-align files (01-06 to 06-06) strictly into July 1st - July 6th, 2026
+            # HARD OVERRIDE: Re-align files strictly into July 1st - July 6th, 2026
             df['Time'] = df['Time'].apply(lambda x: x.replace(month=7) if pd.notnull(x) else x)
             all_dfs.append(df)
             
@@ -72,7 +79,8 @@ def load_temperature_data():
 
 @st.cache_data
 def load_excel_sheet(sheet_name, row_header):
-    excel_file = 'Power consumption freon.xlsx'
+    # Looks for the excel workbook directly inside your synced OneDrive folder
+    excel_file = os.path.join(ONEDRIVE_PATH, 'Power consumption freon.xlsx')
     if not os.path.exists(excel_file):
         return None
     try:
@@ -138,7 +146,7 @@ if temp_df is not None:
     st.markdown("<br>", unsafe_allow_html=True)
     st.line_chart(temp_df.set_index('Time'), height=320)
 else:
-    st.error("Missing Data Error: Verify that 'DataLog_*.csv' files populate your root project folder.")
+    st.error("Missing Data Error: Verify that 'DataLog_*.csv' files populate your OneDrive folder.")
 
 st.markdown("<hr style='border:1px solid #E6E8EC;margin:40px 0;'>", unsafe_allow_html=True)
 
@@ -190,6 +198,9 @@ with st.container():
         st.markdown("##### Daily Financial Efficiency Margins")
         st.bar_chart(filtered_p_df.set_index('Date')['Savings'], color="#66BB6A", height=180)
             
+        # Automatically save a copy of this clean data back to OneDrive for Power Automate to pick up
+        filtered_p_df.to_csv(os.path.join(ONEDRIVE_PATH, "Clean_Daily_Power_Metrics.csv"), index=False)
+
         with st.expander("¼ View Detailed Sheet 1 Row Ledger"):
             st.dataframe(filtered_p_df, use_container_width=True, hide_index=True)
     else:
