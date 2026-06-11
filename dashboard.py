@@ -3,7 +3,7 @@ import pandas as pd
 import glob
 import os
 
-# Clean, wide layout execution for plant telemetry
+# Set clean, wide page layout
 st.set_page_config(page_title="Plant Operations Dashboard", layout="wide")
 
 # --- CUSTOM ENGINE TO REPAIR MIXED DATE FORMATS IN POWER CONSUMPTION DATA ---
@@ -11,14 +11,22 @@ def parse_power_sheet_date(val):
     val = str(val).strip()
     if not val or val == 'nan' or val.lower() == 'date':
         return pd.NaT
+    
+    # If Excel already parsed it as a timestamp string yyyy-mm-dd hh:mm:ss
+    if ' ' in val:
+        val = val.split(' ')[0]
+        
     if '/' in val:
         return pd.to_datetime(val, dayfirst=True, errors='coerce')
     if '-' in val:
         parts = val.split('-')
         if len(parts) == 3:
             # Resolves formatting quirk where April 1-12 logs read as '2026-01-04'
-            if parts[0] == '2026' and parts[2] == '04':
+            if len(parts[0]) == 4 and parts[2] == '04':
                 return pd.Timestamp(year=2026, month=4, day=int(parts[1]))
+            # Handles flipped year order parts if strings read '04-01-2026'
+            elif len(parts[2]) == 4 and parts[1] == '04':
+                return pd.Timestamp(year=2026, month=4, day=int(parts[0]))
             else:
                 return pd.to_datetime(val, errors='coerce')
     return pd.to_datetime(val, errors='coerce')
@@ -67,13 +75,18 @@ def load_temperature_data():
 
 @st.cache_data
 def load_power_data():
+    excel_file = 'Power consumption freon.xlsx'
+    if not os.path.exists(excel_file):
+        return None
     try:
-        # Real headers are on row index 1 (Date, Dunkin Blast, Total, Savings...)
-        df = pd.read_csv('Power consumption freon.xlsx - Sheet1.csv', header=1)
+        # Read directly from Sheet1 inside the native binary Excel workbook file
+        # Column headers are located on the second line (index row 1)
+        df = pd.read_excel(excel_file, sheet_name='Sheet1', header=1, engine='openpyxl')
         df = df.dropna(axis=1, how='all')
         df['Date'] = df['Date'].apply(parse_power_sheet_date)
         return df.dropna(subset=['Date']).sort_values(by='Date')
-    except:
+    except Exception as e:
+        st.sidebar.error(f"Excel Sheet1 parsing error: {e}")
         return None
 
 
@@ -109,4 +122,4 @@ if power_df is not None:
     st.markdown("### Daily Power Consumption & Operational Value Savings Matrix")
     st.dataframe(power_df, use_container_width=True, hide_index=True)
 else:
-    st.error("Unable to load Power Consumption log structures. Verify that 'Power consumption freon.xlsx - Sheet1.csv' is saved alongside app.py.")
+    st.error("Unable to load Power Consumption data. Verify that 'Power consumption freon.xlsx' is saved in your root directory alongside app.py.")
