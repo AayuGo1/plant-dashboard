@@ -3,11 +3,11 @@ import pandas as pd
 import glob
 import os
 
-# Clean, wide layout for industrial metrics tracking
+# Set clean, wide page layout
 st.set_page_config(page_title="Plant Operations Dashboard", layout="wide")
 
-# --- CUSTOM ENGINE TO FIX MIXED DATE FORMATS IN POWER CONSUMPTION SHEET ---
-def clean_power_sheet_date(val):
+# --- CUSTOM DATE CLEANER FOR POWER CONSUMPTION SHEET ---
+def parse_power_sheet_date(val):
     val = str(val).strip()
     if not val or val == 'nan':
         return pd.NaT
@@ -16,7 +16,7 @@ def clean_power_sheet_date(val):
     if '-' in val:
         parts = val.split('-')
         if len(parts) == 3:
-            # Resolves export formatting quirk where April 1-12 looks like '2026-01-04'
+            # Fixes the quirk where April 1-12 looks like '2026-01-04'
             if parts[0] == '2026' and parts[2] == '04':
                 return pd.Timestamp(year=2026, month=4, day=int(parts[1]))
             else:
@@ -24,7 +24,7 @@ def clean_power_sheet_date(val):
     return pd.to_datetime(val, errors='coerce')
 
 
-# --- DATA LOADING FUNCTIONS WITH ENFORCED FILTERS ---
+# --- DATA PIPELINE LOADERS ---
 
 @st.cache_data
 def load_temperature_data():
@@ -37,21 +37,20 @@ def load_temperature_data():
     
     for file in files:
         df = pd.read_csv(file)
-        df.columns = df.columns.str.strip() # Remove invisible header whitespaces
+        df.columns = df.columns.str.strip()
         
         if all(col in df.columns for col in target_cols):
             df = df[target_cols].copy()
             
-            # Convert values to numbers; automatically clean NOP strings to NaN
+            # Clean numerical telemetry data & fill hardware sensor 'NOP' drop-outs
             for col in target_cols[1:]:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
-                # Bridge sensor drop-outs smoothly with forward and backward fill padding
                 df[col] = df[col].ffill().bfill()
             
-            # Map raw timestamp strings using day-first convention
+            # Enforce strict day-first timestamp parsing
             df['Time'] = pd.to_datetime(df['Time'], dayfirst=True, errors='coerce')
             
-            # Enforce exact shift to July 2026 (01-06 becomes July 1st, 02-06 July 2nd, etc.)
+            # HARD OVERRIDE: Re-align files (01-06 to 06-06) strictly into July 1st - July 6th
             df['Time'] = df['Time'].apply(lambda x: x.replace(month=7) if pd.notnull(x) else x)
             all_dfs.append(df)
             
@@ -67,7 +66,7 @@ def load_power_data():
     try:
         df = pd.read_csv('Power consumption freon.xlsx - Sheet1.csv', header=1)
         df = df.dropna(axis=1, how='all')
-        df['Date'] = df['Date'].apply(clean_power_sheet_date)
+        df['Date'] = df['Date'].apply(parse_power_sheet_date)
         return df.dropna(subset=['Date']).sort_values(by='Date')
     except:
         return None
@@ -97,57 +96,30 @@ def load_compressor_data():
         return None
 
 
-# --- MAIN DASHBOARD LAYOUT ---
+# --- SCREEN RENDER ---
 
 st.title("🏭 Plant Operations Master Dashboard")
 st.markdown("---")
 
-# SECTION 1: TOP-LEVEL TEMPERATURE TRACKING (July 1 to July 6, 2026)
+# UPPER BLOCK: TEMPERATURE CHRONOLOGY (July 1 to July 6, 2026)
 st.header("📈 Temperature Monitoring System (July 2026)")
-temp_data = load_temperature_data()
+temp_df = load_temperature_data()
 
-if temp_data is not None:
-    # Live KPI status block using the final recorded entry row
-    latest_reading = temp_data.iloc[-1]
+if temp_df is not None:
+    # Live KPI telemetry readout blocks
+    latest_row = temp_df.iloc[-1]
     kpi1, kpi2, kpi3 = st.columns(3)
-    kpi1.metric("Latest Dough Cooler 1", f"{latest_reading['Dough Cooler1 Temp']:.2f} °C")
-    kpi2.metric("Latest Dough Cooler 2", f"{latest_reading['Dough Cooler2 Temp']:.2f} °C")
-    kpi3.metric("Latest Perishable Cooler", f"{latest_reading['Perishable Cooler Temp']:.2f} °C")
+    kpi1.metric("Latest Dough Cooler 1", f"{latest_row['Dough Cooler1 Temp']:.2f} °C")
+    kpi2.metric("Latest Dough Cooler 2", f"{latest_row['Dough Cooler2 Temp']:.2f} °C")
+    kpi3.metric("Latest Perishable Cooler", f"{latest_row['Perishable Cooler Temp']:.2f} °C")
     
-    # Large format line trend chart spanning full container width
-    st.line_chart(temp_data.set_index('Time'))
+    # Full container width trend monitoring
+    st.line_chart(temp_df.set_index('Time'))
 else:
-    st.error("Error: Temperature log files (`DataLog_*.csv`) could not be loaded or parsed.")
+    st.error("Missing Data Error: Ensure all DataLog_*.csv files are located in the folder.")
 
 st.markdown("---")
 
-# SECTION 2: SIDE-BY-SIDE COLUMNS DIRECTLY BELOW THE CHART
-st.header("⚡ Energy & Equipment Utilization Analytics")
 
-col_power, col_runtime = st.columns(2)
-
-# Left Column - Power Ledger
-with col_power:
-    st.subheader("Daily Power Consumption & Value Savings")
-    power_data = load_power_data()
-    if power_data is not None:
-        st.dataframe(power_data, use_container_width=True, hide_index=True)
-    else:
-        st.error("Could not find or load Power consumption data.")
-
-# Right Column - Runtime Ledger & Compressor Cycles
-with col_runtime:
-    st.subheader("Cold Storage Unit Active Run Times (KWH)")
-    runtime_data = load_runtime_data()
-    if runtime_data is not None:
-        st.dataframe(runtime_data, use_container_width=True, hide_index=True)
-    else:
-        st.error("Could not find or load Equipment Run Time data.")
-        
-    st.markdown("### Equipment Sequence Tracking")
-    st.subheader("Compressor Transition Matrix")
-    compressor_data = load_compressor_data()
-    if compressor_data is not None:
-        st.dataframe(compressor_data, use_container_width=True, hide_index=True)
-    else:
-        st.error("Could not find or load Compressor transition logs.")
+# LOWER BLOCK: TWO-COLUMN DATA INTERFACE DIRECTLY BELOW THE CHART
+st.header("⚡ Energy Metrics
