@@ -3,7 +3,7 @@ import pandas as pd
 import glob
 import os
 
-# Clean, wide layout execution for plant telemetry
+# Clean, wide layout execution for industrial plant analytics
 st.set_page_config(page_title="Plant Operations Master Dashboard", layout="wide")
 
 # --- CUSTOM ENGINE TO REPAIR MIXED DATE FORMATS IN POWER CONSUMPTION DATA ---
@@ -12,7 +12,6 @@ def parse_power_sheet_date(val):
     if not val or val == 'nan' or val.lower() == 'date':
         return pd.NaT
     
-    # If Excel already parsed it as a timestamp string yyyy-mm-dd hh:mm:ss
     if ' ' in val:
         val = val.split(' ')[0]
         
@@ -50,16 +49,14 @@ def load_temperature_data():
         if all(col in df.columns for col in target_cols):
             df = df[target_cols].copy()
             
-            # Clean numerical telemetry data & strip out hidden NOP strings with variable spacing
+            # Clean numerical telemetry data & strip out hidden NOP strings
             for col in target_cols[1:]:
                 if df[col].dtype == object:
                     df[col] = df[col].astype(str).str.replace(r'.*NOP.*', '', regex=True)
                 
                 df[col] = pd.to_numeric(df[col], errors='coerce')
-                # Bridge sensor drop-outs smoothly with forward and backward fill padding
                 df[col] = df[col].ffill().bfill()
             
-            # Enforce strict day-first timestamp parsing
             df['Time'] = pd.to_datetime(df['Time'], dayfirst=True, errors='coerce')
             
             # HARD OVERRIDE: Re-align files (01-06 to 06-06) strictly into July 1st - July 6th, 2026
@@ -92,7 +89,9 @@ def load_excel_sheet(sheet_name, row_header):
 st.title("🏭 Plant Operations Master Dashboard")
 st.markdown("---")
 
-# --- SECTION 1: TEMPERATURE TELEMETRY GRAPH ---
+# ==========================================
+# SECTION 1: TEMPERATURE TELEMETRY PANEL
+# ==========================================
 st.header("📈 Temperature Monitoring System (July 2026)")
 temp_df = load_temperature_data()
 
@@ -104,7 +103,6 @@ if temp_df is not None:
     kpi2.metric("Latest Dough Cooler 2", f"{latest_row['Dough Cooler2 Temp']:.2f} °C")
     kpi3.metric("Latest Perishable Cooler", f"{latest_row['Perishable Cooler Temp']:.2f} °C")
     
-    # Large format line trend chart spanning full container width
     st.line_chart(temp_df.set_index('Time'))
 else:
     st.error("Missing Temperature Logs: Ensure all 'DataLog_*.csv' files are in your directory.")
@@ -112,54 +110,89 @@ else:
 st.markdown("---")
 
 
-# --- SECTION 2: POWER AND EQUIPMENT PERFORMANCE DASHBOARD ---
-st.header("⚡ Power Consumption & Equipment Performance Dashboard")
+# ==========================================
+# SECTION 2: VISUAL POWER & RUNTIME DASHBOARD
+# ==========================================
+st.header("⚡ Power Consumption & Equipment Performance Analytics")
 
-# Load all required sheets directly from the Excel binary workbook
-power_df = load_excel_sheet('Sheet1', row_header=1)
-runtime_df = load_excel_sheet('Sheet2', row_header=2)
-compressor_df = load_excel_sheet('Sheet3', row_header=3)
+# Extract datasets safely
+raw_power = load_excel_sheet('Sheet1', row_header=1)
+raw_runtime = load_excel_sheet('Sheet2', row_header=2)
+raw_compressor = load_excel_sheet('Sheet3', row_header=3)
 
-# Filter out bad rows from Sheet3 if header keywords get repeated as strings
-if compressor_df is not None:
-    compressor_df = compressor_df[compressor_df.iloc[:, 0].astype(str).str.strip().str.lower() != 'date']
-
-# Structure the lower half cleanly into a two-column layout
+# Structure page into side-by-side analytical split columns
 col_left, col_right = st.columns(2)
 
-# LEFT COLUMN: POWER TRACKING
+# --- LEFT COLUMN: POWER TRACKING VISUALIZATIONS ---
 with col_left:
-    st.subheader("Daily Power Consumption & Value Savings Ledger")
-    if power_df is not None:
-        # Dynamic cleaning of dates for the table view
+    st.subheader("🔋 Energy Consumption & Cost Savings")
+    
+    if raw_power is not None:
+        # Sanitize date arrays
+        power_df = raw_power.copy()
         power_df['Date'] = power_df['Date'].apply(parse_power_sheet_date)
         power_df = power_df.dropna(subset=['Date']).sort_values(by='Date')
         
-        # Display clean data table without index noise
-        st.dataframe(power_df, use_container_width=True, hide_index=True)
+        # Calculate summary aggregated metrics
+        total_dunkin_kwh = pd.to_numeric(power_df['Dunkin Blast'], errors='coerce').sum()
+        total_clc_kwh = pd.to_numeric(power_df['CLC Blast'], errors='coerce').sum()
+        
+        m_pow1, m_pow2 = st.columns(2)
+        m_pow1.metric("Total Dunkin Blast Power", f"{total_dunkin_kwh:,.1f} KWH")
+        m_pow2.metric("Total CLC Blast Power", f"{total_clc_kwh:,.1f} KWH")
+        
+        # Plot Power Over Time Chart (Chronological View)
+        st.markdown("#### Power Usage Trend Timeline")
+        chart_power_data = power_df.set_index('Date')[['Dunkin Blast', 'CLC Blast']]
+        st.line_chart(chart_power_data)
+        
+        # Plot Savings Metric (Visual Bar View)
+        if 'Savings' in power_df.columns:
+            st.markdown("#### Cost Savings Comparison Chart")
+            st.bar_chart(power_df.set_index('Date')['Savings'])
+            
+        # Hidden expander drawer for raw values audits
+        with st.expander("🔍 View Raw Power Log Ledger Rows"):
+            st.dataframe(power_df, use_container_width=True, hide_index=True)
     else:
-        st.error("Unable to load Power Consumption ('Sheet1') data.")
+        st.error("Power Consumption sheet data ('Sheet1') could not be rendered.")
 
-# RIGHT COLUMN: SYSTEM RUNTIME & COMPRESSOR ACTIVATION MATRIX
+# --- RIGHT COLUMN: RUNTIMES & COMPRESSOR ACTIVATIONS VISUALIZATIONS ---
 with col_right:
-    st.subheader("Cold Storage Active Running Hours (KWH)")
-    if runtime_df is not None:
+    st.subheader("⚙️ Active Operational Running Hours")
+    
+    if raw_runtime is not None:
+        runtime_df = raw_runtime.copy()
         first_col = runtime_df.columns[0]
         runtime_df = runtime_df[runtime_df[first_col].astype(str).str.contains('Date|From') == False]
         runtime_df[first_col] = runtime_df[first_col].apply(parse_power_sheet_date)
         runtime_df = runtime_df.dropna(subset=[first_col]).sort_values(by=first_col)
         
-        st.dataframe(runtime_df, use_container_width=True, hide_index=True)
+        # Render a time tracking plot for Cold Storage performance
+        st.markdown("#### Cold Storage Runtime Tracking Matrix")
+        if 'KWH' in runtime_df.columns:
+            st.line_chart(runtime_df.set_index(first_col)['KWH'])
+            
+        with st.expander("🔍 View Raw Cold Storage Running Ledger Rows"):
+            st.dataframe(runtime_df, use_container_width=True, hide_index=True)
     else:
-        st.error("Unable to load Equipment Run Time ('Sheet2') data.")
+        st.error("Runtime sheet data ('Sheet2') could not be rendered.")
         
     st.markdown("---")
+    st.subheader("📉 Compressor Transition Sequences")
     
-    st.subheader("Compressor Transition Matrix & Hourly Savings")
-    if compressor_df is not None:
+    if raw_compressor is not None:
+        compressor_df = raw_compressor.copy()
+        compressor_df = compressor_df[compressor_df.iloc[:, 0].astype(str).str.strip().str.lower() != 'date']
         compressor_df.iloc[:, 0] = compressor_df.iloc[:, 0].apply(parse_power_sheet_date)
         compressor_df = compressor_df.dropna(subset=[compressor_df.columns[0]]).sort_values(by=compressor_df.columns[0])
         
-        st.dataframe(compressor_df, use_container_width=True, hide_index=True)
+        # Plot total duration calculated for machine optimization
+        if 'Saving in hrs' in compressor_df.columns:
+            st.markdown("#### Calculated Machine Savings Over Time (Hours)")
+            st.bar_chart(compressor_df.set_index(compressor_df.columns[0])['Saving in hrs'])
+            
+        with st.expander("🔍 View Raw Compressor Transition Rows"):
+            st.dataframe(compressor_df, use_container_width=True, hide_index=True)
     else:
-        st.error("Unable to load Compressor Sequence ('Sheet3') data.")
+        st.error("Compressor sheet data ('Sheet3') could not be rendered.")
