@@ -3,8 +3,8 @@ import pandas as pd
 import glob
 import os
 
-# Set advanced page configuration with responsive layout styling
-st.set_page_config(page_title="Plant Operations Intelligence Console", layout="wide")
+# Configure wide responsive structural grid
+st.set_page_config(page_title="Plant Operational Intelligence Hub", layout="wide")
 
 # --- CUSTOM ENGINE TO REPAIR MIXED DATE FORMATS IN POWER CONSUMPTION DATA ---
 def parse_power_sheet_date(val):
@@ -84,143 +84,152 @@ def load_excel_sheet(sheet_name, row_header):
         return None
 
 
-# --- SCREEN RENDER ---
+# --- MAIN UI CONSOLE RENDER ---
 
-# Custom Hero Header Branding Block
+# Distinct Dark Header Branding Component
 st.markdown("""
-    <div style="background-color:#1E1E2F;padding:24px;border-radius:12px;margin-bottom:25px;border-left:8px solid #FF4B4B">
-        <h1 style="color:#FFFFFF;margin:0;font-size:32px;font-family:sans-serif;">🏭 Plant Operations Intelligence Console</h1>
-        <p style="color:#A3A3C2;margin:5px 0 0 0;font-size:15px;">Real-time Thermal Telemetry, Energy Infrastructure, & Performance Analytics</p>
+    <div style="background-color:#1E1E2F;padding:24px;border-radius:12px;margin-bottom:30px;border-left:8px solid #00D2FF">
+        <h1 style="color:#FFFFFF;margin:0;font-size:32px;font-family:sans-serif;letter-spacing:-0.5px;">🏭 Plant Operations Intelligence Hub</h1>
+        <p style="color:#A3A3C2;margin:6px 0 0 0;font-size:15px;">Thermal Management Telemetry & Infrastructure Energy Audits</p>
     </div>
 """, unsafe_allowed_html=True)
 
 # ==========================================================
-# SECTION 1: TEMPERATURE TELEMETRY CONTROL CENTRE (FULL WIDTH)
+# SYSTEM FRAME 1: TEMPERATURE TELEMETRY PANEL (TOP BANNER)
 # ==========================================================
-st.markdown("### 📈 Cryogenic & Thermal Zone Profiles")
+st.markdown("### 📊 Cryogenic & Cold Storage Thermal Profiles")
 temp_df = load_temperature_data()
 
 if temp_df is not None:
-    # Stylized Dynamic Metric Cards
+    # Modern Custom KPI blocks
     latest_row = temp_df.iloc[-1]
     kpi1, kpi2, kpi3 = st.columns(3)
     
     with kpi1:
         st.markdown(f"""
-            <div style="background-color:#F0F2F6;padding:16px;border-radius:10px;text-align:center;border-bottom:4px solid #0068C9">
-                <span style="color:#555;font-size:14px;font-weight:bold;text-transform:uppercase;">Dough Cooler 1</span>
-                <h2 style="margin:5px 0;color:#111;">{latest_row['Dough Cooler1 Temp']:.2f} °C</h2>
+            <div style="background-color:#F8F9FA;padding:18px;border-radius:12px;text-align:center;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #0068C9">
+                <span style="color:#6C757D;font-size:13px;font-weight:600;text-transform:uppercase;">Dough Cooler 1</span>
+                <h2 style="margin:8px 0 0 0;color:#1A1D20;font-size:28px;">{latest_row['Dough Cooler1 Temp']:.2f} °C</h2>
             </div>
         """, unsafe_allowed_html=True)
         
     with kpi2:
         st.markdown(f"""
-            <div style="background-color:#F0F2F6;padding:16px;border-radius:10px;text-align:center;border-bottom:4px solid #83C9FF">
-                <span style="color:#555;font-size:14px;font-weight:bold;text-transform:uppercase;">Dough Cooler 2</span>
-                <h2 style="margin:5px 0;color:#111;">{latest_row['Dough Cooler2 Temp']:.2f} °C</h2>
+            <div style="background-color:#F8F9FA;padding:18px;border-radius:12px;text-align:center;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #29B6F6">
+                <span style="color:#6C757D;font-size:13px;font-weight:600;text-transform:uppercase;">Dough Cooler 2</span>
+                <h2 style="margin:8px 0 0 0;color:#1A1D20;font-size:28px;">{latest_row['Dough Cooler2 Temp']:.2f} °C</h2>
             </div>
         """, unsafe_allowed_html=True)
         
     with kpi3:
         st.markdown(f"""
-            <div style="background-color:#F0F2F6;padding:16px;border-radius:10px;text-align:center;border-bottom:4px solid #FF2B2B">
-                <span style="color:#555;font-size:14px;font-weight:bold;text-transform:uppercase;">Perishable Storage</span>
-                <h2 style="margin:5px 0;color:#111;">{latest_row['Perishable Cooler Temp']:.2f} °C</h2>
+            <div style="background-color:#F8F9FA;padding:18px;border-radius:12px;text-align:center;box-shadow:0 2px 4px rgba(0,0,0,0.05);border-top:4px solid #FF4B4B">
+                <span style="color:#6C757D;font-size:13px;font-weight:600;text-transform:uppercase;">Perishable Storage</span>
+                <h2 style="margin:8px 0 0 0;color:#1A1D20;font-size:28px;">{latest_row['Perishable Cooler Temp']:.2f} °C</h2>
             </div>
         """, unsafe_allowed_html=True)
     
     st.markdown("<br>", unsafe_allowed_html=True)
     st.line_chart(temp_df.set_index('Time'), height=320)
 else:
-    st.error("Missing Temperature Logs: Ensure all 'DataLog_*.csv' files are in your directory.")
+    st.error("Missing Data Error: Verify that 'DataLog_*.csv' files populate your root project folder.")
 
-st.markdown("<hr style='border:1px solid #E6E6E6;margin:30px 0;'>", unsafe_allowed_html=True)
+st.markdown("<hr style='border:1px solid #E6E8EC;margin:40px 0;'>", unsafe_allowed_html=True)
 
 
 # ==========================================================
-# SECTION 2: VERTICAL STACKED POWER & EQUIPMENT INTERFACE
+# SYSTEM FRAME 2: STACKED WORKBOOK COMPILATION (BELOW CHARTS)
 # ==========================================================
+st.markdown("### ⚡ Infrastructure Asset Metrics (`Power consumption freon.xlsx`)")
 
-# Data compilation layers from workbook sheets
-raw_power = load_excel_sheet('Sheet1', row_header=1)
-raw_runtime = load_excel_sheet('Sheet2', row_header=2)
-raw_compressor = load_excel_sheet('Sheet3', row_header=3)
+# Ingest all sheets directly from the target file source
+power_sheet = load_excel_sheet('Sheet1', row_header=1)
+runtime_sheet = load_excel_sheet('Sheet2', row_header=2)
+compressor_sheet = load_excel_sheet('Sheet3', row_header=3)
 
-
-# --- PART A: SHEET 1 - POWER AUDITING LEDGER ---
-st.markdown("### ⚡ Financial Performance & Energy Consumption Profile (Sheet 1)")
-
-if raw_power is not None:
-    power_df = raw_power.copy()
-    power_df['Date'] = power_df['Date'].apply(parse_power_sheet_date)
-    power_df = power_df.dropna(subset=['Date']).sort_values(by='Date')
+# --------------------------------------------------------
+# STACK LAYER A: EXCEL SHEET 1 - POWER RECORD INFRASTRUCTURE
+# --------------------------------------------------------
+with st.container():
+    st.markdown("#### 🔋 Core Load Distribution & Operational Savings (Sheet 1)")
     
-    # Cumulative stats summaries
-    total_dunkin = pd.to_numeric(power_df['Dunkin Blast'], errors='coerce').sum()
-    total_clc = pd.to_numeric(power_df['CLC Blast'], errors='coerce').sum()
-    net_savings = pd.to_numeric(power_df['Savings'], errors='coerce').sum()
-    
-    m_pow1, m_pow2, m_pow3 = st.columns(3)
-    m_pow1.metric("Cumulative Dunkin Blast Draw", f"{total_dunkin:,.1f} kWh")
-    m_pow2.metric("Cumulative CLC Blast Draw", f"{total_clc:,.1f} kWh")
-    m_pow3.metric("Net Financial Optimization (Savings)", f"INR {net_savings:,.2f}")
-    
-    # Creative View: Stacked Area Visualization for Power Distribution
-    st.markdown("#### Chronological Load Distribution Pattern")
-    chart_power_data = power_df.set_index('Date')[['Dunkin Blast', 'CLC Blast']]
-    st.area_chart(chart_power_data, height=260)
-    
-    # Daily Financial Variance Ledger
-    if 'Savings' in power_df.columns:
-        st.markdown("#### Daily Infrastructure Cost Savings Trends")
-        st.bar_chart(power_df.set_index('Date')['Savings'], color="#29B6F6", height=180)
+    if power_sheet is not None:
+        p_df = power_sheet.copy()
+        p_df['Date'] = p_df['Date'].apply(parse_power_sheet_date)
+        p_df = p_df.dropna(subset=['Date']).sort_values(by='Date')
         
-    with st.expander("👁️ Review Comprehensive Sheet 1 Energy Ledger Rows"):
-        st.dataframe(power_df, use_container_width=True, hide_index=True)
-else:
-    st.error("Power Consumption dataset ('Sheet1') could not be initialized.")
-
-st.markdown("<hr style='border:1px solid #F0F2F6;margin:30px 0;'>", unsafe_allowed_html=True)
-
-
-# --- PART B: SHEET 2 - COLD STORAGE RUNTIMES ---
-st.markdown("### ⚙️ Machine Duty Cycles & Plant Utilization (Sheet 2)")
-
-if raw_runtime is not None:
-    runtime_df = raw_runtime.copy()
-    first_col = runtime_df.columns[0]
-    runtime_df = runtime_df[runtime_df[first_col].astype(str).str.contains('Date|From') == False]
-    runtime_df[first_col] = runtime_df[first_col].apply(parse_power_sheet_date)
-    runtime_df = runtime_df.dropna(subset=[first_col]).sort_values(by=first_col)
-    
-    # Creative View: Interactive bar metric layout mapping system KWH load capacities over time
-    st.markdown("#### Cold Storage Operating Capacity Tracking (KWH Log)")
-    if 'KWH' in runtime_df.columns:
-        st.bar_chart(runtime_df.set_index(first_col)['KWH'], color="#FF9F43", height=240)
+        # Calculate summary metrics directly from the data rows
+        dunkin_sum = pd.to_numeric(p_df['Dunkin Blast'], errors='coerce').sum()
+        clc_sum = pd.to_numeric(p_df['CLC Blast'], errors='coerce').sum()
+        savings_sum = pd.to_numeric(p_df['Savings'], errors='coerce').sum()
         
-    with st.expander("👁️ Review Detailed Sheet 2 Cold Storage Run Ledgers"):
-        st.dataframe(runtime_df, use_container_width=True, hide_index=True)
-else:
-    st.error("Equipment runtime profiles ('Sheet2') could not be initialized.")
-
-st.markdown("<hr style='border:1px solid #F0F2F6;margin:30px 0;'>", unsafe_allowed_html=True)
-
-
-# --- PART C: SHEET 3 - COMPRESSOR SEQUENCING MATRIX ---
-st.markdown("### 📉 Compressor Optimization Efficiency (Sheet 3)")
-
-if raw_compressor is not None:
-    compressor_df = raw_compressor.copy()
-    compressor_df = compressor_df[compressor_df.iloc[:, 0].astype(str).str.strip().str.lower() != 'date']
-    compressor_df.iloc[:, 0] = compressor_df.iloc[:, 0].apply(parse_power_sheet_date)
-    compressor_df = compressor_df.dropna(subset=[compressor_df.columns[0]]).sort_values(by=compressor_df.columns[0])
-    
-    # Creative View: Smooth line monitoring chart for specialized time evaluation values
-    if 'Saving in hrs' in compressor_df.columns:
-        st.markdown("#### Calculated Optimization Window Durations (Hours)")
-        st.line_chart(compressor_df.set_index(compressor_df.columns[0])['Saving in hrs'], color="#66BB6A", height=200)
+        sm1, sm2, sm3 = st.columns(3)
+        sm1.metric("Dunkin Blast Load Accumulation", f"{dunkin_sum:,.1f} kWh")
+        sm2.metric("CLC Blast Load Accumulation", f"{clc_sum:,.1f} kWh")
+        sm3.metric("Net Financial Optimization", f"INR {savings_sum:,.2f}")
         
-    with st.expander("👁️ Review Mechanical Sequencing Sheet 3 Data Rows"):
-        st.dataframe(compressor_df, use_container_width=True, hide_index=True)
-else:
-    st.error("Compressor sequencing log matrices ('Sheet3') could not be initialized.")
+        # Plot full screen area projection chart
+        st.markdown("<h5 style='color:#555;'>Comparative Infrastructure Draw Profiles</h5>", unsafe_allowed_html=True)
+        chart_power_data = p_df.set_index('Date')[['Dunkin Blast', 'CLC Blast']]
+        st.area_chart(chart_power_data, height=250)
+        
+        # Plot savings block columns
+        if 'Savings' in p_df.columns:
+            st.markdown("<h5 style='color:#555;'>Daily Financial Efficiency Margins</h5>", unsafe_allowed_html=True)
+            st.bar_chart(p_df.set_index('Date')['Savings'], color="#66BB6A", height=180)
+            
+        with st.expander("📝 View Detailed Sheet 1 Row Ledger"):
+            st.dataframe(p_df, use_container_width=True, hide_index=True)
+    else:
+        st.error("Sheet 1 could not be extracted from the target file repository.")
+
+st.markdown("<hr style='border:1px dashed #E6E8EC;margin:35px 0;'>", unsafe_allowed_html=True)
+
+
+# --------------------------------------------------------
+# STACK LAYER B: EXCEL SHEET 2 - EQUIPMENT RUNTIME METRICS
+# --------------------------------------------------------
+with st.container():
+    st.markdown("#### ⚙️ Cold Storage Unit Active Duty Cycles (Sheet 2)")
+    
+    if runtime_sheet is not None:
+        r_df = runtime_sheet.copy()
+        first_col = r_df.columns[0]
+        r_df = r_df[r_df[first_col].astype(str).str.contains('Date|From') == False]
+        r_df[first_col] = r_df[first_col].apply(parse_power_sheet_date)
+        r_df = r_df.dropna(subset=[first_col]).sort_values(by=first_col)
+        
+        # Display operational metric bar map
+        if 'KWH' in r_df.columns:
+            st.markdown("<h5 style='color:#555;'>Measured Running Capacity Performance</h5>", unsafe_allowed_html=True)
+            st.bar_chart(r_df.set_index(first_col)['KWH'], color="#FFA726", height=220)
+            
+        with st.expander("📝 View Detailed Sheet 2 Operational Logs"):
+            st.dataframe(r_df, use_container_width=True, hide_index=True)
+    else:
+        st.error("Sheet 2 could not be extracted from the target file repository.")
+
+st.markdown("<hr style='border:1px dashed #E6E8EC;margin:35px 0;'>", unsafe_allowed_html=True)
+
+
+# --------------------------------------------------------
+# STACK LAYER C: EXCEL SHEET 3 - COMPRESSOR SEQUENCING
+# --------------------------------------------------------
+with st.container():
+    st.markdown("#### 📉 Compressor Sequential Transitions & Savings Window (Sheet 3)")
+    
+    if compressor_sheet is not None:
+        c_df = compressor_sheet.copy()
+        c_df = c_df[c_df.iloc[:, 0].astype(str).str.strip().str.lower() != 'date']
+        c_df.iloc[:, 0] = c_df.iloc[:, 0].apply(parse_power_sheet_date)
+        c_df = c_df.dropna(subset=[c_df.columns[0]]).sort_values(by=c_df.columns[0])
+        
+        # Plot calculated engineering duration windows
+        if 'Saving in hrs' in c_df.columns:
+            st.markdown("<h5 style='color:#555;'>Calculated Maintenance Savings Windows (Hours)</h5>", unsafe_allowed_html=True)
+            st.line_chart(c_df.set_index(c_df.columns[0])['Saving in hrs'], color="#AB47BC", height=200)
+            
+        with st.expander("📝 View Detailed Sheet 3 Transition Sequences"):
+            st.dataframe(c_df, use_container_width=True, hide_index=True)
+    else:
+        st.error("Sheet 3 could not be extracted from the target file repository.")
