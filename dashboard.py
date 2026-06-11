@@ -3,7 +3,7 @@ import pandas as pd
 import glob
 import os
 
-# Set advanced, wide container layout with dark/light responsive styling
+# Set advanced page configuration with responsive layout styling
 st.set_page_config(page_title="Plant Operations Intelligence Console", layout="wide")
 
 # --- CUSTOM ENGINE TO REPAIR MIXED DATE FORMATS IN POWER CONSUMPTION DATA ---
@@ -86,11 +86,11 @@ def load_excel_sheet(sheet_name, row_header):
 
 # --- SCREEN RENDER ---
 
-# Custom Hero Header block with dark themed branding accents
+# Custom Hero Header Branding Block
 st.markdown("""
     <div style="background-color:#1E1E2F;padding:24px;border-radius:12px;margin-bottom:25px;border-left:8px solid #FF4B4B">
         <h1 style="color:#FFFFFF;margin:0;font-size:32px;font-family:sans-serif;">🏭 Plant Operations Intelligence Console</h1>
-        <p style="color:#A3A3C2;margin:5px 0 0 0;font-size:15px;">Real-time Telemetry, System Utilization, & Financial Energy Auditing</p>
+        <p style="color:#A3A3C2;margin:5px 0 0 0;font-size:15px;">Real-time Thermal Telemetry, Energy Infrastructure, & Performance Analytics</p>
     </div>
 """, unsafe_allowed_html=True)
 
@@ -101,7 +101,7 @@ st.markdown("### 📈 Cryogenic & Thermal Zone Profiles")
 temp_df = load_temperature_data()
 
 if temp_df is not None:
-    # Stylized Dynamic Stat Cards
+    # Stylized Dynamic Metric Cards
     latest_row = temp_df.iloc[-1]
     kpi1, kpi2, kpi3 = st.columns(3)
     
@@ -129,7 +129,6 @@ if temp_df is not None:
             </div>
         """, unsafe_allowed_html=True)
     
-    # Render chart immediately below metric panels
     st.markdown("<br>", unsafe_allowed_html=True)
     st.line_chart(temp_df.set_index('Time'), height=320)
 else:
@@ -139,52 +138,53 @@ st.markdown("<hr style='border:1px solid #E6E6E6;margin:30px 0;'>", unsafe_allow
 
 
 # ==========================================================
-# SECTION 2: STACKED ENERGY & LOGISTICS PROFILE (CREATIVE VIEW)
+# SECTION 2: VERTICAL STACKED POWER & EQUIPMENT INTERFACE
 # ==========================================================
 
-# Data compilation layers
+# Data compilation layers from workbook sheets
 raw_power = load_excel_sheet('Sheet1', row_header=1)
 raw_runtime = load_excel_sheet('Sheet2', row_header=2)
 raw_compressor = load_excel_sheet('Sheet3', row_header=3)
 
-# --- PANEL A: POWER AUDITING LAYER (STACKED STEP 1) ---
-st.markdown("### ⚡ Financial Performance & Energy Consumption Profile")
+
+# --- PART A: SHEET 1 - POWER AUDITING LEDGER ---
+st.markdown("### ⚡ Financial Performance & Energy Consumption Profile (Sheet 1)")
 
 if raw_power is not None:
     power_df = raw_power.copy()
     power_df['Date'] = power_df['Date'].apply(parse_power_sheet_date)
     power_df = power_df.dropna(subset=['Date']).sort_values(by='Date')
     
-    # Upper Analytics Strip within section
+    # Cumulative stats summaries
     total_dunkin = pd.to_numeric(power_df['Dunkin Blast'], errors='coerce').sum()
     total_clc = pd.to_numeric(power_df['CLC Blast'], errors='coerce').sum()
     net_savings = pd.to_numeric(power_df['Savings'], errors='coerce').sum()
     
-    sub_col1, sub_col2, sub_col3 = st.columns(3)
-    sub_col1.metric("Cumulative Dunkin Blast Draw", f"{total_dunkin:,.1f} kWh")
-    sub_col2.metric("Cumulative CLC Blast Draw", f"{total_clc:,.1f} kWh")
-    sub_col3.metric("Net Financial Optimization (Savings)", f"INR {net_savings:,.2f}")
+    m_pow1, m_pow2, m_pow3 = st.columns(3)
+    m_pow1.metric("Cumulative Dunkin Blast Draw", f"{total_dunkin:,.1f} kWh")
+    m_pow2.metric("Cumulative CLC Blast Draw", f"{total_clc:,.1f} kWh")
+    m_pow3.metric("Net Financial Optimization (Savings)", f"INR {net_savings:,.2f}")
     
-    # Stacked Area Visualization for Energy Allocations
+    # Creative View: Stacked Area Visualization for Power Distribution
     st.markdown("#### Chronological Load Distribution Pattern")
     chart_power_data = power_df.set_index('Date')[['Dunkin Blast', 'CLC Blast']]
     st.area_chart(chart_power_data, height=260)
     
-    # Financial Net-Benefit Bar Chart
+    # Daily Financial Variance Ledger
     if 'Savings' in power_df.columns:
-        st.markdown("#### Daily Financial Variance Ledger")
+        st.markdown("#### Daily Infrastructure Cost Savings Trends")
         st.bar_chart(power_df.set_index('Date')['Savings'], color="#29B6F6", height=180)
         
-    with st.expander("👁️ Review Comprehensive Energy Data Logs"):
+    with st.expander("👁️ Review Comprehensive Sheet 1 Energy Ledger Rows"):
         st.dataframe(power_df, use_container_width=True, hide_index=True)
 else:
     st.error("Power Consumption dataset ('Sheet1') could not be initialized.")
 
-st.markdown("<br><br>", unsafe_allowed_html=True)
+st.markdown("<hr style='border:1px solid #F0F2F6;margin:30px 0;'>", unsafe_allowed_html=True)
 
 
-# --- PANEL B: RUNTIME METRIC GRID (STACKED STEP 2) ---
-st.markdown("### ⚙️ Machine Duty Cycles & Maintenance Intervals")
+# --- PART B: SHEET 2 - COLD STORAGE RUNTIMES ---
+st.markdown("### ⚙️ Machine Duty Cycles & Plant Utilization (Sheet 2)")
 
 if raw_runtime is not None:
     runtime_df = raw_runtime.copy()
@@ -193,21 +193,21 @@ if raw_runtime is not None:
     runtime_df[first_col] = runtime_df[first_col].apply(parse_power_sheet_date)
     runtime_df = runtime_df.dropna(subset=[first_col]).sort_values(by=first_col)
     
-    # Visualizing Cold Storage Runtime patterns via Bar Chart directly below
+    # Creative View: Interactive bar metric layout mapping system KWH load capacities over time
     st.markdown("#### Cold Storage Operating Capacity Tracking (KWH Log)")
     if 'KWH' in runtime_df.columns:
-        st.bar_chart(runtime_df.set_index(first_col)['KWH'], color="#FF9F43", height=220)
+        st.bar_chart(runtime_df.set_index(first_col)['KWH'], color="#FF9F43", height=240)
         
-    with st.expander("👁️ Review Detailed Cold Storage Run Ledgers"):
+    with st.expander("👁️ Review Detailed Sheet 2 Cold Storage Run Ledgers"):
         st.dataframe(runtime_df, use_container_width=True, hide_index=True)
 else:
     st.error("Equipment runtime profiles ('Sheet2') could not be initialized.")
 
-st.markdown("<br><br>", unsafe_allowed_html=True)
+st.markdown("<hr style='border:1px solid #F0F2F6;margin:30px 0;'>", unsafe_allowed_html=True)
 
 
-# --- PANEL C: COMPRESSOR SEQUENCING MATRIX (STACKED STEP 3) ---
-st.markdown("### 📉 Compressor Optimization Efficiency")
+# --- PART C: SHEET 3 - COMPRESSOR SEQUENCING MATRIX ---
+st.markdown("### 📉 Compressor Optimization Efficiency (Sheet 3)")
 
 if raw_compressor is not None:
     compressor_df = raw_compressor.copy()
@@ -215,11 +215,12 @@ if raw_compressor is not None:
     compressor_df.iloc[:, 0] = compressor_df.iloc[:, 0].apply(parse_power_sheet_date)
     compressor_df = compressor_df.dropna(subset=[compressor_df.columns[0]]).sort_values(by=compressor_df.columns[0])
     
+    # Creative View: Smooth line monitoring chart for specialized time evaluation values
     if 'Saving in hrs' in compressor_df.columns:
-        st.markdown("#### Extracted Optimization Window Durations (Hours)")
+        st.markdown("#### Calculated Optimization Window Durations (Hours)")
         st.line_chart(compressor_df.set_index(compressor_df.columns[0])['Saving in hrs'], color="#66BB6A", height=200)
         
-    with st.expander("👁️ Review Mechanical Sequencing Data Rows"):
+    with st.expander("👁️ Review Mechanical Sequencing Sheet 3 Data Rows"):
         st.dataframe(compressor_df, use_container_width=True, hide_index=True)
 else:
     st.error("Compressor sequencing log matrices ('Sheet3') could not be initialized.")
