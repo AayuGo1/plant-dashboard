@@ -158,10 +158,14 @@ with st.container():
         p_df['Date'] = p_df['Date'].apply(parse_power_sheet_date)
         p_df = p_df.dropna(subset=['Date']).sort_values(by='Date')
         
-        # Calculate summary metrics directly from the data rows
-        dunkin_sum = pd.to_numeric(p_df['Dunkin Blast'], errors='coerce').sum()
-        clc_sum = pd.to_numeric(p_df['CLC Blast'], errors='coerce').sum()
-        savings_sum = pd.to_numeric(p_df['Savings'], errors='coerce').sum()
+        # Ensure numerical casting to prevent chart data type errors
+        p_df['Dunkin Blast'] = pd.to_numeric(p_df['Dunkin Blast'], errors='coerce').fillna(0)
+        p_df['CLC Blast'] = pd.to_numeric(p_df['CLC Blast'], errors='coerce').fillna(0)
+        p_df['Savings'] = pd.to_numeric(p_df['Savings'], errors='coerce').fillna(0)
+        
+        dunkin_sum = p_df['Dunkin Blast'].sum()
+        clc_sum = p_df['CLC Blast'].sum()
+        savings_sum = p_df['Savings'].sum()
         
         sm1, sm2, sm3 = st.columns(3)
         sm1.metric("Dunkin Blast Load Accumulation", f"{dunkin_sum:,.1f} kWh")
@@ -174,11 +178,10 @@ with st.container():
         st.area_chart(chart_power_data, height=250)
         
         # Plot savings block columns
-        if 'Savings' in p_df.columns:
-            st.markdown("<h5 style='color:#555;'>Daily Financial Efficiency Margins</h5>", unsafe_allowed_html=True)
-            st.bar_chart(p_df.set_index('Date')['Savings'], color="#66BB6A", height=180)
+        st.markdown("<h5 style='color:#555;'>Daily Financial Efficiency Margins</h5>", unsafe_allowed_html=True)
+        st.bar_chart(p_df.set_index('Date')['Savings'], color="#66BB6A", height=180)
             
-        with st.expander("📝 View Detailed Sheet 1 Row Ledger"):
+        with st.expander("¼ View Detailed Sheet 1 Row Ledger"):
             st.dataframe(p_df, use_container_width=True, hide_index=True)
     else:
         st.error("Sheet 1 could not be extracted from the target file repository.")
@@ -199,12 +202,17 @@ with st.container():
         r_df[first_col] = r_df[first_col].apply(parse_power_sheet_date)
         r_df = r_df.dropna(subset=[first_col]).sort_values(by=first_col)
         
-        # Display operational metric bar map
-        if 'KWH' in r_df.columns:
-            st.markdown("<h5 style='color:#555;'>Measured Running Capacity Performance</h5>", unsafe_allowed_html=True)
-            st.bar_chart(r_df.set_index(first_col)['KWH'], color="#FFA726", height=220)
+        # Dynamically identify columns containing numeric run capacity data
+        kwh_cols = [c for c in r_df.columns if 'KWH' in c]
+        for col in kwh_cols:
+            r_df[col] = pd.to_numeric(r_df[col], errors='coerce').fillna(0)
             
-        with st.expander("📝 View Detailed Sheet 2 Operational Logs"):
+        if kwh_cols:
+            st.markdown("<h5 style='color:#555;'>Measured Running Capacity Performance (KWH Logs)</h5>", unsafe_allowed_html=True)
+            # Use the primary KWH column for visual rendering
+            st.bar_chart(r_df.set_index(first_col)[kwh_cols[0]], color="#FFA726", height=220)
+            
+        with st.expander("¼ View Detailed Sheet 2 Operational Logs"):
             st.dataframe(r_df, use_container_width=True, hide_index=True)
     else:
         st.error("Sheet 2 could not be extracted from the target file repository.")
@@ -224,12 +232,13 @@ with st.container():
         c_df.iloc[:, 0] = c_df.iloc[:, 0].apply(parse_power_sheet_date)
         c_df = c_df.dropna(subset=[c_df.columns[0]]).sort_values(by=c_df.columns[0])
         
-        # Plot calculated engineering duration windows
+        # Ensure 'Saving in hrs' column is cast completely to numbers to prevent plotting glitches
         if 'Saving in hrs' in c_df.columns:
+            c_df['Saving in hrs'] = pd.to_numeric(c_df['Saving in hrs'], errors='coerce').fillna(0)
             st.markdown("<h5 style='color:#555;'>Calculated Maintenance Savings Windows (Hours)</h5>", unsafe_allowed_html=True)
             st.line_chart(c_df.set_index(c_df.columns[0])['Saving in hrs'], color="#AB47BC", height=200)
             
-        with st.expander("📝 View Detailed Sheet 3 Transition Sequences"):
+        with st.expander("¼ View Detailed Sheet 3 Transition Sequences"):
             st.dataframe(c_df, use_container_width=True, hide_index=True)
     else:
         st.error("Sheet 3 could not be extracted from the target file repository.")
