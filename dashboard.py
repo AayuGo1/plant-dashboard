@@ -7,60 +7,81 @@ import warnings
 # Suppress harmless openpyxl styling/validation alerts
 warnings.filterwarnings("ignore", category=UserWarning)
 
-# --- PREMIUM BRANDED WEB LAYOUT CONFIGURATION ---
+# --- JUBILANT CORPORATE LAYOUT SETUP ---
 st.set_page_config(
-    page_title="Plant Operational Intelligence Hub",
+    page_title="Jubilant FoodWorks - Plant Operational Intelligence Center",
     page_icon="🏭",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- MODERN STYLING & HIGH-CONTRAST INJECTION ---
+# --- BRANDED HIGH-END CUSTOM CSS INJECTION ---
 st.markdown("""
     <style>
-        /* Base Container Adjustments */
-        .block-container { padding-top: 1.5rem; padding-bottom: 2rem; }
+        /* Base Canvas & Background Settings */
+        .block-container { padding-top: 1.5rem; padding-bottom: 3rem; background-color: #F4F7FC; }
         
-        /* Premium Navigation Tabs Custom Style */
-        .stTabs [data-baseweb="tab-list"] { gap: 8px; }
+        /* Premium Navigation Tabs Custom Jubilant Branding Style */
+        .stTabs [data-baseweb="tab-list"] { gap: 12px; padding-left: 5px; }
         .stTabs [data-baseweb="tab"] {
-            background-color: #F0F2F6;
-            border: 1px solid #DFE3E8;
+            background-color: #FFFFFF;
+            border: 1px solid #E2E8F0;
+            border-bottom: none;
             border-radius: 6px 6px 0px 0px;
-            padding: 12px 24px;
-            font-weight: 600;
-            color: #2E3A59;
-            transition: all 0.3s ease;
+            padding: 14px 28px;
+            font-weight: 700;
+            color: #4A5568;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            transition: all 0.25s ease-in-out;
+            box-shadow: 0 -2px 5px rgba(0,0,0,0.02);
         }
-        .stTabs [data-baseweb="tab"]:hover { color: #00D2FF; background-color: #E4E7EB; }
+        .stTabs [data-baseweb="tab"]:hover { 
+            color: #E01934; 
+            background-color: #FFF5F5; 
+            border-top: 3px solid #E01934;
+        }
         .stTabs [data-baseweb="tab"][aria-selected="true"] {
-            background-color: #1E1E2F;
-            color: #FFFFFF;
-            border-color: #1E1E2F;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+            background-color: #002D62; /* JFL Corporate Deep Navy */
+            color: #FFFFFF !important;
+            border-color: #002D62;
+            border-top: 3px solid #FF9F1C; /* Golden Accent Ring */
+            box-shadow: 0 4px 12px rgba(0,45,98,0.15);
         }
         
-        /* High-Contrast Dark Container Fix for Native Metrics */
+        /* High-End JFL Enterprise Container Style for Native Metrics */
         div[data-testid="stMetric"] {
-            background-color: #1E1E2F !important;  /* Modern dark background matching your header */
-            border: 1px solid #2D2D44 !important;
-            padding: 20px !important;
-            border-radius: 10px !important;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.15) !important;
+            background-color: #FFFFFF !important;
+            border: 1px solid #E2E8F0 !important;
+            border-top: 4px solid #002D62 !important; /* Branded Top Border */
+            padding: 22px !important;
+            border-radius: 8px !important;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.04) !important;
+            transition: transform 0.2s ease;
+        }
+        div[data-testid="stMetric"]:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 45, 98, 0.08) !important;
         }
         
-        /* Force color visibility rules onto metric sub-elements */
+        /* Color Overrides for Data Metric Elements */
         div[data-testid="stMetricLabel"] p {
-            color: #A3A3C2 !important;              /* High visibility silver-blue label text */
+            color: #4A5568 !important;              
             font-size: 13px !important;
-            font-weight: 600 !important;
-            letter-spacing: 0.5px !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.8px !important;
             text-transform: uppercase !important;
+            font-family: 'Segoe UI', sans-serif;
         }
         div[data-testid="stMetricValue"] div {
-            color: #FFFFFF !important;              /* Crisp white bold numbers */
-            font-size: 32px !important;
-            font-weight: 700 !important;
+            color: #002D62 !important;              /* High-contrast brand navy display values */
+            font-size: 34px !important;
+            font-weight: 800 !important;
+        }
+        
+        /* Clean Custom Corporate Sidebar Look */
+        section[data-testid="stSidebar"] {
+            background-color: #FFFFFF !important;
+            border-right: 1px solid #E2E8F0 !important;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -68,20 +89,20 @@ st.markdown("""
 
 # --- SIDEBAR CONTROL CENTER & AUTOMATION ROUTING ---
 st.sidebar.markdown("""
-    <div style="background-color:#1E1E2F; padding:15px; border-radius:8px; margin-bottom:15px; border-left:4px solid #00D2FF;">
-        <h3 style="color:white; margin:0; font-size:16px; font-weight:600;">⚙️ System Configuration</h3>
+    <div style="background-color:#002D62; padding:18px; border-radius:6px; margin-bottom:15px; border-bottom:4px solid #FF9F1C;">
+        <h3 style="color:white; margin:0; font-size:15px; font-weight:700; letter-spacing:0.5px; font-family:sans-serif;">⚙️ JFL SYSTEM PROFILE</h3>
     </div>
 """, unsafe_allow_html=True)
 
 # Live system environment input nodes
-user_name = st.sidebar.text_input("Windows Username", value="aayush")
-company_folder = st.sidebar.text_input("OneDrive Company Folder", value="OneDrive")
+user_name = st.sidebar.text_input("System Username", value="aayush")
+company_folder = st.sidebar.text_input("OneDrive Main Node", value="OneDrive")
 
 ONEDRIVE_PATH = f"C:/Users/{user_name}/{company_folder}/PlantData/"
 LOCAL_PATH = "./"
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 🎛️ Network Connection Status")
+st.sidebar.markdown("<h4 style='color:#002D62; font-size:14px; font-weight:700;'>🛰️ Node Connection Status</h4>", unsafe_allow_html=True)
 
 def resolve_file_pipeline(filename, is_pattern=False):
     """Smarter path resolver prioritizing active synchronized cloud directories."""
@@ -101,14 +122,14 @@ excel_node, excel_status = resolve_file_pipeline('Power consumption freon.xlsx')
 excel_connected = os.path.exists(excel_node)
 
 if temp_status != "Disconnected":
-    st.sidebar.success(f"Lettuce Feed: {temp_status}")
+    st.sidebar.markdown(f"<p style='color:#28A745; font-size:13px; font-weight:600;'>● Telemetry Feed: {temp_status}</p>", unsafe_allow_html=True)
 else:
-    st.sidebar.error("❌ Telemetry Logs: File Data Interrupted")
+    st.sidebar.markdown("<p style='color:#DC3545; font-size:13px; font-weight:600;'>■ Telemetry Feed: Interrupted</p>", unsafe_allow_html=True)
 
 if excel_connected:
-    st.sidebar.success(f"⚡ Energy Hub: Operational Connection")
+    st.sidebar.markdown(f"<p style='color:#28A745; font-size:13px; font-weight:600;'>● Plant Energy Ledger: Connected</p>", unsafe_allow_html=True)
 else:
-    st.sidebar.error("❌ Energy Hub: Workbook Missing")
+    st.sidebar.markdown("<p style='color:#DC3545; font-size:13px; font-weight:600;'>■ Plant Energy Ledger: Offline</p>", unsafe_allow_html=True)
 
 
 # --- FAST VECTORIZED DATE CONVERTER ---
@@ -148,7 +169,6 @@ def load_dynamic_excel_sheet(sheet_name, fallback_header_row):
     file_path, _ = resolve_file_pipeline('Power consumption freon.xlsx')
     if not os.path.exists(file_path): return None
     try:
-        # Step 1: Read raw rows dynamically to discover true layout headers
         df_check = pd.read_excel(file_path, sheet_name=sheet_name, header=None, engine='openpyxl')
         discovered_idx = fallback_header_row
         
@@ -158,82 +178,84 @@ def load_dynamic_excel_sheet(sheet_name, fallback_header_row):
                 discovered_idx = idx
                 break
                 
-        # Step 2: Extract data from discovered index row
         df = pd.read_excel(file_path, sheet_name=sheet_name, header=discovered_idx, engine='openpyxl')
         df = df.dropna(axis=1, how='all')
         if not df.empty:
             first_col = df.columns[0]
             df = df[df[first_col].astype(str).str.strip().str.lower() != 'total']
-            # Clean up messy column names showing up as Unnamed pointers
             df.columns = [f"Saving in hrs" if "Unnamed:" in str(c) and idx==11 else str(c) for idx, c in enumerate(df.columns)]
         return df
     except:
         return None
 
 
-# --- MAIN CONTROL PANEL HEADER DESIGN ---
+# --- JUBILANT FOODWORKS ENTERPRISE BANNER ---
 st.markdown("""
-    <div style="background-color:#1E1E2F; padding:24px; border-radius:12px; margin-bottom:25px; border-left:8px solid #00D2FF; box-shadow: 0 4px 15px rgba(0,0,0,0.08);">
-        <h1 style="color:#FFFFFF; margin:0; font-size:32px; font-family:sans-serif; font-weight:700; letter-spacing:-0.5px;">🏭 Plant Operations Intelligence Hub</h1>
-        <p style="color:#A3A3C2; margin:6px 0 0 0; font-size:15px; font-family:sans-serif;">High-Efficiency Telemetry Data Pipelines & Automated Infrastructure Asset Audits</p>
+    <div style="background-color:#FFFFFF; padding:24px; border-radius:10px; margin-bottom:30px; border-left:10px solid #E01934; box-shadow: 0 4px 15px rgba(0,0,0,0.05); display: flex; align-items: center; justify-content: space-between;">
+        <div>
+            <h1 style="color:#002D62; margin:0; font-size:30px; font-family:'Segoe UI', sans-serif; font-weight:800; letter-spacing:-0.5px;">JUBILANT FOODWORKS LIMITED</h1>
+            <p style="color:#718096; margin:6px 0 0 0; font-size:14px; font-weight:600; font-family:'Segoe UI', sans-serif; text-transform: uppercase; letter-spacing: 0.5px;">🏭 Supply Chain Operations & Automated Telemetry Analytics Hub</p>
+        </div>
+        <div style="background-color: #002D62; padding: 12px 20px; border-radius: 6px; border: 1px solid #FF9F1C;">
+            <span style="color: #FFFFFF; font-family: sans-serif; font-weight: 800; font-size: 15px; letter-spacing: 1px;">JFL-INTELLIGENCE</span>
+        </div>
     </div>
 """, unsafe_allow_html=True)
 
 
-# --- GENERATE MULTI-TAB NAVIGATION INTERFACE ---
+# --- INITIATE NAVIGATION GRIDS ---
 tab_thermal, tab_power, tab_runtime, tab_compressor = st.tabs([
-    "🌡️ Thermal Monitoring", 
-    "⚡ Energy & Savings Balance", 
-    "⚙️ Asset Duty Cycles", 
-    "📉 Compressor Optimization Suite"
+    "🌡️ Cold Storage Thermal Profiles", 
+    "⚡ Energy Management & Savings", 
+    "⚙️ Plant Asset Duty Cycles", 
+    "📉 Compressor Optimization Analytics"
 ])
 
 
 # ==========================================================
-# SYSTEM TAB 1: REAL-TIME THERMAL PROFILE SNAPSHOTS
+# SYSTEM TAB 1: REAL-TIME THERMAL SNAPSHOTS
 # ==========================================================
 with tab_thermal:
-    st.markdown("### 📊 Cryogenic & Cold Storage Thermal Profiles")
+    st.markdown("<h4 style='color:#002D62; font-family: sans-serif; font-weight:700;'>📊 Live Cold Chain Temperature Matrix</h4>", unsafe_allow_html=True)
     temp_df = load_cached_telemetry()
 
     if temp_df is not None and not temp_df.empty:
         latest = temp_df.iloc[-1]
         
-        # 100% Native premium metric grid layout with zero text overlap
         k1, k2, k3 = st.columns(3)
         with k1:
             st.metric(
                 label="❄️ DOUGH COOLER 1", 
                 value=f"{latest['Dough Cooler1 Temp']:.2f} °C", 
-                delta="Streaming Active", 
+                delta="Streaming Online", 
                 delta_color="normal"
             )
         with k2:
             st.metric(
                 label="❄️ DOUGH COOLER 2", 
                 value=f"{latest['Dough Cooler2 Temp']:.2f} °C", 
-                delta="Streaming Active", 
+                delta="Streaming Online", 
                 delta_color="normal"
             )
         with k3:
             st.metric(
-                label="🥩 PERISHABLE STORAGE", 
+                label="🥩 PERISHABLE STORAGE UNIT", 
                 value=f"{latest['Perishable Cooler Temp']:.2f} °C", 
-                delta="System Load Alert", 
+                delta="Thermal Load Shift Alert", 
                 delta_color="inverse"
             )
         
-        st.markdown("<br><h5 style='color:#1E1E2F;'>📈 Continuous Thermal Profile Stream (5-Min Snapshots)</h5>", unsafe_allow_html=True)
-        st.line_chart(temp_df.set_index('Time'), color=["#0068C9", "#29B6F6", "#FF4B4B"])
+        st.markdown("<br><h5 style='color:#002D62; font-weight:700;'>📈 Continuous Thermodynamic Stream Logs (5-Min Interval Tracks)</h5>", unsafe_allow_html=True)
+        st.line_chart(temp_df.set_index('Time'), color=["#002D62", "#29B6F6", "#E01934"])
     else:
         st.warning("⚠️ Telemetry matrix idling. Paste your 'DataLog_*.csv' files into your designated directory path to activate streaming.")
 
 
 # ==========================================================
-# SYSTEM TAB 2: POWER CONSUMPTION & LOAD DISTRIBUTION
+# SYSTEM TAB 2: POWER LOAD BALANCES & SAVINGS
 # ==========================================================
 with tab_power:
-    st.markdown("### 🔋 Core Load Distribution & Operational Savings Ledger")
+    st.markdown("<h4 style='color:#002D62; font-family: sans-serif; font-weight:700;'>🔋 Core Power Load Distribution Ledger</h4>", unsafe_allow_html=True)
     power_sheet = load_dynamic_excel_sheet('Sheet1', fallback_header_row=1)
 
     if power_sheet is not None and not power_sheet.empty:
@@ -244,7 +266,6 @@ with tab_power:
         p_df['Dunkin Blast'] = pd.to_numeric(p_df['Dunkin Blast'], errors='coerce').fillna(0)
         p_df['CLC Blast'] = pd.to_numeric(p_df['CLC Blast'], errors='coerce').fillna(0)
         
-        # Track the savings column dynamics safely
         savings_col = [c for c in p_df.columns if 'savings' in str(c).lower()]
         savings_title = savings_col[0] if savings_col else 'Savings'
         p_df[savings_title] = pd.to_numeric(p_df[savings_title], errors='coerce').fillna(0)
@@ -256,47 +277,43 @@ with tab_power:
             clc_tot = filtered_p_df['CLC Blast'].sum()
             savings_tot = filtered_p_df[savings_title].sum()
             
-            # Summary metric display center
             sm1, sm2, sm3 = st.columns(3)
             with sm1:
-                st.metric("Dunkin Blast Accumulated Power", f"{dunkin_tot:,.1f} kWh", delta="Infrastructure Load")
+                st.metric("Dunkin' Blast Total Consumption", f"{dunkin_tot:,.1f} kWh", delta="JFL Grid Line A")
             with sm2:
-                st.metric("CLC Blast Accumulated Power", f"{clc_tot:,.1f} kWh", delta="Infrastructure Load")
+                st.metric("CLC Blast Total Consumption", f"{clc_tot:,.1f} kWh", delta="JFL Grid Line B")
             with sm3:
-                st.metric("Net Financial Optimization Total", f"INR {savings_tot:,.2f}", delta="Calculated Efficiency Balance", delta_color="inverse")
+                st.metric("Calculated Financial Optimization", f"INR {savings_tot:,.2f}", delta="Net Operational Savings", delta_color="inverse")
             
-            # Side-by-side analytical graphical distribution grid
             g_col1, g_col2 = st.columns(2)
             with g_col1:
-                st.markdown("<h5 style='color:#1E1E2F;'>⚡ Load Demand Contrast (Area Metric Draw)</h5>", unsafe_allow_html=True)
-                st.area_chart(filtered_p_df.set_index('Date')[['Dunkin Blast', 'CLC Blast']], color=["#1A5F7A", "#57C5B6"])
+                st.markdown("<h5 style='color:#002D62; font-weight:700;'>⚡ Heavy Grid Load Comparison (Area Distribution)</h5>", unsafe_allow_html=True)
+                st.area_chart(filtered_p_df.set_index('Date')[['Dunkin Blast', 'CLC Blast']], color=["#002D62", "#FF9F1C"])
             with g_col2:
-                st.markdown("<h5 style='color:#1E1E2F;'>💰 Daily Financial Optimization Tracking</h5>", unsafe_allow_html=True)
+                st.markdown("<h5 style='color:#002D62; font-weight:700;'>💰 Daily Cost Optimization Yield Trails</h5>", unsafe_allow_html=True)
                 st.bar_chart(filtered_p_df.set_index('Date')[savings_title], color="#28A745")
                 
-            # Automated fallback save node to OneDrive if verified path exists
             if os.path.exists(ONEDRIVE_PATH):
                 filtered_p_df.to_csv(os.path.join(ONEDRIVE_PATH, "Clean_Daily_Power_Metrics.csv"), index=False)
                 
             st.markdown("<br>", unsafe_allow_html=True)
-            with st.expander("🔍 Expand Detailed Energy Distribution Log (Sheet 1 Raw)"):
+            with st.expander("🔍 Open Full Audited Infrastructure Energy Spreadsheet (Sheet 1 Raw)"):
                 st.dataframe(filtered_p_df, use_container_width=True, hide_index=True)
     else:
         st.info("ℹ️ 'Power consumption freon.xlsx' (Sheet 1) is currently empty or file pointer path is broken.")
 
 
 # ==========================================================
-# SYSTEM TAB 3: INFRASTRUCTURE ASSET ACTIVE DUTY CYCLES
+# SYSTEM TAB 3: ASSET OPERATIONAL RUN TIME DUTY CYCLES
 # ==========================================================
 with tab_runtime:
-    st.markdown("### ⚙️ Cold Storage Unit Active Duty Cycles")
+    st.markdown("<h4 style='color:#002D62; font-family: sans-serif; font-weight:700;'>⚙️ Infrastructure Plant Capacity & Duty Cycles</h4>", unsafe_allow_html=True)
     runtime_sheet = load_dynamic_excel_sheet('Sheet2', fallback_header_row=2)
 
     if runtime_sheet is not None and not runtime_sheet.empty:
         r_df = runtime_sheet.copy()
         f_col = r_df.columns[0]
         
-        # Clean header text lines out of raw logging metrics
         r_df = r_df[r_df[f_col].astype(str).str.contains('Date|From|Total|Running') == False]
         r_df[f_col] = fast_parse_dates(r_df[f_col])
         r_df = r_df.dropna(subset=[f_col]).sort_values(by=f_col)
@@ -306,11 +323,11 @@ with tab_runtime:
             r_df[field] = pd.to_numeric(r_df[field], errors='coerce').fillna(0)
             
         if kwh_fields and not r_df.empty:
-            st.markdown(f"<h5 style='color:#1E1E2F;'>⚡ Active Load Consumption Volume Chart ({kwh_fields[0]})</h5>", unsafe_allow_html=True)
-            st.bar_chart(r_df.set_index(f_col)[kwh_fields[0]], color="#FF9F43")
+            st.markdown(f"<h5 style='color:#002D62; font-weight:700;'>⚡ Measured Hourly Capacity Draw Tracking ({kwh_fields[0]})</h5>", unsafe_allow_html=True)
+            st.bar_chart(r_df.set_index(f_col)[kwh_fields[0]], color="#E01934")
             
         st.markdown("<br>", unsafe_allow_html=True)
-        with st.expander("🔍 Expand Active Duty Asset Ledger (Sheet 2 Raw)"):
+        with st.expander("🔍 Open Plant Asset Active Duty Ledger (Sheet 2 Raw)"):
             st.dataframe(r_df, use_container_width=True, hide_index=True)
     else:
         st.info("ℹ️ 'Power consumption freon.xlsx' (Sheet 2) is currently empty or file pointer path is broken.")
@@ -320,54 +337,51 @@ with tab_runtime:
 # SYSTEM TAB 4: COMPRESSOR MACHINERY OPTIMIZATION GRAPHICS
 # ==========================================================
 with tab_compressor:
-    st.markdown("### 📉 Compressor Machinery Optimization Analytics Suite")
+    st.markdown("<h4 style='color:#002D62; font-family: sans-serif; font-weight:700;'>📉 Compressor Plant Machinery Maintenance & Optimization Suite</h4>", unsafe_allow_html=True)
     compressor_sheet = load_dynamic_excel_sheet('Sheet3', fallback_header_row=3)
 
     if compressor_sheet is not None and not compressor_sheet.empty:
         c_df = compressor_sheet.copy()
         
-        # Clean out multi-level descriptive headers sitting inside row items
         c_df = c_df[c_df.iloc[:, 0].astype(str).str.strip().str.lower().str.contains('date|total|stop|start') == False]
         c_df.iloc[:, 0] = fast_parse_dates(c_df.iloc[:, 0])
         c_df = c_df.dropna(subset=[c_df.columns[0]]).sort_values(by=c_df.columns[0])
         
-        # Map out the exact optimization metrics tracking point
         savings_hr_col = [c for c in c_df.columns if 'saving' in str(c).lower() or 'hrs' in str(c).lower()]
         
         if savings_hr_col:
             target_hr_col = savings_hr_col[0]
             c_df[target_hr_col] = pd.to_numeric(c_df[target_hr_col], errors='coerce').fillna(0)
             
-            # HIGH-SPEED CUMULATIVE CALCULATION: Compiles the running total row-by-row
+            # COMPILE PROGRESSIVE CUMULATIVE VALUES FOR EXECUTIVE REVIEW
             c_df['Cumulative Saved Run Hours'] = c_df[target_hr_col].cumsum()
             
-            # Operational performance metric summaries
             tot_saved_hours = c_df[target_hr_col].sum()
             avg_saved_hours = c_df[target_hr_col].mean()
             
             m1, m2 = st.columns(2)
             with m1:
-                st.metric("Total Accumulated Saved Machinery Run Time", f"{tot_saved_hours:,.1f} Hours", delta="Optimization Gain", delta_color="inverse")
+                st.metric("Total Accumulated Saved Machinery Run Time", f"{tot_saved_hours:,.1f} Hours", delta="Optimization Growth Balance", delta_color="inverse")
             with m2:
-                st.metric("Average Daily Breaks/Savings Window", f"{avg_saved_hours:.1f} Hours / Day", delta="Machinery Rest Standard")
+                st.metric("Average Daily Structural Rest Windows", f"{avg_saved_hours:.1f} Hours / Day", delta="Machinery Resting Standard")
             
             st.markdown("---")
             graph_col1, graph_col2 = st.columns(2)
             
             with graph_col1:
-                st.markdown("<h5 style='color:#1E1E2F;'>🕒 Chart A: Daily Maintenance Optimization Windows (Hours)</h5>", unsafe_allow_html=True)
-                st.line_chart(c_df.set_index(c_df.columns[0])[target_hr_col], color="#9B5DE5")
-                st.caption("Tracks day-by-day machinery downtime intervals across the current month logging cycle.")
+                st.markdown("<h5 style='color:#002D62; font-weight:700;'>🕒 Chart A: Daily Maintenance Optimization Windows (Hours)</h5>", unsafe_allow_html=True)
+                st.line_chart(c_df.set_index(c_df.columns[0])[target_hr_col], color="#002D62")
+                st.caption("Tracks day-by-day machinery structural relief windows across June operational cycles.")
                 
             with graph_col2:
-                st.markdown("<h5 style='color:#1E1E2F;'>📈 Chart B: Progressive Running Sum (Cumulative Hours Saved)</h5>", unsafe_allow_html=True)
-                st.area_chart(c_df.set_index(c_df.columns[0])['Cumulative Saved Run Hours'], color="#F15BB5")
-                st.caption("Demonstrates the absolute accumulated volume of saved machinery operating hours over time.")
+                st.markdown("<h5 style='color:#002D62; font-weight:700;'>📈 Chart B: Progressive Running Sum (Cumulative Hours Saved)</h5>", unsafe_allow_html=True)
+                st.area_chart(c_df.set_index(c_df.columns[0])['Cumulative Saved Run Hours'], color="#FF9F1C")
+                st.caption("Demonstrates the absolute accumulated running volume of saved operating hours across the month.")
         else:
-            st.warning("⚠️ Optimization column ('Saving in hrs') not detected in Sheet 3 header layers.")
+            st.warning("⚠️ Optimization metric tracking column ('Saving in hrs') not detected in Sheet 3 header lines.")
             
         st.markdown("<br>", unsafe_allow_html=True)
-        with st.expander("🔍 Expand Compressor Runtime Ledger (Sheet 3 Raw)"):
+        with st.expander("🔍 Open Full Compressor Machinery Runtime Ledger (Sheet 3 Raw)"):
             st.dataframe(c_df, use_container_width=True, hide_index=True)
     else:
         st.info("ℹ️ 'Power consumption freon.xlsx' (Sheet 3) is currently empty or file pointer path is broken.")
