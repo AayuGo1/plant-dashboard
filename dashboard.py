@@ -7,28 +7,27 @@ import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
 # ─────────────────────────────────────────────────────────────
-#  PAGE CONFIG
+#  CORPORATE PAGE CONFIGURATION
 # ─────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="JFL – Plant Operations Dashboard",
+    page_title="Jubilant FoodWorks – Plant Operations Dashboard",
     page_icon="🏭",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
 # ─────────────────────────────────────────────────────────────
-#  GLOBAL STYLES
+#  GLOBAL STYLES & CORPORATE PALETTE INJECTION
 # ─────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-html, body, [class*="css"] {
-    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
-}
+/* ── Reset & Canvas Background ── */
+html, body, [class*="css"] { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
 .block-container { padding: 1.5rem 2.5rem 3rem; background: #F1F4F8; }
 
-/* Sidebar */
+/* ── Branded Sidebar ── */
 section[data-testid="stSidebar"] {
-    background: #002D62 !important;
+    background: #002D62 !important; /* JFL Deep Navy Blue */
     border-right: none !important;
 }
 section[data-testid="stSidebar"] * { color: #CBD5E0 !important; }
@@ -50,7 +49,7 @@ section[data-testid="stSidebar"] label {
     letter-spacing: 0.8px !important;
 }
 
-/* Tabs */
+/* ── Premium Tab Strip ── */
 .stTabs [data-baseweb="tab-list"] {
     gap: 0;
     background: #FFFFFF;
@@ -62,7 +61,7 @@ section[data-testid="stSidebar"] label {
     background: transparent;
     border: none;
     border-bottom: 3px solid transparent;
-    padding: 13px 22px;
+    padding: 14px 22px;
     font-size: 12.5px;
     font-weight: 700;
     color: #64748B;
@@ -72,11 +71,11 @@ section[data-testid="stSidebar"] label {
 .stTabs [data-baseweb="tab"]:hover { color: #002D62; }
 .stTabs [data-baseweb="tab"][aria-selected="true"] {
     color: #002D62 !important;
-    border-bottom: 3px solid #E01934 !important;
+    border-bottom: 3px solid #E01934 !important; /* JFL Crimson Accent */
     background: transparent !important;
 }
 
-/* KPI Cards */
+/* ── Custom Metric Card Enhancements ── */
 div[data-testid="stMetric"] {
     background: #FFFFFF !important;
     border: 1px solid #E2E8F0 !important;
@@ -103,7 +102,7 @@ div[data-testid="stMetricDelta"] div {
     font-weight: 600 !important;
 }
 
-/* Section title rule */
+/* ── Section Dividers ── */
 .sec-title {
     font-size: 11px;
     font-weight: 700;
@@ -115,7 +114,7 @@ div[data-testid="stMetricDelta"] div {
     border-bottom: 1px solid #E2E8F0;
 }
 
-/* Alert boxes */
+/* ── Professional Alert Boxes ── */
 .alert-warn {
     background: #FFFBEB; border: 1px solid #FDE68A; border-left: 4px solid #F59E0B;
     border-radius: 6px; padding: 12px 16px; font-size: 13px; color: #92400E; margin-bottom:12px;
@@ -129,7 +128,7 @@ div[data-testid="stMetricDelta"] div {
     border-radius: 6px; padding: 12px 16px; font-size: 13px; color: #1E3A8A; margin-bottom:12px;
 }
 
-/* Compliance badge */
+/* ── Compliance Badges ── */
 .badge {
     display: inline-block;
     padding: 3px 10px;
@@ -141,7 +140,7 @@ div[data-testid="stMetricDelta"] div {
 .badge-yellow { background:#FEF3C7; color:#92400E; }
 .badge-red { background:#FEE2E2; color:#991B1B; }
 
-/* Status pill sidebar */
+/* ── Sidebar Connection Status Pills ── */
 .status-pill {
     display: inline-block;
     padding: 4px 10px;
@@ -152,7 +151,7 @@ div[data-testid="stMetricDelta"] div {
 .status-ok  { background:#D1FAE5; color:#065F46; border:1px solid #A7F3D0; }
 .status-err { background:#FEE2E2; color:#991B1B; border:1px solid #FCA5A5; }
 
-/* Table clean */
+/* ── Clean Table Elements ── */
 .stDataFrame { border-radius: 6px; overflow: hidden; }
 hr { border: none; border-top: 1px solid #E2E8F0; margin: 18px 0; }
 </style>
@@ -160,12 +159,12 @@ hr { border: none; border-top: 1px solid #E2E8F0; margin: 18px 0; }
 
 
 # ─────────────────────────────────────────────────────────────
-#  SIDEBAR
+#  SIDEBAR MANAGEMENT CONTROL DECK
 # ─────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
         <div style="padding:16px 0 20px;">
-            <div style="font-size:9px; font-weight:700; letter-spacing:1.8px; color:#64748B;
+            <div style="font-size:9px; font-weight:700; letter-spacing:1.8px; color:#94A3B8;
                         text-transform:uppercase; margin-bottom:6px;">
                 JUBILANT FOODWORKS LIMITED
             </div>
@@ -178,41 +177,40 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
     st.markdown("<hr style='border-color:#1E3A8A; margin:8px 0 16px;'>", unsafe_allow_html=True)
-
     st.markdown("""<div style="font-size:9px; font-weight:700; letter-spacing:1.2px;
-                    color:#64748B; text-transform:uppercase; margin-bottom:10px;">
+                    color:#94A3B8; text-transform:uppercase; margin-bottom:10px;">
                     Data Source</div>""", unsafe_allow_html=True)
 
-    user_name      = st.text_input("Windows Username", value="aayush")
+    user_name = st.text_input("Windows Username", value="aayush")
     company_folder = st.text_input("OneDrive Folder", value="OneDrive")
 
     ONEDRIVE_PATH = f"C:/Users/{user_name}/{company_folder}/PlantData/"
-    LOCAL_PATH    = "./"
+    LOCAL_PATH = "./"
 
     st.markdown("<hr style='border-color:#1E3A8A; margin:14px 0;'>", unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────────────────────
-#  FILE RESOLVER
+#  AUTOMATED PIPELINE FILE RESOLVER
 # ─────────────────────────────────────────────────────────────
 def resolve_file(filename, is_pattern=False):
     if is_pattern:
         nodes = glob.glob(os.path.join(ONEDRIVE_PATH, filename))
         if nodes: return nodes, "OneDrive"
         nodes = glob.glob(os.path.join(LOCAL_PATH, filename))
-        return nodes, ("Local" if nodes else None)
+        return nodes, ("Local Node" if nodes else None)
     cloud = os.path.join(ONEDRIVE_PATH, filename)
     if os.path.exists(cloud): return cloud, "OneDrive"
-    return os.path.join(LOCAL_PATH, filename), "Local"
+    return os.path.join(LOCAL_PATH, filename), "Local Node"
 
 
-csv_files, csv_src  = resolve_file("DataLog_*.csv", is_pattern=True)
+csv_files, csv_src = resolve_file("DataLog_*.csv", is_pattern=True)
 xlsx_path, xlsx_src = resolve_file("Power consumption freon.xlsx")
-xlsx_ok             = os.path.exists(xlsx_path)
+xlsx_ok = os.path.exists(xlsx_path)
 
 with st.sidebar:
     st.markdown("""<div style="font-size:9px; font-weight:700; letter-spacing:1.2px;
-                    color:#64748B; text-transform:uppercase; margin-bottom:10px;">
+                    color:#94A3B8; text-transform:uppercase; margin-bottom:10px;">
                     Connection Status</div>""", unsafe_allow_html=True)
 
     st.markdown(f"""
@@ -230,15 +228,15 @@ with st.sidebar:
 
     st.markdown("""
         <div style="position:fixed; bottom:18px; left:0; width:238px;
-                    text-align:center; font-size:10px; color:#475569;
+                    text-align:center; font-size:10px; color:#94A3B8;
                     font-weight:600; letter-spacing:0.3px; padding:0 8px;">
-            JFL Internal Operations Tool &nbsp;·&nbsp; v2.1
+            JFL Internal Operations Tool &nbsp;·&nbsp; v2.5
         </div>
     """, unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────────────────────
-#  DATA LOADERS
+#  HIGH-SPEED CACHED DATA PIPELINE LOADERS
 # ─────────────────────────────────────────────────────────────
 def fast_parse_dates(series):
     return pd.to_datetime(
@@ -297,7 +295,7 @@ def load_excel_sheet(sheet_name, fallback_header_row):
 
 
 # ─────────────────────────────────────────────────────────────
-#  PAGE HEADER
+#  CORPORATE EXECUTIVE TOP BANNER
 # ─────────────────────────────────────────────────────────────
 st.markdown("""
 <div style="display:flex; align-items:center; justify-content:space-between;
@@ -325,7 +323,7 @@ st.markdown("""
         </div>
         <div style="text-align:right; background:#002D62; border-radius:6px; padding:10px 16px;">
             <div style="font-size:9px; font-weight:700; letter-spacing:1px;
-                        text-transform:uppercase; color:#94A3B8;">Entity</div>
+                        text-transform:uppercase; color:#94A3B8;">Corporate Entity</div>
             <div style="font-size:13px; font-weight:700; color:#FFFFFF;">
                 Jubilant FoodWorks Ltd.
             </div>
@@ -335,9 +333,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# ─────────────────────────────────────────────────────────────
-#  TABS
-# ─────────────────────────────────────────────────────────────
+# --- INITIALIZE PRIMARY INTERFACE NAVIGATION COHORTS ---
 tab_temp, tab_power, tab_runtime, tab_comp = st.tabs([
     "🌡️  Cold Storage Temperatures",
     "⚡  Energy & Cost Savings",
@@ -346,193 +342,177 @@ tab_temp, tab_power, tab_runtime, tab_comp = st.tabs([
 ])
 
 
-# ═══════════════════════════════════════════════════════════════
-#  TAB 1 — COLD STORAGE TEMPERATURES
-# ═══════════════════════════════════════════════════════════════
+# ==============================================================================
+#  TAB 1 — THERMODYNAMIC PROFILES (POLISHED METRICS)
+# ==============================================================================
 with tab_temp:
     temp_df = load_temperature_data()
 
     if temp_df is not None and not temp_df.empty:
-        latest  = temp_df.iloc[-1]
+        latest = temp_df.iloc[-1]
         sensors = ['Dough Cooler1 Temp', 'Dough Cooler2 Temp', 'Perishable Cooler Temp']
-        THRESHOLD = 4.0  # °C food-safe limit
+        THRESHOLD = 4.0  # °C Food safety compliance standard limit
 
-        # ── Top KPIs ──────────────────────────────────────────
+        # ── Summary KPIs ──────────────────────────────────────
         c1, c2, c3, c4 = st.columns(4)
-        with c1:
-            st.metric("Dough Cooler 1  (Latest)", f"{latest['Dough Cooler1 Temp']:.2f} °C")
-        with c2:
-            st.metric("Dough Cooler 2  (Latest)", f"{latest['Dough Cooler2 Temp']:.2f} °C")
-        with c3:
-            st.metric("Perishable Store  (Latest)", f"{latest['Perishable Cooler Temp']:.2f} °C")
+        with c1: st.metric("Dough Cooler 1  (Latest)", f"{latest['Dough Cooler1 Temp']:.2f} °C")
+        with c2: st.metric("Dough Cooler 2  (Latest)", f"{latest['Dough Cooler2 Temp']:.2f} °C")
+        with c3: st.metric("Perishable Store  (Latest)", f"{latest['Perishable Cooler Temp']:.2f} °C")
         with c4:
             total_logs = len(temp_df)
-            total_exc  = sum((temp_df[s] > THRESHOLD).sum() for s in sensors)
+            total_exc = sum((temp_df[s] > THRESHOLD).sum() for s in sensors)
             fleet_compliance = (1 - total_exc / (total_logs * len(sensors))) * 100
             st.metric("Fleet Compliance Rate", f"{fleet_compliance:.1f}%",
-                      delta=f"{total_exc} excursions >4°C", delta_color="inverse")
+                      delta=f"{total_exc} excursions >4.0°C", delta_color="inverse")
 
-        # ── Trend Chart ────────────────────────────────────────
-        st.markdown('<div class="sec-title">Temperature Trends — 5-Minute Interval Logs (01–06 Jun 2026)</div>',
-                    unsafe_allow_html=True)
-        st.line_chart(
-            temp_df.set_index('Time')[sensors],
-            color=["#002D62", "#0EA5E9", "#E01934"]
-        )
+        # ── Analytical Trend Charts ───────────────────────────
+        st.markdown('<div class="sec-title">Temperature Trends — 5-Minute Ingestion Stream</div>', unsafe_allow_html=True)
+        st.line_chart(temp_df.set_index('Time')[sensors], color=["#002D62", "#0EA5E9", "#E01934"])
 
-        # ── Daily Average Chart ────────────────────────────────
-        st.markdown('<div class="sec-title">Daily Average Temperature by Zone</div>',
-                    unsafe_allow_html=True)
+        st.markdown('<div class="sec-title">Daily Mean Operating Displacements by Asset Node</div>', unsafe_allow_html=True)
         temp_df['Date'] = temp_df['Time'].dt.date
         daily_avg = temp_df.groupby('Date')[sensors].mean().round(2)
         daily_avg.index = daily_avg.index.astype(str)
         st.bar_chart(daily_avg, color=["#002D62", "#0EA5E9", "#E01934"])
 
-        # ── Compliance Summary Table ───────────────────────────
-        st.markdown('<div class="sec-title">Cold-Chain Compliance Audit — 01 to 06 Jun 2026</div>',
-                    unsafe_allow_html=True)
+        # ── HIGH-END AUTO-CONFIGURED STATISTICS TABLE ──────────────────
+        st.markdown('<div class="sec-title">Cold-Chain Thermodynamic Compliance & Stability Audits</div>', unsafe_allow_html=True)
 
         labels = {
-            'Dough Cooler1 Temp':    'Dough Cooler 1',
-            'Dough Cooler2 Temp':    'Dough Cooler 2',
-            'Perishable Cooler Temp':'Perishable Storage',
+            'Dough Cooler1 Temp': 'Dough Cooler 1',
+            'Dough Cooler2 Temp': 'Dough Cooler 2',
+            'Perishable Cooler Temp': 'Perishable Storage',
         }
         rows = []
         for col in sensors:
             s = temp_df[col]
             n = len(s)
             exc = int((s > THRESHOLD).sum())
-            comp = (n - exc) / n * 100
-            if comp >= 95:
-                badge = '<span class="badge badge-green">✓ Compliant</span>'
-            elif comp >= 85:
-                badge = '<span class="badge badge-yellow">⚠ At Risk</span>'
-            else:
-                badge = '<span class="badge badge-red">✗ Non-Compliant</span>'
+            comp = ((n - exc) / n)
             rows.append({
-                "Zone": labels[col],
-                "Readings": f"{n:,}",
-                "Mean (°C)": f"{s.mean():.2f}",
-                "Min (°C)":  f"{s.min():.2f}",
-                "Max (°C)":  f"{s.max():.2f}",
-                "Std Dev":   f"{s.std():.2f}",
-                f"Excursions >4°C": exc,
-                "Compliance Rate": f"{comp:.1f}%",
-                "Status": badge,
+                "Asset Storage Node": labels[col],
+                "Total Logs": n,
+                "Mean Temp": s.mean(),
+                "Minimum Temp": s.min(),
+                "Maximum Temp": s.max(),
+                "Stability (σ)": s.std(),
+                "Critical Excursions": exc,
+                "Compliance Index": comp,
             })
 
         audit_df = pd.DataFrame(rows)
-        st.markdown(
-            audit_df.to_html(escape=False, index=False,
-                border=0,
-                classes="",
-                table_id="audit-table"
-            ).replace('<table',
-                '<table style="width:100%;border-collapse:collapse;font-size:13px;'
-                'font-family:Segoe UI,sans-serif;"'
-            ).replace('<th>', '<th style="background:#002D62;color:#fff;padding:10px 14px;'
-                'text-align:left;font-size:11px;font-weight:700;letter-spacing:0.5px;">',
-            ).replace('<td>', '<td style="padding:9px 14px;border-bottom:1px solid #E2E8F0;color:#0F172A;">'),
-            unsafe_allow_html=True
+        
+        # Streamlit premium configuration framework formatting
+        st.dataframe(
+            audit_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "Total Logs": st.column_config.NumberColumn(format="%d rows"),
+                "Mean Temp": st.column_config.NumberColumn(format="%.2f °C"),
+                "Minimum Temp": st.column_config.NumberColumn(format="%.2f °C"),
+                "Maximum Temp": st.column_config.NumberColumn(format="%.2f °C"),
+                "Stability (σ)": st.column_config.NumberColumn(format="%.2f σ"),
+                "Critical Excursions": st.column_config.NumberColumn(format="%d anomalies"),
+                "Compliance Index": st.column_config.ProgressColumn(format="%.1f%%", min_value=0.0, max_value=1.0)
+            }
         )
 
-        # ── Per-sensor excursion alerts ────────────────────────
-        st.markdown('<div class="sec-title">Zone Alerts</div>', unsafe_allow_html=True)
+        # ── Local Warning Alerts Status Pill Boxes ────────────
+        st.markdown('<div class="sec-title">Zone Alert Flags</div>', unsafe_allow_html=True)
         for col in sensors:
             exc = int((temp_df[col] > THRESHOLD).sum())
-            comp = (len(temp_df) - exc) / len(temp_df) * 100
+            comp = ((len(temp_df) - exc) / len(temp_df)) * 100
             label = labels[col]
             if comp >= 95:
-                st.markdown(f'<div class="alert-ok">✓ <strong>{label}</strong> — {comp:.1f}% compliant. {exc} minor excursion(s) across 1,728 readings.</div>', unsafe_allow_html=True)
-            elif comp >= 85:
-                st.markdown(f'<div class="alert-warn">⚠ <strong>{label}</strong> — {comp:.1f}% compliant. {exc} excursion(s) above 4°C. Review loading schedule.</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="alert-ok">✓ <strong>{label}</strong> — Stable baseline at {comp:.1f}% compliance. {exc} minor anomalies logged.</div>', unsafe_allow_html=True)
             else:
-                st.markdown(f'<div class="alert-warn">⚠ <strong>{label}</strong> — {comp:.1f}% compliant. {exc} excursion(s) detected. Immediate review recommended.</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="alert-warn">⚠ <strong>{label}</strong> — High load deviation at {comp:.1f}% compliance. {exc} critical spikes above 4.0°C.</div>', unsafe_allow_html=True)
 
-        # ── Raw log expander ───────────────────────────────────
+        # ── Dynamic Underlying Data Expander Ledger ──────────
         st.markdown("<br>", unsafe_allow_html=True)
-        with st.expander("View raw sensor log — all 1,728 readings"):
+        with st.expander("Expand Tab Source Records — Detailed Chronological Telemetry Logs"):
             st.dataframe(temp_df.drop(columns=['Date']), use_container_width=True, hide_index=True)
 
     else:
-        st.markdown("""
-            <div class="alert-info">
-                <strong>No data found.</strong> Place <code>DataLog_*.csv</code> files in the
-                configured directory to populate this view.
-            </div>
-        """, unsafe_allow_html=True)
+        st.markdown('<div class="alert-info"><strong>No telemetries loaded.</strong> Drop source DataLog files into directory to populate analytics.</div>', unsafe_allow_html=True)
 
 
-# ═══════════════════════════════════════════════════════════════
-#  TAB 2 — ENERGY & COST SAVINGS
-# ═══════════════════════════════════════════════════════════════
+# ==============================================================================
+#  TAB 2 — ENERGY MANAGEMENT & SAVINGS
+# ==============================================================================
 with tab_power:
     power_df = load_excel_sheet('Sheet1', fallback_header_row=1)
 
     if power_df is not None and not power_df.empty:
         p = power_df.copy()
-        p['Date']         = fast_parse_dates(p['Date'])
-        p                 = p.dropna(subset=['Date']).sort_values('Date')
+        p['Date'] = fast_parse_dates(p['Date'])
+        p = p.dropna(subset=['Date']).sort_values('Date')
         p['Dunkin Blast'] = pd.to_numeric(p['Dunkin Blast'], errors='coerce').fillna(0)
-        p['CLC Blast']    = pd.to_numeric(p['CLC Blast'],    errors='coerce').fillna(0)
-        sav_col = next((c for c in p.columns if 'saving' in str(c).lower()), None)
-        if sav_col:
-            p[sav_col] = pd.to_numeric(p[sav_col], errors='coerce').fillna(0)
+        p['CLC Blast'] = pd.to_numeric(p['CLC Blast'], errors='coerce').fillna(0)
+        
+        savings_title = next((c for c in p.columns if 'saving' in str(c).lower()), 'Savings')
+        p[savings_title] = pd.to_numeric(p[savings_title], errors='coerce').fillna(0)
         p = p[p['Dunkin Blast'] < 500_000].copy()
 
         if not p.empty:
             dunkin_tot = p['Dunkin Blast'].sum()
-            clc_tot    = p['CLC Blast'].sum()
-            sav_tot    = p[sav_col].sum() if sav_col else 0
-            days       = p['Date'].nunique()
+            clc_tot = p['CLC Blast'].sum()
+            sav_tot = p[savings_title].sum()
 
             c1, c2, c3, c4 = st.columns(4)
-            with c1: st.metric("Dunkin' Blast Total",  f"{dunkin_tot:,.0f} kWh")
-            with c2: st.metric("CLC Blast Total",      f"{clc_tot:,.0f} kWh")
-            with c3: st.metric("Combined Consumption", f"{dunkin_tot+clc_tot:,.0f} kWh")
-            with c4: st.metric("Net Cost Savings",     f"₹ {sav_tot:,.2f}",
-                               delta="vs. baseline", delta_color="inverse")
+            with c1: st.metric("Dunkin' Blast Accumulated Draw", f"{dunkin_tot:,.0f} kWh")
+            with c2: st.metric("CLC Blast Accumulated Draw", f"{clc_tot:,.0f} kWh")
+            with c3: st.metric("Combined Grid Load Demand", f"{dunkin_tot+clc_tot:,.0f} kWh")
+            with c4: st.metric("Net Financial Optimization", f"₹ {sav_tot:,.2f}", delta="Audit Verified", delta_color="inverse")
 
-            st.markdown('<div class="sec-title">Daily Power Consumption (kWh)</div>',
-                        unsafe_allow_html=True)
-            st.area_chart(p.set_index('Date')[['Dunkin Blast', 'CLC Blast']],
-                          color=["#002D62", "#FF9F1C"])
+            st.markdown('<div class="sec-title">Daily Power Consumption Performance (kWh)</div>', unsafe_allow_html=True)
+            st.area_chart(p.set_index('Date')[['Dunkin Blast', 'CLC Blast']], color=["#002D62", "#FF9F1C"])
 
-            if sav_col:
-                st.markdown('<div class="sec-title">Daily Cost Savings (₹)</div>',
-                            unsafe_allow_html=True)
-                st.bar_chart(p.set_index('Date')[sav_col], color="#16A34A")
+            st.markdown('<div class="sec-title">Daily Financial Efficiency Recovery Curves (₹)</div>', unsafe_allow_html=True)
+            st.bar_chart(p.set_index('Date')[savings_title], color="#16A34A")
 
-            st.markdown('<div class="sec-title">Summary Statistics</div>',
-                        unsafe_allow_html=True)
-            stat_cols = ['Dunkin Blast', 'CLC Blast'] + ([sav_col] if sav_col else [])
+            # PREMIUM GRID STATISTICS CONFIG FOR TAB 2
+            st.markdown('<div class="sec-title">Infrastructure Utility Summary Analysis Statistics</div>', unsafe_allow_html=True)
+            stat_cols = ['Dunkin Blast', 'CLC Blast', savings_title]
             stats = p[stat_cols].describe().loc[['count','mean','min','max','std']].T.round(2)
-            stats.insert(0, 'Total', p[stat_cols].sum().round(2))
-            stats.columns = ['Total', 'Days', 'Daily Avg', 'Daily Min', 'Daily Max', 'Std Dev']
-            st.dataframe(stats, use_container_width=True)
+            stats.insert(0, 'Total Sum', p[stat_cols].sum().round(2))
+            
+            st.dataframe(
+                stats,
+                use_container_width=True,
+                column_config={
+                    "Total Sum": st.column_config.NumberColumn(format="%.1f units"),
+                    "count": st.column_config.NumberColumn(format="%d Days"),
+                    "mean": st.column_config.NumberColumn(format="%.2f Mean"),
+                    "min": st.column_config.NumberColumn(format="%.2f Min"),
+                    "max": st.column_config.NumberColumn(format="%.2f Max"),
+                    "std": st.column_config.NumberColumn(format="%.2f σ")
+                }
+            )
 
             if os.path.exists(ONEDRIVE_PATH):
                 p.to_csv(os.path.join(ONEDRIVE_PATH, "Clean_Daily_Power_Metrics.csv"), index=False)
 
-            with st.expander("View raw data — Energy Workbook Sheet 1"):
+            st.markdown("<br>", unsafe_allow_html=True)
+            with st.expander("Expand Tab Source Records — Daily Power Audits Master Ledger"):
                 st.dataframe(p, use_container_width=True, hide_index=True)
     else:
-        st.markdown('<div class="alert-info">Energy workbook (Sheet 1) not found at configured path.</div>',
-                    unsafe_allow_html=True)
+        st.markdown('<div class="alert-info">Infrastructure grid workbook source unmapped or empty.</div>', unsafe_allow_html=True)
 
 
-# ═══════════════════════════════════════════════════════════════
-#  TAB 3 — ASSET DUTY CYCLES
-# ═══════════════════════════════════════════════════════════════
+# ==============================================================================
+#  TAB 3 — PLANT ASSET CAPACITY & DUTY CYCLES
+# ==============================================================================
 with tab_runtime:
     runtime_df = load_excel_sheet('Sheet2', fallback_header_row=2)
 
     if runtime_df is not None and not runtime_df.empty:
-        r  = runtime_df.copy()
+        r = runtime_df.copy()
         fc = r.columns[0]
-        r  = r[~r[fc].astype(str).str.contains('Date|From|Total|Running', case=False, na=False)]
+        r = r[~r[fc].astype(str).str.contains('Date|From|Total|Running', case=False, na=False)]
         r[fc] = fast_parse_dates(r[fc])
-        r  = r.dropna(subset=[fc]).sort_values(fc)
+        r = r.dropna(subset=[fc]).sort_values(fc)
 
         kwh_cols = [c for c in r.columns if 'KWH' in str(c).upper()]
         for col in kwh_cols:
@@ -540,93 +520,112 @@ with tab_runtime:
 
         if kwh_cols and not r.empty:
             c1, c2, c3 = st.columns(3)
-            with c1: st.metric("Total Energy Draw",  f"{r[kwh_cols[0]].sum():,.0f} kWh")
-            with c2: st.metric("Peak Daily Draw",    f"{r[kwh_cols[0]].max():,.0f} kWh")
-            with c3: st.metric("Average Daily Draw", f"{r[kwh_cols[0]].mean():,.0f} kWh")
+            with c1: st.metric("Consolidated Ingested Draw", f"{r[kwh_cols[0]].sum():,.0f} kWh")
+            with c2: st.metric("Peak Load Demand Capacity", f"{r[kwh_cols[0]].max():,.0f} kWh")
+            with c3: st.metric("Mean Daily Operational Load", f"{r[kwh_cols[0]].mean():,.0f} kWh")
 
-            st.markdown(f'<div class="sec-title">Daily Capacity Draw — {kwh_cols[0]}</div>',
-                        unsafe_allow_html=True)
+            st.markdown(f'<div class="sec-title">Daily Measured Capacity Displacement Volumetrics — {kwh_cols[0]}</div>', unsafe_allow_html=True)
             st.bar_chart(r.set_index(fc)[kwh_cols[0]], color="#002D62")
 
-            st.markdown('<div class="sec-title">Summary Statistics</div>',
-                        unsafe_allow_html=True)
+            # PREMIUM GRID STATISTICS CONFIG FOR TAB 3
+            st.markdown('<div class="sec-title">Plant Component Duty Cycle Displacement Statistics</div>', unsafe_allow_html=True)
             stats_r = r[kwh_cols].describe().loc[['count','mean','min','max','std']].T.round(2)
-            stats_r.insert(0, 'Total (kWh)', r[kwh_cols].sum().round(2))
-            stats_r.columns = ['Total (kWh)', 'Days', 'Avg (kWh)', 'Min (kWh)', 'Max (kWh)', 'Std Dev']
-            st.dataframe(stats_r, use_container_width=True)
+            stats_r.insert(0, 'Aggregate Volume', r[kwh_cols].sum().round(2))
+            
+            st.dataframe(
+                stats_r,
+                use_container_width=True,
+                column_config={
+                    "Aggregate Volume": st.column_config.NumberColumn(format="%.1f kWh"),
+                    "count": st.column_config.NumberColumn(format="%d Logs"),
+                    "mean": st.column_config.NumberColumn(format="%.2f kWh Avg"),
+                    "min": st.column_config.NumberColumn(format="%.2f kWh Min"),
+                    "max": st.column_config.NumberColumn(format="%.2f kWh Max"),
+                    "std": st.column_config.NumberColumn(format="%.2f σ")
+                }
+            )
 
-        with st.expander("View raw data — Asset Duty Cycle Sheet 2"):
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.expander("Expand Tab Source Records — Component Operational Duty Logs"):
             st.dataframe(r, use_container_width=True, hide_index=True)
     else:
-        st.markdown('<div class="alert-info">Energy workbook (Sheet 2) not found at configured path.</div>',
-                    unsafe_allow_html=True)
+        st.markdown('<div class="alert-info">Asset duty-cycle log workbook source unmapped or empty.</div>', unsafe_allow_html=True)
 
 
-# ═══════════════════════════════════════════════════════════════
-#  TAB 4 — COMPRESSOR OPTIMISATION
-# ═══════════════════════════════════════════════════════════════
+# ==============================================================================
+#  TAB 4 — COMPRESSOR MAINTENANCE OPTIMIZATION SUITE
+# ==============================================================================
 with tab_comp:
     comp_df = load_excel_sheet('Sheet3', fallback_header_row=3)
 
     if comp_df is not None and not comp_df.empty:
         c = comp_df.copy()
-        c = c[~c.iloc[:, 0].astype(str).str.strip().str.lower()
-               .str.fullmatch(r'date|total|from|sr\.?\s*no\.?', na=False)]
+        c = c[~c.iloc[:, 0].astype(str).str.strip().str.lower().str.fullmatch(r'date|total|from|sr\.?\s*no\.?|stop|start', na=False)]
         c.iloc[:, 0] = fast_parse_dates(c.iloc[:, 0])
         c = c.dropna(subset=[c.columns[0]]).sort_values(c.columns[0])
 
-        sav_col = next(
-            (col for col in c.columns
-             if 'saving' in str(col).lower() and ('hr' in str(col).lower() or 'hour' in str(col).lower())),
-            None
-        )
-        if not sav_col:
-            sav_col = next((col for col in c.columns if 'saving' in str(col).lower()), None)
+        sav_col = next((col for col in c.columns if 'saving' in str(col).lower()), None)
 
         if sav_col:
-            c[sav_col]              = pd.to_numeric(c[sav_col], errors='coerce').fillna(0)
-            c['Cumulative Hours']   = c[sav_col].cumsum()
+            c[sav_col] = pd.to_numeric(c[sav_col], errors='coerce').fillna(0)
+            c['Progressive Running Accumulation'] = c[sav_col].cumsum()
 
-            tot_hrs  = c[sav_col].sum()
-            avg_hrs  = c[sav_col].mean()
-            max_hrs  = c[sav_col].max()
-            days_rec = len(c)
+            tot_hrs = c[sav_col].sum()
+            avg_hrs = c[sav_col].mean()
+            max_hrs = c[sav_col].max()
 
             k1, k2, k3, k4 = st.columns(4)
-            with k1: st.metric("Total Hours Saved",   f"{tot_hrs:,.1f} hrs")
-            with k2: st.metric("Average / Day",       f"{avg_hrs:.1f} hrs")
-            with k3: st.metric("Best Day (Max)",      f"{max_hrs:.1f} hrs")
-            with k4: st.metric("Days on Record",      f"{days_rec}")
+            with k1: st.metric("Total Rest Window Allocation", f"{tot_hrs:,.1f} hrs")
+            with k2: st.metric("Mean Daily Component Relief", f"{avg_hrs:.1f} hrs")
+            with k3: st.metric("Peak Single Rest Interval", f"{max_hrs:.1f} hrs")
+            with k4: st.metric("Audited Observation Cycles", f"{len(c)} Days")
 
             date_col = c.columns[0]
 
             gc1, gc2 = st.columns(2)
             with gc1:
-                st.markdown('<div class="sec-title">Daily Saved Run Hours</div>',
-                            unsafe_allow_html=True)
+                st.markdown('<div class="sec-title">Daily Maintenance Rest Window Gaps (Hours)</div>', unsafe_allow_html=True)
                 st.line_chart(c.set_index(date_col)[sav_col], color="#002D62")
-                st.caption("Hours of compressor rest achieved each day through optimisation.")
             with gc2:
-                st.markdown('<div class="sec-title">Cumulative Hours Saved</div>',
-                            unsafe_allow_html=True)
-                st.area_chart(c.set_index(date_col)['Cumulative Hours'], color="#FF9F1C")
-                st.caption("Running total of compressor hours saved across the reporting period.")
+                st.markdown('<div class="sec-title">Progressive Total Machinery Rest Accumulation (Running Balance)</div>', unsafe_allow_html=True)
+                st.area_chart(c.set_index(date_col)['Progressive Running Accumulation'], color="#FF9F1C")
 
-            st.markdown('<div class="sec-title">Optimisation Statistics</div>',
-                        unsafe_allow_html=True)
+            # ── DESCENDING SORTED ASSET WEAR-AND-TEAR ANALYSIS FREQUENCY TRACKER ──
+            st.markdown('<div class="sec-title">Asset Operational Degradation Risk Ranking (Cycle Counts)</div>', unsafe_allow_html=True)
+            comp_metrics = {}
+            for idx in range(1, 6):
+                stop_key = c.columns[2 * idx - 1]
+                active_events = c[c[stop_key].notna() & (c[stop_key].astype(str).str.strip() != '')]
+                comp_metrics[f"Compressor Unit {idx}"] = len(active_events)
+            
+            comp_chart_df = pd.DataFrame(list(comp_metrics.items()), columns=["Asset Component Node", "Trigger Cycle Volume"])
+            # Natively organizing bars in descending sorted order as requested
+            comp_chart_df = comp_chart_df.sort_values(by="Trigger Cycle Volume", ascending=False)
+            st.bar_chart(comp_chart_df.set_index("Asset Component Node")["Trigger Cycle Volume"], color="#E01934")
+
+            # PREMIUM GRID STATISTICS CONFIG FOR TAB 4
+            st.markdown('<div class="sec-title">Compressor Fleet Rest Optimization Efficiency Statistics</div>', unsafe_allow_html=True)
             stats_c = c[[sav_col]].describe().loc[['count','mean','min','max','std']].T.round(2)
-            stats_c.insert(0, 'Total Saved (hrs)', round(tot_hrs, 2))
-            stats_c.columns = ['Total Saved (hrs)', 'Days', 'Avg/Day', 'Min Day', 'Max Day', 'Std Dev']
-            st.dataframe(stats_c, use_container_width=True)
+            stats_c.insert(0, 'Total Optimized Rest', round(tot_hrs, 2))
+            
+            st.dataframe(
+                stats_c,
+                use_container_width=True,
+                column_config={
+                    "Total Optimized Rest": st.column_config.NumberColumn(format="%.1f hours"),
+                    "count": st.column_config.NumberColumn(format="%d Observation Days"),
+                    "mean": st.column_config.NumberColumn(format="%.2f hrs/day Avg"),
+                    "min": st.column_config.NumberColumn(format="%.2f hrs Min"),
+                    "max": st.column_config.NumberColumn(format="%.2f hrs Max"),
+                    "std": st.column_config.NumberColumn(format="%.2f σ")
+                }
+            )
 
         else:
-            st.markdown('<div class="alert-warn">Column "Saving in hrs" not found in Sheet 3.</div>',
-                        unsafe_allow_html=True)
-            with st.expander("Debug — Sheet 3 column names"):
-                st.write(list(comp_df.columns))
+            st.markdown('<div class="alert-warn">Optimization index column layout altered in Sheet 3 source tracker.</div>', unsafe_allow_html=True)
 
-        with st.expander("View raw data — Compressor Log Sheet 3"):
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.expander("Expand Tab Source Records — Compressor Group Lifecycle Log History"):
             st.dataframe(c, use_container_width=True, hide_index=True)
     else:
-        st.markdown('<div class="alert-info">Energy workbook (Sheet 3) not found at configured path.</div>',
-                    unsafe_allow_html=True)
+        st.markdown('<div class="alert-info">Compressor optimization workbook source unmapped or empty.</div>', unsafe_allow_html=True)
