@@ -204,7 +204,7 @@ with st.sidebar:
 
     st.markdown("""
         <div style="position:fixed; bottom:20px; left:0; width:244px; text-align:center; font-size:10px; color:#64748B; font-weight:600; letter-spacing:0.5px;">
-            JFL Supply Chain Operations Matrix · v2.2
+            JFL Supply Chain Operations Matrix · v2.3
         </div>
     """, unsafe_allow_html=True)
 
@@ -327,7 +327,6 @@ with tab_temp:
         chart_df = temp_df.set_index('Time')[['Dough Cooler1 Temp', 'Dough Cooler2 Temp', 'Perishable Cooler Temp']]
         st.line_chart(chart_df, color=["#002D62", "#0EA5E9", "#E01934"])
 
-        # STATS SUMMARY OVERHAUL
         st.markdown("""<div class="section-title">Thermodynamic Statistical Variance Summary</div>""", unsafe_allow_html=True)
         stats_temp = chart_df.describe().loc[['mean','min','max','std']].T
         stats_temp.columns = ['Mean Operating Temp (°C)', 'Minimum Recorded (°C)', 'Maximum Recorded (°C)', 'Standard Deviation']
@@ -374,7 +373,6 @@ with tab_power:
                     st.markdown("""<div class="section-title">Daily Financial Optimization Yield Trails (₹)</div>""", unsafe_allow_html=True)
                     st.bar_chart(p.set_index('Date')[savings_col], color="#16A34A")
 
-            # NEW TAB 2 STATISTICAL OVERHAUL
             st.markdown("""<div class="section-title">Energy Consumption & Cost Optimization Summary Statistics</div>""", unsafe_allow_html=True)
             stats_cols = ['Dunkin Blast', 'CLC Blast']
             if savings_col in p.columns: stats_cols.append(savings_col)
@@ -404,7 +402,9 @@ with tab_runtime:
         fc = r.columns[0]
         r = r[~r[fc].astype(str).str.contains('Date|From|Total|Running', case=False, na=False)]
         r[fc] = fast_parse_dates(r[fc])
-        r = r.dropna(subset=[f_col]).sort_values(f_col)
+        
+        # FIXED: Changed from unmapped variable f_col to validated variable fc
+        r = r.dropna(subset=[fc]).sort_values(fc)
 
         kwh_cols = [c for c in r.columns if 'KWH' in str(c).upper()]
         for col in kwh_cols:
@@ -419,7 +419,6 @@ with tab_runtime:
             st.markdown(f"""<div class="section-title">Measured Daily Core Load Displacement Tracker — {kwh_cols[0]}</div>""", unsafe_allow_html=True)
             st.bar_chart(r.set_index(fc)[kwh_cols[0]], color="#002D62")
 
-            # NEW TAB 3 STATISTICAL OVERHAUL
             st.markdown("""<div class="section-title">Component Duty Cycle Load Distribution Statistics</div>""", unsafe_allow_html=True)
             stats_runtime = r[kwh_cols].describe().loc[['count', 'mean', 'min', 'max', 'std']].T
             stats_runtime.insert(1, 'Total Consumption', r[kwh_cols].sum())
@@ -482,7 +481,6 @@ with tab_comp:
             comp_chart_df = pd.DataFrame(list(comp_metrics.items()), columns=["Asset Node", "Maintenance Cycle Triggers"])
             st.bar_chart(comp_chart_df.set_index("Asset Node")["Maintenance Cycle Triggers"], color="#E01934")
 
-            # NEW TAB 4 STATISTICAL OVERHAUL
             st.markdown("""<div class="section-title">Compressor Fleet Resting & Optimization Efficiency Statistics</div>""", unsafe_allow_html=True)
             stats_comp = c[[target_hr_col]].describe().loc[['count', 'mean', 'min', 'max', 'std']].T
             stats_comp.insert(1, 'Total Rest Hours', c[[target_hr_col]].sum())
