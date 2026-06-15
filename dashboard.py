@@ -17,7 +17,7 @@ st.set_page_config(
 )
 
 # ─────────────────────────────────────────────
-#  ENTERPRISE PREMIUM UI STYLE RESETS
+#  ENTERPRISE CORE UI STYLE RESETS
 # ─────────────────────────────────────────────
 st.markdown("""
 <style>
@@ -110,7 +110,7 @@ div[data-testid="stMetricValue"] div {
     color: #002D62;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    margin: 28px 0 12px 0;
+    margin: 24px 0 14px 0;
     padding-bottom: 10px;
     border-bottom: 2px solid #EEF2F6;
 }
@@ -204,7 +204,7 @@ with st.sidebar:
 
     st.markdown("""
         <div style="position:fixed; bottom:20px; left:0; width:244px; text-align:center; font-size:10px; color:#64748B; font-weight:600; letter-spacing:0.5px;">
-            JFL Supply Chain Operations Matrix · v2.4
+            JFL Supply Chain Operations Matrix · v2.5
         </div>
     """, unsafe_allow_html=True)
 
@@ -309,7 +309,7 @@ tab_temp, tab_power, tab_runtime, tab_comp = st.tabs([
 
 
 # ==========================================================
-# TAB 1 — THERMODYNAMIC PROFILES
+# TAB 1 — THERMODYNAMIC PROFILES (REWORKED STATISTICS)
 # ==========================================================
 with tab_temp:
     temp_df = load_temperature_data()
@@ -327,11 +327,34 @@ with tab_temp:
         chart_df = temp_df.set_index('Time')[['Dough Cooler1 Temp', 'Dough Cooler2 Temp', 'Perishable Cooler Temp']]
         st.line_chart(chart_df, color=["#002D62", "#0EA5E9", "#E01934"])
 
-        # STYLED STATISTICAL PROFILE OVERHAUL
-        st.markdown("""<div class="section-title">Thermodynamic Statistical Variance Summary</div>""", unsafe_allow_html=True)
-        stats_temp = chart_df.describe().loc[['mean','min','max','std']].T
-        stats_temp.columns = ['Mean Operating Temp (°C)', 'Minimum Recorded (°C)', 'Maximum Recorded (°C)', 'Standard Deviation']
-        st.dataframe(stats_temp.round(2), use_container_width=True)
+        # ── HIGH-END REWORKED THERMODYNAMIC STATISTICS MODULE ──
+        st.markdown("""<div class="section-title">Cold-Chain Thermodynamic Quality & Stability Audits</div>""", unsafe_allow_html=True)
+        
+        summary_metrics = []
+        for col in ['Dough Cooler1 Temp', 'Dough Cooler2 Temp', 'Perishable Cooler Temp']:
+            total_logs = len(temp_df[col])
+            mean_temp = temp_df[col].mean()
+            max_temp = temp_df[col].max()
+            min_temp = temp_df[col].min()
+            std_temp = temp_df[col].std()
+            
+            # Count out-of-range thermal deviations (exceeding food-safe threshold of 4.0°C)
+            excursions = int((temp_df[col] > 4.0).sum())
+            compliance_rate = ((total_logs - excursions) / total_logs) * 100
+            
+            summary_metrics.append({
+                "Asset Storage Unit": col.replace(" Temp", ""),
+                "Total Audited Logs": total_logs,
+                "Average Temp (°C)": round(mean_temp, 2),
+                "Peak Thermal Spike (°C)": round(max_temp, 2),
+                "Lowest Core Temp (°C)": round(min_temp, 2),
+                "Stability Variance (σ)": round(std_temp, 2),
+                "Critical Excursions (>4°C)": excursions,
+                "Cold-Chain Compliance Rate": f"{compliance_rate:.1f}%"
+            })
+            
+        df_summary_temp = pd.DataFrame(summary_metrics)
+        st.dataframe(df_summary_temp, use_container_width=True, hide_index=True)
 
         # LINKED SOURCE RECORDS GRID
         st.markdown("""<div class="section-title">Chart Source Data — Comprehensive Telemetry Stream Logs</div>""", unsafe_allow_html=True)
@@ -378,7 +401,6 @@ with tab_power:
                     st.markdown("""<div class="section-title">Daily Financial Optimization Yield Trails (₹)</div>""", unsafe_allow_html=True)
                     st.bar_chart(p.set_index('Date')[savings_col], color="#16A34A")
 
-            # STYLED STATISTICAL PROFILE OVERHAUL
             st.markdown("""<div class="section-title">Energy Consumption & Cost Optimization Summary Statistics</div>""", unsafe_allow_html=True)
             stats_cols = ['Dunkin Blast', 'CLC Blast']
             if savings_col in p.columns: stats_cols.append(savings_col)
@@ -387,7 +409,6 @@ with tab_power:
             stats_power.columns = ['Data Points (Days)', 'Total Accumulated', 'Daily Average', 'Daily Minimum', 'Daily Maximum', 'Standard Deviation']
             st.dataframe(stats_power.round(2), use_container_width=True)
 
-            # LINKED SOURCE RECORDS GRID
             st.markdown("""<div class="section-title">Chart Source Data — Daily Power Audits Ledger</div>""", unsafe_allow_html=True)
             st.dataframe(p, use_container_width=True, hide_index=True)
 
@@ -423,14 +444,12 @@ with tab_runtime:
             st.markdown(f"""<div class="section-title">Measured Daily Core Load Displacement Tracker — {kwh_cols[0]}</div>""", unsafe_allow_html=True)
             st.bar_chart(r.set_index(fc)[kwh_cols[0]], color="#002D62")
 
-            # STYLED STATISTICAL PROFILE OVERHAUL
             st.markdown("""<div class="section-title">Component Duty Cycle Load Distribution Statistics</div>""", unsafe_allow_html=True)
             stats_runtime = r[kwh_cols].describe().loc[['count', 'mean', 'min', 'max', 'std']].T
             stats_runtime.insert(1, 'Total Consumption', r[kwh_cols].sum())
             stats_runtime.columns = ['Log Counts (Days)', 'Total Ingested (kWh)', 'Average Load (kWh)', 'Minimum Load (kWh)', 'Maximum Load (kWh)', 'Standard Deviation']
             st.dataframe(stats_runtime.round(2), use_container_width=True)
 
-            # LINKED SOURCE RECORDS GRID
             st.markdown("""<div class="section-title">Chart Source Data — Asset Runtime Duty Cycle Records</div>""", unsafe_allow_html=True)
             st.dataframe(r, use_container_width=True, hide_index=True)
     else:
@@ -487,14 +506,12 @@ with tab_comp:
             comp_chart_df = pd.DataFrame(list(comp_metrics.items()), columns=["Asset Node", "Maintenance Cycle Triggers"])
             st.bar_chart(comp_chart_df.set_index("Asset Node")["Maintenance Cycle Triggers"], color="#E01934")
 
-            # STYLED STATISTICAL PROFILE OVERHAUL
             st.markdown("""<div class="section-title">Compressor Fleet Resting & Optimization Efficiency Statistics</div>""", unsafe_allow_html=True)
             stats_comp = c[[target_hr_col]].describe().loc[['count', 'mean', 'min', 'max', 'std']].T
             stats_comp.insert(1, 'Total Rest Hours', c[[target_hr_col]].sum())
             stats_comp.columns = ['Audited Days', 'Total Saved Hours', 'Daily Average Rest', 'Minimum Rest Window', 'Maximum Rest Window', 'Standard Deviation']
             st.dataframe(stats_comp.round(2), use_container_width=True)
 
-            # LINKED SOURCE RECORDS GRID
             st.markdown("""<div class="section-title">Chart Source Data — Compressor Fleet Structural Operation Logs</div>""", unsafe_allow_html=True)
             st.dataframe(c, use_container_width=True, hide_index=True)
         else:
