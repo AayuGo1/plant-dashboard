@@ -6,28 +6,28 @@ import warnings
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
-# ─────────────────────────────────────────────────────────────
-#  CORPORATE PAGE CONFIGURATION
-# ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
+#  CORPORATE CROSS-SCREEN PAGE CONFIG
+# ─────────────────────────────────────────────
 st.set_page_config(
-    page_title="Jubilant FoodWorks – Plant Operations Dashboard",
+    page_title="JFL – Plant Operations Dashboard",
     page_icon="🏭",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="auto" # Auto collapses sidebar on mobile screens for clean space
 )
 
-# ─────────────────────────────────────────────────────────────
-#  GLOBAL STYLES & CORPORATE PALETTE INJECTION
-# ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────
+#  MOBILE-RESPONSIVE ENTERPRISE STYLES
+# ─────────────────────────────────────────────
 st.markdown("""
 <style>
-/* ── Reset & Canvas Background ── */
-html, body, [class*="css"] { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+/* ── Corporate Typography & Fluid Canvas ── */
+html, body, [class*="css"] { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif; }
 .block-container { padding: 1.5rem 2.5rem 3rem; background: #F1F4F8; }
 
-/* ── Branded Sidebar ── */
+/* ── Branded Mobile-Responsive Sidebar ── */
 section[data-testid="stSidebar"] {
-    background: #002D62 !important; /* JFL Deep Navy Blue */
+    background: #002D62 !important; /* JFL Corporate Deep Navy */
     border-right: none !important;
 }
 section[data-testid="stSidebar"] * { color: #CBD5E0 !important; }
@@ -49,7 +49,7 @@ section[data-testid="stSidebar"] label {
     letter-spacing: 0.8px !important;
 }
 
-/* ── Premium Tab Strip ── */
+/* ── Fluid Tab Strip ── */
 .stTabs [data-baseweb="tab-list"] {
     gap: 0;
     background: #FFFFFF;
@@ -62,7 +62,7 @@ section[data-testid="stSidebar"] label {
     border: none;
     border-bottom: 3px solid transparent;
     padding: 14px 22px;
-    font-size: 12.5px;
+    font-size: 13px;
     font-weight: 700;
     color: #64748B;
     letter-spacing: 0.2px;
@@ -75,7 +75,7 @@ section[data-testid="stSidebar"] label {
     background: transparent !important;
 }
 
-/* ── Custom Metric Card Enhancements ── */
+/* ── Premium High-Contrast KPI Summary Blocks ── */
 div[data-testid="stMetric"] {
     background: #FFFFFF !important;
     border: 1px solid #E2E8F0 !important;
@@ -86,14 +86,14 @@ div[data-testid="stMetric"] {
 }
 div[data-testid="stMetricLabel"] p {
     color: #64748B !important;
-    font-size: 10.5px !important;
+    font-size: 11px !important;
     font-weight: 700 !important;
     letter-spacing: 0.7px !important;
     text-transform: uppercase !important;
 }
 div[data-testid="stMetricValue"] div {
     color: #0F172A !important;
-    font-size: 26px !important;
+    font-size: 28px !important;
     font-weight: 800 !important;
     letter-spacing: -0.5px !important;
 }
@@ -102,7 +102,7 @@ div[data-testid="stMetricDelta"] div {
     font-weight: 600 !important;
 }
 
-/* ── Section Dividers ── */
+/* ── Operational Title Dividers ── */
 .sec-title {
     font-size: 11px;
     font-weight: 700;
@@ -114,7 +114,7 @@ div[data-testid="stMetricDelta"] div {
     border-bottom: 1px solid #E2E8F0;
 }
 
-/* ── Professional Alert Boxes ── */
+/* ── Cross-Screen Status Alert Pill Boxes ── */
 .alert-warn {
     background: #FFFBEB; border: 1px solid #FDE68A; border-left: 4px solid #F59E0B;
     border-radius: 6px; padding: 12px 16px; font-size: 13px; color: #92400E; margin-bottom:12px;
@@ -128,7 +128,7 @@ div[data-testid="stMetricDelta"] div {
     border-radius: 6px; padding: 12px 16px; font-size: 13px; color: #1E3A8A; margin-bottom:12px;
 }
 
-/* ── Compliance Badges ── */
+/* ── Compliance Progress Badges ── */
 .badge {
     display: inline-block;
     padding: 3px 10px;
@@ -139,21 +139,31 @@ div[data-testid="stMetricDelta"] div {
 .badge-green { background:#D1FAE5; color:#065F46; }
 .badge-yellow { background:#FEF3C7; color:#92400E; }
 .badge-red { background:#FEE2E2; color:#991B1B; }
-
-/* ── Sidebar Connection Status Pills ── */
-.status-pill {
-    display: inline-block;
-    padding: 4px 10px;
-    border-radius: 4px;
-    font-size: 11px;
-    font-weight: 700;
-}
+.status-pill { display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; }
 .status-ok  { background:#D1FAE5; color:#065F46; border:1px solid #A7F3D0; }
 .status-err { background:#FEE2E2; color:#991B1B; border:1px solid #FCA5A5; }
 
-/* ── Clean Table Elements ── */
+/* ── Clean Fluid Table Grid Boundaries ── */
 .stDataFrame { border-radius: 6px; overflow: hidden; }
 hr { border: none; border-top: 1px solid #E2E8F0; margin: 18px 0; }
+
+/* ─────────────────────────────────────────────────────────────
+   📱 ADVANCED MOBILE VIEWPORT OVERRIDE ENGINE (Media Queries)
+   ───────────────────────────────────────────────────────────── */
+@media (max-width: 768px) {
+    /* Compress outer layout canvas padding to maximize tracking area */
+    .block-container { padding: 1rem 1rem 2rem !important; }
+    
+    /* Auto-scale metrics layout so integers do not overflow cards boundary lines */
+    div[data-testid="stMetricValue"] div { font-size: 22px !important; font-weight: 700 !important; }
+    div[data-testid="stMetric"] { padding: 14px 16px !important; }
+    
+    /* Condense tab strip heights so user choices stay horizontal without clipping */
+    .stTabs [data-baseweb="tab"] { padding: 10px 12px !important; font-size: 11.5px !important; }
+    
+    /* Shrink text labels inside alert ribbons */
+    .alert-ok, .alert-warn, .alert-info { padding: 10px 12px !important; font-size: 11.5px !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -314,7 +324,7 @@ st.markdown("""
     </div>
     <div style="display:flex; gap:12px; align-items:center;">
         <div style="text-align:right; background:#F8FAFC; border:1px solid #E2E8F0;
-                    border-radius:6px; padding:10px 16px;">
+                    border-radius:6px; padding:10px 16px; display:none; @media(min-width:769px){display:block;}">
             <div style="font-size:9px; font-weight:700; letter-spacing:1px;
                         text-transform:uppercase; color:#94A3B8;">Reporting Period</div>
             <div style="font-size:13px; font-weight:700; color:#002D62;">
@@ -323,9 +333,9 @@ st.markdown("""
         </div>
         <div style="text-align:right; background:#002D62; border-radius:6px; padding:10px 16px;">
             <div style="font-size:9px; font-weight:700; letter-spacing:1px;
-                        text-transform:uppercase; color:#94A3B8;">Corporate Entity</div>
+                        text-transform:uppercase; color:#94A3B8;">Entity</div>
             <div style="font-size:13px; font-weight:700; color:#FFFFFF;">
-                Jubilant FoodWorks Ltd.
+                JFL
             </div>
         </div>
     </div>
@@ -333,7 +343,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# --- INITIALIZE PRIMARY INTERFACE NAVIGATION COHORTS ---
+# --- ATTACH RESPONSIVE NAVIGATION TABS ---
 tab_temp, tab_power, tab_runtime, tab_comp = st.tabs([
     "🌡️  Cold Storage Temperatures",
     "⚡  Energy & Cost Savings",
@@ -343,7 +353,7 @@ tab_temp, tab_power, tab_runtime, tab_comp = st.tabs([
 
 
 # ==============================================================================
-#  TAB 1 — THERMODYNAMIC PROFILES (POLISHED METRICS)
+#  TAB 1 — THERMODYNAMIC PROFILES (FLUID METRICS WITH CONFIG)
 # ==============================================================================
 with tab_temp:
     temp_df = load_temperature_data()
@@ -353,30 +363,30 @@ with tab_temp:
         sensors = ['Dough Cooler1 Temp', 'Dough Cooler2 Temp', 'Perishable Cooler Temp']
         THRESHOLD = 4.0  # °C Food safety compliance standard limit
 
-        # ── Summary KPIs ──────────────────────────────────────
-        c1, c2, c3, c4 = st.columns(4)
-        with c1: st.metric("Dough Cooler 1  (Latest)", f"{latest['Dough Cooler1 Temp']:.2f} °C")
-        with c2: st.metric("Dough Cooler 2  (Latest)", f"{latest['Dough Cooler2 Temp']:.2f} °C")
-        with c3: st.metric("Perishable Store  (Latest)", f"{latest['Perishable Cooler Temp']:.2f} °C")
+        # ── Summary KPIs (Auto stacks into vertical sequence on mobile) ──
+        c1, c2, c3, c4 = st.columns([1,1,1,1.2])
+        with c1: st.metric("Dough Cooler 1", f"{latest['Dough Cooler1 Temp']:.2f} °C")
+        with c2: st.metric("Dough Cooler 2", f"{latest['Dough Cooler2 Temp']:.2f} °C")
+        with c3: st.metric("Perishable Store", f"{latest['Perishable Cooler Temp']:.2f} °C")
         with c4:
             total_logs = len(temp_df)
             total_exc = sum((temp_df[s] > THRESHOLD).sum() for s in sensors)
             fleet_compliance = (1 - total_exc / (total_logs * len(sensors))) * 100
-            st.metric("Fleet Compliance Rate", f"{fleet_compliance:.1f}%",
-                      delta=f"{total_exc} excursions >4.0°C", delta_color="inverse")
+            st.metric("Fleet Compliance", f"{fleet_compliance:.1f}%",
+                      delta=f"{total_exc} spikes >4.0°C", delta_color="inverse")
 
-        # ── Analytical Trend Charts ───────────────────────────
-        st.markdown('<div class="sec-title">Temperature Trends — 5-Minute Ingestion Stream</div>', unsafe_allow_html=True)
+        # ── Analytical Responsive Trend Charts ───────────────────
+        st.markdown('<div class="sec-title">Temperature Trends — Ingestion Stream Logs</div>', unsafe_allow_html=True)
         st.line_chart(temp_df.set_index('Time')[sensors], color=["#002D62", "#0EA5E9", "#E01934"])
 
-        st.markdown('<div class="sec-title">Daily Mean Operating Displacements by Asset Node</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec-title">Daily Mean Temperature by Zone</div>', unsafe_allow_html=True)
         temp_df['Date'] = temp_df['Time'].dt.date
         daily_avg = temp_df.groupby('Date')[sensors].mean().round(2)
         daily_avg.index = daily_avg.index.astype(str)
         st.bar_chart(daily_avg, color=["#002D62", "#0EA5E9", "#E01934"])
 
-        # ── HIGH-END AUTO-CONFIGURED STATISTICS TABLE ──────────────────
-        st.markdown('<div class="sec-title">Cold-Chain Thermodynamic Compliance & Stability Audits</div>', unsafe_allow_html=True)
+        # ── EXCELLENT COMPLIANCE CONFIGURATION GRID TABLE ──────────────
+        st.markdown('<div class="sec-title">Cold-Chain Thermodynamic Stability Audits</div>', unsafe_allow_html=True)
 
         labels = {
             'Dough Cooler1 Temp': 'Dough Cooler 1',
@@ -390,48 +400,47 @@ with tab_temp:
             exc = int((s > THRESHOLD).sum())
             comp = ((n - exc) / n)
             rows.append({
-                "Asset Storage Node": labels[col],
+                "Asset Node": labels[col],
                 "Total Logs": n,
                 "Mean Temp": s.mean(),
                 "Minimum Temp": s.min(),
                 "Maximum Temp": s.max(),
                 "Stability (σ)": s.std(),
-                "Critical Excursions": exc,
+                "Excursions": exc,
                 "Compliance Index": comp,
             })
 
         audit_df = pd.DataFrame(rows)
         
-        # Streamlit premium configuration framework formatting
         st.dataframe(
             audit_df,
             use_container_width=True,
             hide_index=True,
             column_config={
-                "Total Logs": st.column_config.NumberColumn(format="%d rows"),
+                "Total Logs": st.column_config.NumberColumn(format="%d entries"),
                 "Mean Temp": st.column_config.NumberColumn(format="%.2f °C"),
                 "Minimum Temp": st.column_config.NumberColumn(format="%.2f °C"),
                 "Maximum Temp": st.column_config.NumberColumn(format="%.2f °C"),
                 "Stability (σ)": st.column_config.NumberColumn(format="%.2f σ"),
-                "Critical Excursions": st.column_config.NumberColumn(format="%d anomalies"),
+                "Excursions": st.column_config.NumberColumn(format="%d counts"),
                 "Compliance Index": st.column_config.ProgressColumn(format="%.1f%%", min_value=0.0, max_value=1.0)
             }
         )
 
-        # ── Local Warning Alerts Status Pill Boxes ────────────
+        # ── Local Responsive Notification Alert Pill Boxes ──────
         st.markdown('<div class="sec-title">Zone Alert Flags</div>', unsafe_allow_html=True)
         for col in sensors:
             exc = int((temp_df[col] > THRESHOLD).sum())
             comp = ((len(temp_df) - exc) / len(temp_df)) * 100
             label = labels[col]
             if comp >= 95:
-                st.markdown(f'<div class="alert-ok">✓ <strong>{label}</strong> — Stable baseline at {comp:.1f}% compliance. {exc} minor anomalies logged.</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="alert-ok">✓ <strong>{label}</strong> — Stable baseline at {comp:.1f}% compliance. {exc} minor variations logged.</div>', unsafe_allow_html=True)
             else:
-                st.markdown(f'<div class="alert-warn">⚠ <strong>{label}</strong> — High load deviation at {comp:.1f}% compliance. {exc} critical spikes above 4.0°C.</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="alert-warn">⚠ <strong>{label}</strong> — High load drift at {comp:.1f}% compliance. {exc} critical spikes above 4.0°C.</div>', unsafe_allow_html=True)
 
         # ── Dynamic Underlying Data Expander Ledger ──────────
         st.markdown("<br>", unsafe_allow_html=True)
-        with st.expander("Expand Tab Source Records — Detailed Chronological Telemetry Logs"):
+        with st.expander("Expand Tab Source Records — Telemetry Ingestion History"):
             st.dataframe(temp_df.drop(columns=['Date']), use_container_width=True, hide_index=True)
 
     else:
@@ -461,10 +470,10 @@ with tab_power:
             sav_tot = p[savings_title].sum()
 
             c1, c2, c3, c4 = st.columns(4)
-            with c1: st.metric("Dunkin' Blast Accumulated Draw", f"{dunkin_tot:,.0f} kWh")
-            with c2: st.metric("CLC Blast Accumulated Draw", f"{clc_tot:,.0f} kWh")
-            with c3: st.metric("Combined Grid Load Demand", f"{dunkin_tot+clc_tot:,.0f} kWh")
-            with c4: st.metric("Net Financial Optimization", f"₹ {sav_tot:,.2f}", delta="Audit Verified", delta_color="inverse")
+            with c1: st.metric("Dunkin' Blast Total", f"{dunkin_tot:,.0f} kWh")
+            with c2: st.metric("CLC Blast Total", f"{clc_tot:,.0f} kWh")
+            with c3: st.metric("Combined Load Demand", f"{dunkin_tot+clc_tot:,.0f} kWh")
+            with c4: st.metric("Net Cost Optimization", f"₹ {sav_tot:,.2f}", delta="Audit Positive", delta_color="inverse")
 
             st.markdown('<div class="sec-title">Daily Power Consumption Performance (kWh)</div>', unsafe_allow_html=True)
             st.area_chart(p.set_index('Date')[['Dunkin Blast', 'CLC Blast']], color=["#002D62", "#FF9F1C"])
@@ -472,7 +481,7 @@ with tab_power:
             st.markdown('<div class="sec-title">Daily Financial Efficiency Recovery Curves (₹)</div>', unsafe_allow_html=True)
             st.bar_chart(p.set_index('Date')[savings_title], color="#16A34A")
 
-            # PREMIUM GRID STATISTICS CONFIG FOR TAB 2
+            # PREMIUM GRID OVERVIEW STATISTICS FOR TAB 2
             st.markdown('<div class="sec-title">Infrastructure Utility Summary Analysis Statistics</div>', unsafe_allow_html=True)
             stat_cols = ['Dunkin Blast', 'CLC Blast', savings_title]
             stats = p[stat_cols].describe().loc[['count','mean','min','max','std']].T.round(2)
@@ -482,7 +491,7 @@ with tab_power:
                 stats,
                 use_container_width=True,
                 column_config={
-                    "Total Sum": st.column_config.NumberColumn(format="%.1f units"),
+                    "Total Sum": st.column_config.NumberColumn(format="%.1f kWh"),
                     "count": st.column_config.NumberColumn(format="%d Days"),
                     "mean": st.column_config.NumberColumn(format="%.2f Mean"),
                     "min": st.column_config.NumberColumn(format="%.2f Min"),
@@ -520,14 +529,14 @@ with tab_runtime:
 
         if kwh_cols and not r.empty:
             c1, c2, c3 = st.columns(3)
-            with c1: st.metric("Consolidated Ingested Draw", f"{r[kwh_cols[0]].sum():,.0f} kWh")
-            with c2: st.metric("Peak Load Demand Capacity", f"{r[kwh_cols[0]].max():,.0f} kWh")
+            with c1: st.metric("Consolidated Draw volume", f"{r[kwh_cols[0]].sum():,.0f} kWh")
+            with c2: st.metric("Peak Load Threshold", f"{r[kwh_cols[0]].max():,.0f} kWh")
             with c3: st.metric("Mean Daily Operational Load", f"{r[kwh_cols[0]].mean():,.0f} kWh")
 
-            st.markdown(f'<div class="sec-title">Daily Measured Capacity Displacement Volumetrics — {kwh_cols[0]}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="sec-title">Daily Measured Capacity Displacement Tracker — {kwh_cols[0]}</div>', unsafe_allow_html=True)
             st.bar_chart(r.set_index(fc)[kwh_cols[0]], color="#002D62")
 
-            # PREMIUM GRID STATISTICS CONFIG FOR TAB 3
+            # PREMIUM GRID OVERVIEW STATISTICS FOR TAB 3
             st.markdown('<div class="sec-title">Plant Component Duty Cycle Displacement Statistics</div>', unsafe_allow_html=True)
             stats_r = r[kwh_cols].describe().loc[['count','mean','min','max','std']].T.round(2)
             stats_r.insert(0, 'Aggregate Volume', r[kwh_cols].sum().round(2))
@@ -575,10 +584,10 @@ with tab_comp:
             max_hrs = c[sav_col].max()
 
             k1, k2, k3, k4 = st.columns(4)
-            with k1: st.metric("Total Rest Window Allocation", f"{tot_hrs:,.1f} hrs")
-            with k2: st.metric("Mean Daily Component Relief", f"{avg_hrs:.1f} hrs")
-            with k3: st.metric("Peak Single Rest Interval", f"{max_hrs:.1f} hrs")
-            with k4: st.metric("Audited Observation Cycles", f"{len(c)} Days")
+            with k1: st.metric("Total Hours Saved", f"{tot_hrs:,.1f} hrs")
+            with k2: st.metric("Mean Daily Relief", f"{avg_hrs:.1f} hrs")
+            with k3: st.metric("Peak Rest Interval", f"{max_hrs:.1f} hrs")
+            with k4: st.metric("Audited Days Record", f"{len(c)}")
 
             date_col = c.columns[0]
 
@@ -587,7 +596,7 @@ with tab_comp:
                 st.markdown('<div class="sec-title">Daily Maintenance Rest Window Gaps (Hours)</div>', unsafe_allow_html=True)
                 st.line_chart(c.set_index(date_col)[sav_col], color="#002D62")
             with gc2:
-                st.markdown('<div class="sec-title">Progressive Total Machinery Rest Accumulation (Running Balance)</div>', unsafe_allow_html=True)
+                st.markdown('<div class="sec-title">Progressive Total Machinery Rest Accumulation (Running Sum)</div>', unsafe_allow_html=True)
                 st.area_chart(c.set_index(date_col)['Progressive Running Accumulation'], color="#FF9F1C")
 
             # ── DESCENDING SORTED ASSET WEAR-AND-TEAR ANALYSIS FREQUENCY TRACKER ──
@@ -599,11 +608,10 @@ with tab_comp:
                 comp_metrics[f"Compressor Unit {idx}"] = len(active_events)
             
             comp_chart_df = pd.DataFrame(list(comp_metrics.items()), columns=["Asset Component Node", "Trigger Cycle Volume"])
-            # Natively organizing bars in descending sorted order as requested
             comp_chart_df = comp_chart_df.sort_values(by="Trigger Cycle Volume", ascending=False)
             st.bar_chart(comp_chart_df.set_index("Asset Component Node")["Trigger Cycle Volume"], color="#E01934")
 
-            # PREMIUM GRID STATISTICS CONFIG FOR TAB 4
+            # PREMIUM GRID OVERVIEW STATISTICS FOR TAB 4
             st.markdown('<div class="sec-title">Compressor Fleet Rest Optimization Efficiency Statistics</div>', unsafe_allow_html=True)
             stats_c = c[[sav_col]].describe().loc[['count','mean','min','max','std']].T.round(2)
             stats_c.insert(0, 'Total Optimized Rest', round(tot_hrs, 2))
