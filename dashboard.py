@@ -1,43 +1,38 @@
-# --- MODERN STYLING INJECTION ---
-st.markdown("""
-    <style>
-        .block-container { padding-top: 2rem; padding-bottom: 2rem; }
-        .stTabs [data-baseweb="tab-list"] { gap: 10px; }
-        .stTabs [data-baseweb="tab"] {
-            background-color: #F8F9FA;
-            border: 1px solid #E6E8EC;
-            border-radius: 6px 6px 0px 0px;
-            padding: 10px 20px;
-            font-weight: 600;
-            color: #4A4A6A;
-        }
-        .stTabs [data-baseweb="tab"]:hover { color: #00D2FF; }
-        .stTabs [data-baseweb="tab"][aria-selected="true"] {
-            background-color: #1E1E2F;
-            color: white;
-            border-color: #1E1E2F;
-        }
+# ==========================================================
+# SYSTEM TAB 1: REAL-TIME THERMAL SNAPSHOTS
+# ==========================================================
+with tab_thermal:
+    st.markdown("### 📊 Cryogenic & Cold Storage Thermal Profiles")
+    temp_df = load_cached_telemetry()
+
+    if temp_df is not None and not temp_df.empty:
+        latest = temp_df.iloc[-1]
         
-        /* High-Contrast Card Custom Styling for perfect visibility */
-        div[data-testid="stMetric"] {
-            background-color: #1E1E2F !important;  /* Modern dark theme container */
-            border: 1px solid #2D2D44 !important;
-            padding: 20px !important;
-            border-radius: 10px !important;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.15) !important;
-        }
+        # 100% Native premium metric layout blocks
+        k1, k2, k3 = st.columns(3)
+        with k1:
+            st.metric(
+                label="❄️ DOUGH COOLER 1", 
+                value=f"{latest['Dough Cooler1 Temp']:.2f} °C", 
+                delta="Active / Normal Node", 
+                delta_color="normal"
+            )
+        with k2:
+            st.metric(
+                label="❄️ DOUGH COOLER 2", 
+                value=f"{latest['Dough Cooler2 Temp']:.2f} °C", 
+                delta="Active / Normal Node", 
+                delta_color="normal"
+            )
+        with k3:
+            st.metric(
+                label="🥩 PERISHABLE STORAGE", 
+                value=f"{latest['Perishable Cooler Temp']:.2f} °C", 
+                delta="System Load Alert", 
+                delta_color="inverse"
+            )
         
-        /* Force color fixes onto native metric label sub-elements */
-        div[data-testid="stMetricLabel"] p {
-            color: #A3A3C2 !important;              /* High visibility muted label text */
-            font-size: 13px !important;
-            font-weight: 600 !important;
-            letter-spacing: 0.5px !important;
-        }
-        div[data-testid="stMetricValue"] div {
-            color: #FFFFFF !important;              /* Crisp white crisp numbers */
-            font-size: 32px !important;
-            font-weight: 700 !important;
-        }
-    </style>
-""", unsafe_allow_html=True)
+        st.markdown("<br><h5 style='color:#1E1E2F;'>📈 Continuous Thermal Profile Stream (5-Min Snapshots)</h5>", unsafe_allow_html=True)
+        st.line_chart(temp_df.set_index('Time'), color=["#0068C9", "#29B6F6", "#FF4B4B"])
+    else:
+        st.warning("⚠️ Telemetry matrix idling. Paste your 'DataLog_*.csv' files into your designated directory path to activate streaming.")
