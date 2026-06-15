@@ -4,319 +4,332 @@ import glob
 import os
 import warnings
 
-# Suppress harmless openpyxl styling/validation warnings
+# Suppress harmless openpyxl styling/validation alerts
 warnings.filterwarnings("ignore", category=UserWarning)
 
-# Configure wide premium responsive structural layout
+# --- MODERN WEB LAYOUT SETUP ---
 st.set_page_config(
-    page_title="Plant Operational Intelligence Hub",
+    page_title="Plant Operational Intelligence Center",
     page_icon="🏭",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- MODERN STYLING INJECTION ---
+# --- PREMIUM BRANDING STYLING ---
 st.markdown("""
     <style>
-        .block-container { padding-top: 2rem; padding-bottom: 2rem; }
-        .stTabs [data-baseweb="tab-list"] { gap: 10px; }
+        .block-container { padding-top: 1.5rem; padding-bottom: 2rem; }
+        .stTabs [data-baseweb="tab-list"] { gap: 8px; }
         .stTabs [data-baseweb="tab"] {
-            background-color: #F8F9FA;
-            border: 1px solid #E6E8EC;
+            background-color: #F0F2F6;
+            border: 1px solid #DFE3E8;
             border-radius: 6px 6px 0px 0px;
-            padding: 10px 20px;
+            padding: 12px 24px;
             font-weight: 600;
-            color: #4A4A6A;
+            color: #2E3A59;
+            transition: all 0.3s ease;
         }
-        .stTabs [data-baseweb="tab"]:hover { color: #00D2FF; }
+        .stTabs [data-baseweb="tab"]:hover { color: #00D2FF; background-color: #E4E7EB; }
         .stTabs [data-baseweb="tab"][aria-selected="true"] {
             background-color: #1E1E2F;
-            color: white;
+            color: #FFFFFF;
             border-color: #1E1E2F;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
         }
-        .kpi-card {
+        div[data-testid="stMetric"] {
             background-color: #FFFFFF;
-            padding: 20px;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-            border-left: 5px solid #00D2FF;
-            text-align: left;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.03);
         }
     </style>
 """, unsafe_allow_html=True)
 
 
-# --- SIDEBAR CONTROL CENTER & PATH RESOLVER ---
+# --- SIDEBAR MASTER PIPELINE MANAGER ---
 st.sidebar.markdown("""
-    <div style="background-color:#1E1E2F; padding:15px; border-radius:8px; margin-bottom:20px;">
-        <h3 style="color:white; margin:0; font-size:16px;">⚙️ System Configuration</h3>
+    <div style="background-color:#1E1E2F; padding:15px; border-radius:8px; margin-bottom:15px; border-left:4px solid #00D2FF;">
+        <h3 style="color:white; margin:0; font-size:16px; font-weight:600;">🛠️ Automation Config</h3>
     </div>
 """, unsafe_allow_html=True)
 
-# Interactive OneDrive Path adjustments
-user_name = st.sidebar.text_input("Windows Username Shortcut", value="YourName")
-company_name = st.sidebar.text_input("OneDrive Company Name", value="CompanyName")
+user_name = st.sidebar.text_input("Windows Username", value="aayush")
+company_folder = st.sidebar.text_input("OneDrive Company Folder", value="OneDrive")
 
-ONEDRIVE_PATH = f"C:/Users/{user_name}/OneDrive - {company_name}/Plant_Reports/"
+ONEDRIVE_PATH = f"C:/Users/{user_name}/{company_folder}/PlantData/"
 LOCAL_PATH = "./"
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 🔍 Live Data Source Pipeline")
+st.sidebar.markdown("### 🎛️ Network Connection Nodes")
 
-def get_valid_file_path(filename, search_pattern=False):
-    """Checks OneDrive first; if folder structure isn't verified, falls back locally."""
-    if search_pattern:
-        onedrive_files = glob.glob(os.path.join(ONEDRIVE_PATH, filename))
-        if onedrive_files:
-            return onedrive_files, "Cloud Sync Enabled"
-        local_files = glob.glob(os.path.join(LOCAL_PATH, filename))
-        return local_files, "Local Fallback Active" if local_files else "Missing"
+def resolve_file_pipeline(filename, is_pattern=False):
+    """Smarter path resolver prioritizing active synchronized directories."""
+    if is_pattern:
+        cloud_nodes = glob.glob(os.path.join(ONEDRIVE_PATH, filename))
+        if cloud_nodes: return cloud_nodes, "Cloud Sync Active"
+        local_nodes = glob.glob(os.path.join(LOCAL_PATH, filename))
+        return local_nodes, "Local Node Fallback" if local_nodes else "Disconnected"
     else:
-        onedrive_file = os.path.join(ONEDRIVE_PATH, filename)
-        if os.path.exists(onedrive_file):
-            return onedrive_file, "Cloud Sync Enabled"
+        cloud_node = os.path.join(ONEDRIVE_PATH, filename)
+        if os.path.exists(cloud_node): return cloud_node, "Cloud Sync Active"
         return os.path.join(LOCAL_PATH, filename), "Local Active"
 
-# Network/File pipeline checks to display visual status indicators on sidebar
-temp_files, temp_status = get_valid_file_path("DataLog_*.csv", search_pattern=True)
-excel_file, excel_status = get_valid_file_path('Power consumption freon.xlsx')
-excel_exists = os.path.exists(excel_file)
+# Network telemetry check flags for status gauges
+temp_nodes, temp_status = resolve_file_pipeline("DataLog_*.csv", is_pattern=True)
+excel_node, excel_status = resolve_file_pipeline('Power consumption freon.xlsx')
+excel_connected = os.path.exists(excel_node)
 
-if temp_status == "Cloud Sync Enabled" or temp_status == "Local Fallback Active":
-    st.sidebar.success(f"🌡️ Telemetry Logs: {temp_status}")
+if temp_status != "Disconnected":
+    st.sidebar.success(f"🌡️ Temperature Feed: {temp_status}")
 else:
-    st.sidebar.error("❌ Telemetry Logs: File Data Interrupted")
+    st.sidebar.error("❌ Temperature Feed: Signal Interrupted")
 
-if excel_exists:
-    st.sidebar.success(f"⚡ Energy Asset: Connected")
+if excel_connected:
+    st.sidebar.success(f"⚡ Freon/Ammonia Hub: Connected")
 else:
-    st.sidebar.error("❌ Energy Asset: Workbook Missing")
+    st.sidebar.error("❌ Freon/Ammonia Hub: Workbook Offline")
 
 
-# --- ENGINE TO REPAIR MIXED DATE FORMATS ---
-def parse_power_sheet_date(val):
-    val = str(val).strip()
-    if not val or val == 'nan' or val.lower() == 'date' or val.lower() == 'total':
-        return pd.NaT
-    if ' ' in val:
-        val = val.split(' ')[0]
-    if '/' in val:
-        return pd.to_datetime(val, dayfirst=True, errors='coerce')
-    if '-' in val:
-        parts = val.split('-')
-        if len(parts) == 3:
-            if len(parts[0]) == 4 and parts[2] == '04':
-                return pd.Timestamp(year=2026, month=4, day=int(parts[1]))
-            elif len(parts[2]) == 4 and parts[1] == '04':
-                return pd.Timestamp(year=2026, month=4, day=int(parts[0]))
-    return pd.to_datetime(val, errors='coerce')
+# --- FAST VECTORIZED DATE CONVERTER ---
+def fast_parse_dates(series):
+    """Efficiently cleans and formats inconsistent plant logging timestamps."""
+    string_series = series.astype(str).str.strip().str.split(' ').str[0]
+    cleaned_dates = pd.to_datetime(string_series, errors='coerce', dayfirst=True)
+    return cleaned_dates
 
 
-# --- DATA PIPELINE LOADERS ---
+# --- CACHED HIGH-SPEED DATA PIPELINES ---
 @st.cache_data
-def load_temperature_data():
-    files, _ = get_valid_file_path("DataLog_*.csv", search_pattern=True)
-    if not files:
-        return None
-    all_dfs = []
-    target_cols = ['Time', 'Dough Cooler2 Temp', 'Dough Cooler1 Temp', 'Perishable Cooler Temp']
+def load_cached_telemetry():
+    files, _ = resolve_file_pipeline("DataLog_*.csv", is_pattern=True)
+    if not files: return None
+    
+    target_columns = ['Time', 'Dough Cooler2 Temp', 'Dough Cooler1 Temp', 'Perishable Cooler Temp']
+    loaded_frames = []
     
     for file in files:
         df = pd.read_csv(file)
         df.columns = df.columns.str.strip()
-        if all(col in df.columns for col in target_cols):
-            df = df[target_cols].copy()
-            for col in target_cols[1:]:
-                if df[col].dtype == object:
-                    df[col] = df[col].astype(str).str.replace(r'.*NOP.*', '', regex=True)
-                df[col] = pd.to_numeric(df[col], errors='coerce').ffill().bfill()
-            df['Time'] = pd.to_datetime(df['Time'], dayfirst=True, errors='coerce')
-            df['Time'] = df['Time'].apply(lambda x: x.replace(month=7) if pd.notnull(x) else x)
-            all_dfs.append(df)
+        if all(c in df.columns for c in target_columns):
+            sub_df = df[target_columns].copy()
+            for c in target_columns[1:]:
+                if sub_df[c].dtype == object:
+                    sub_df[c] = sub_df[c].astype(str).str.replace(r'.*NOP.*', '0', regex=True)
+                sub_df[c] = pd.to_numeric(sub_df[c], errors='coerce').ffill().bfill()
+            sub_df['Time'] = pd.to_datetime(sub_df['Time'], dayfirst=True, errors='coerce')
+            loaded_frames.append(sub_df)
             
-    if not all_dfs:
-        return None
-    return pd.concat(all_dfs, ignore_index=True).drop_duplicates(subset=['Time']).sort_values(by='Time')
+    if not loaded_frames: return None
+    return pd.concat(loaded_frames, ignore_index=True).drop_duplicates(subset=['Time']).sort_values(by='Time')
 
 @st.cache_data
-def load_excel_sheet(sheet_name, row_header):
-    file_path, _ = get_valid_file_path('Power consumption freon.xlsx')
-    if not os.path.exists(file_path):
-        return None
+def load_dynamic_excel_sheet(sheet_name, fallback_header_row):
+    file_path, _ = resolve_file_pipeline('Power consumption freon.xlsx')
+    if not os.path.exists(file_path): return None
     try:
-        df = pd.read_excel(file_path, sheet_name=sheet_name, header=row_header, engine='openpyxl')
+        # Step 1: Read raw without header rules to self-detect alignment offsets
+        df_check = pd.read_excel(file_path, sheet_name=sheet_name, header=None, engine='openpyxl')
+        discovered_idx = fallback_header_row
+        
+        for idx in range(min(10, len(df_check))):
+            row_items = [str(x).lower() for x in df_check.iloc[idx].dropna().tolist()]
+            if any('date' in item or 'stop time' in item for item in row_items):
+                discovered_idx = idx
+                break
+                
+        # Step 2: Extract data from discovered index row
+        df = pd.read_excel(file_path, sheet_name=sheet_name, header=discovered_idx, engine='openpyxl')
         df = df.dropna(axis=1, how='all')
         if not df.empty:
             first_col = df.columns[0]
             df = df[df[first_col].astype(str).str.strip().str.lower() != 'total']
+            # Clean up messy column names showing up as Unnamed pointers
+            df.columns = [f"Saving in hrs" if "Unnamed:" in str(c) and idx==11 else str(c) for idx, c in enumerate(df.columns)]
         return df
     except:
         return None
 
 
-# --- MAIN HEADER DESIGN BLOCK ---
+# --- CONTROL PANEL SYSTEM HEADER ---
 st.markdown("""
-    <div style="background-color:#1E1E2F; padding:24px; border-radius:12px; margin-bottom:25px; border-left:8px solid #00D2FF; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
-        <h1 style="color:#FFFFFF; margin:0; font-size:34px; font-family:sans-serif; font-weight:700; letter-spacing:-0.5px;">🏭 Plant Operations Intelligence Hub</h1>
-        <p style="color:#A3A3C2; margin:6px 0 0 0; font-size:16px; font-family:sans-serif;">Real-Time Thermal Telemetry Monitoring & Infrastructure Energy Audits</p>
+    <div style="background-color:#1E1E2F; padding:24px; border-radius:12px; margin-bottom:25px; border-left:8px solid #00D2FF; box-shadow: 0 4px 15px rgba(0,0,0,0.08);">
+        <h1 style="color:#FFFFFF; margin:0; font-size:32px; font-family:sans-serif; font-weight:700; letter-spacing:-0.5px;">🏭 Plant Operations Intelligence Hub</h1>
+        <p style="color:#A3A3C2; margin:6px 0 0 0; font-size:15px; font-family:sans-serif;">High-Efficiency Telemetry Data Pipelines & Automated Infrastructure Asset Audits</p>
     </div>
 """, unsafe_allow_html=True)
 
 
-# --- INITIALIZE TAB NAVIGATION ---
+# --- GENERATE CLEAN NAVIGATION GRIDS ---
 tab_thermal, tab_power, tab_runtime, tab_compressor = st.tabs([
     "🌡️ Thermal Monitoring", 
-    "⚡ Energy & Savings", 
+    "⚡ Energy & Savings Balance", 
     "⚙️ Asset Duty Cycles", 
-    "📉 Compressor Optimization"
+    "📉 Compressor Optimization Suite"
 ])
 
 
 # ==========================================================
-# SYSTEM TAB 1: TEMPERATURE TELEMETRY PANEL
+# TAB 1: REAL-TIME THERMAL SNAPSHOTS
 # ==========================================================
 with tab_thermal:
     st.markdown("### 📊 Cryogenic & Cold Storage Thermal Profiles")
-    temp_df = load_temperature_data()
+    temp_df = load_cached_telemetry()
 
     if temp_df is not None and not temp_df.empty:
-        latest_row = temp_df.iloc[-1]
+        latest = temp_df.iloc[-1]
         
-        # Premium responsive KPI metric display blocks
-        kpi1, kpi2, kpi3 = st.columns(3)
-        with kpi1:
-            st.markdown(f"""
-                <div class="kpi-card" style="border-left-color: #0068C9;">
-                    <span style="color:#6C757D; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:1px;">❄️ Dough Cooler 1</span>
-                    <h2 style="margin:8px 0 0 0; color:#1A1D20; font-size:32px; font-weight:700;">{latest_row['Dough Cooler1 Temp']:.2f} °C</h2>
-                    <p style="margin:4px 0 0 0; color:#28A745; font-size:12px; font-weight:500;">● Active Streaming</p>
-                </div>
-            """, unsafe_allow_html=True)
-        with kpi2:
-            st.markdown(f"""
-                <div class="kpi-card" style="border-left-color: #29B6F6;">
-                    <span style="color:#6C757D; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:1px;">❄️ Dough Cooler 2</span>
-                    <h2 style="margin:8px 0 0 0; color:#1A1D20; font-size:32px; font-weight:700;">{latest_row['Dough Cooler2 Temp']:.2f} °C</h2>
-                    <p style="margin:4px 0 0 0; color:#28A745; font-size:12px; font-weight:500;">● Active Streaming</p>
-                </div>
-            """, unsafe_allow_html=True)
-        with kpi3:
-            st.markdown(f"""
-                <div class="kpi-card" style="border-left-color: #FF4B4B;">
-                    <span style="color:#6C757D; font-size:12px; font-weight:600; text-transform:uppercase; letter-spacing:1px;">🥩 Perishable Storage</span>
-                    <h2 style="margin:8px 0 0 0; color:#1A1D20; font-size:32px; font-weight:700;">{latest_row['Perishable Cooler Temp']:.2f} °C</h2>
-                    <p style="margin:4px 0 0 0; color:#28A745; font-size:12px; font-weight:500;">● Active Streaming</p>
-                </div>
-            """, unsafe_allow_html=True)
+        k1, k2, k3 = st.columns(3)
+        with k1:
+            st.markdown("<div style='margin-bottom: -15px; font-size:13px; color:#555; font-weight:bold;'>❄️ DOUGH COOLER 1</div>", unsafe_allow_html=True)
+            st.metric(label="Live Temperature Stream", value=f"{latest['Dough Cooler1 Temp']:.2f} °C", delta="Normal Node")
+        with k2:
+            st.markdown("<div style='margin-bottom: -15px; font-size:13px; color:#555; font-weight:bold;'>❄️ DOUGH COOLER 2</div>", unsafe_allow_html=True)
+            st.metric(label="Live Temperature Stream", value=f"{latest['Dough Cooler2 Temp']:.2f} °C", delta="Normal Node")
+        with k3:
+            st.markdown("<div style='margin-bottom: -15px; font-size:13px; color:#555; font-weight:bold;'>🥩 PERISHABLE STORAGE</div>", unsafe_allow_html=True)
+            st.metric(label="Live Temperature Stream", value=f"{latest['Perishable Cooler Temp']:.2f} °C", delta="System Load Alert", delta_color="inverse")
         
-        st.markdown("<br><h5 style='color:#2E3A59;'>📈 Continuous Temperature Baseline Analytics</h5>", unsafe_allow_html=True)
+        st.markdown("<br><h5 style='color:#1E1E2F;'>📈 Continuous Thermal Profile Stream (5-Min Snapshots)</h5>", unsafe_allow_html=True)
         st.line_chart(temp_df.set_index('Time'), color=["#0068C9", "#29B6F6", "#FF4B4B"])
     else:
-        st.warning("⚠️ Displaying structural frames. Please ensure your 'DataLog_*.csv' telemetry logs are added to the folder path.")
+        st.warning("⚠️ Telemetry matrix idling. Paste your 'DataLog_*.csv' files into your designated directory path to activate streaming.")
 
 
 # ==========================================================
-# SYSTEM TAB 2: POWER CONSUMPTION & METRICS
+# TAB 2: POWER LOAD BALANCES & SAVINGS
 # ==========================================================
 with tab_power:
-    st.markdown("### 🔋 Core Load Distribution & Operational Savings")
-    power_sheet = load_excel_sheet('Sheet1', row_header=1)
+    st.markdown("### 🔋 Core Load Distribution & Operational Savings Ledger")
+    power_sheet = load_dynamic_excel_sheet('Sheet1', fallback_header_row=1)
 
     if power_sheet is not None and not power_sheet.empty:
         p_df = power_sheet.copy()
-        p_df['Date'] = p_df['Date'].apply(parse_power_sheet_date)
+        p_df['Date'] = fast_parse_dates(p_df['Date'])
         p_df = p_df.dropna(subset=['Date']).sort_values(by='Date')
         
+        # Safe numeric parsing across primary columns
         p_df['Dunkin Blast'] = pd.to_numeric(p_df['Dunkin Blast'], errors='coerce').fillna(0)
         p_df['CLC Blast'] = pd.to_numeric(p_df['CLC Blast'], errors='coerce').fillna(0)
-        p_df['Savings'] = pd.to_numeric(p_df['Savings'], errors='coerce').fillna(0)
+        
+        # Detect the correct Savings tracker column dynamically
+        savings_col = [c for c in p_df.columns if 'savings' in str(c).lower()]
+        savings_title = savings_col[0] if savings_col else 'Savings'
+        p_df[savings_title] = pd.to_numeric(p_df[savings_title], errors='coerce').fillna(0)
         
         filtered_p_df = p_df[p_df['Dunkin Blast'] < 500000].copy()
         
         if not filtered_p_df.empty:
-            dunkin_sum = filtered_p_df['Dunkin Blast'].sum()
-            clc_sum = filtered_p_df['CLC Blast'].sum()
-            savings_sum = filtered_p_df['Savings'].sum()
+            # Vectorized metrics summaries
+            dunkin_tot = filtered_p_df['Dunkin Blast'].sum()
+            clc_tot = filtered_p_df['CLC Blast'].sum()
+            savings_tot = filtered_p_df[savings_title].sum()
             
-            # Premium native metric row
             sm1, sm2, sm3 = st.columns(3)
             with sm1:
-                st.container(border=True).metric("Dunkin Blast Accumulated Draw", f"{dunkin_sum:,.1f} kWh", delta="System Load")
+                st.metric("Dunkin Blast Accumulated Power", f"{dunkin_tot:,.1f} kWh", delta="Infrastructure Load")
             with sm2:
-                st.container(border=True).metric("CLC Blast Accumulated Draw", f"{clc_sum:,.1f} kWh", delta="System Load")
+                st.metric("CLC Blast Accumulated Power", f"{clc_tot:,.1f} kWh", delta="Infrastructure Load")
             with sm3:
-                st.container(border=True).metric("Net Financial Optimization Balance", f"INR {savings_sum:,.2f}", delta="Efficiency Savings", delta_color="inverse")
+                st.metric("Net Financial Optimization Total", f"INR {savings_tot:,.2f}", delta="Calculated Efficiency Balance", delta_color="inverse")
             
-            # Side-by-side analytical graphical distribution grid
-            graph_col1, graph_col2 = st.columns(2)
-            with graph_col1:
-                st.markdown("<h5 style='color:#2E3A59;'>⚡ Comparative Infrastructure Heavy Draw Profiles</h5>", unsafe_allow_html=True)
+            g_col1, g_col2 = st.columns(2)
+            with g_col1:
+                st.markdown("<h5 style='color:#1E1E2F;'>⚡ Load Demand Contrast (Area Metric Draw)</h5>", unsafe_allow_html=True)
                 st.area_chart(filtered_p_df.set_index('Date')[['Dunkin Blast', 'CLC Blast']], color=["#1A5F7A", "#57C5B6"])
-            with graph_col2:
-                st.markdown("<h5 style='color:#2E3A59;'>💰 Daily Financial Efficiency Margins</h5>", unsafe_allow_html=True)
-                st.bar_chart(filtered_p_df.set_index('Date')['Savings'], color="#28A745")
-            
-            # OneDrive background sync logic validation
-            if os.path.exists(ONEDRIVE_PATH):
-                filtered_p_df.to_csv(os.path.join(ONEDRIVE_PATH, "Clean_Daily_Power_Metrics.csv"), index=False)
+            with g_col2:
+                st.markdown("<h5 style='color:#1E1E2F;'>💰 Daily Financial Optimization Tracking</h5>", unsafe_allow_html=True)
+                st.bar_chart(filtered_p_df.set_index('Date')[savings_title], color="#28A745")
                 
             st.markdown("<br>", unsafe_allow_html=True)
-            with st.expander("🔍 View Detailed Energy Ledger (Sheet 1 Raw)"):
+            with st.expander("🔍 Expand Detailed Energy Distribution Log (Sheet 1 Raw)"):
                 st.dataframe(filtered_p_df, use_container_width=True, hide_index=True)
     else:
-        st.info("ℹ️ 'Power consumption freon.xlsx' (Sheet 1) not discovered or layout values are currently empty.")
+        st.info("ℹ️ 'Power consumption freon.xlsx' (Sheet 1) is currently empty or file pointer path is broken.")
 
 
 # ==========================================================
-# SYSTEM TAB 3: ASSET DUTY CYCLES
+# TAB 3: ASSET OPERATIONAL RUN TIME DUTY CYCLES
 # ==========================================================
 with tab_runtime:
     st.markdown("### ⚙️ Cold Storage Unit Active Duty Cycles")
-    runtime_sheet = load_excel_sheet('Sheet2', row_header=2)
+    runtime_sheet = load_dynamic_excel_sheet('Sheet2', fallback_header_row=2)
 
     if runtime_sheet is not None and not runtime_sheet.empty:
         r_df = runtime_sheet.copy()
-        first_col = r_df.columns[0]
-        r_df = r_df[r_df[first_col].astype(str).str.contains('Date|From|Total') == False]
-        r_df[first_col] = r_df[first_col].apply(parse_power_sheet_date)
-        r_df = r_df.dropna(subset=[first_col]).sort_values(by=first_col)
+        f_col = r_df.columns[0]
         
-        kwh_cols = [c for c in r_df.columns if 'KWH' in c]
-        for col in kwh_cols:
-            r_df[col] = pd.to_numeric(r_df[col], errors='coerce').fillna(0)
+        r_df = r_df[r_df[f_col].astype(str).str.contains('Date|From|Total|Running') == False]
+        r_df[f_col] = fast_parse_dates(r_df[f_col])
+        r_df = r_df.dropna(subset=[f_col]).sort_values(by=f_col)
+        
+        kwh_fields = [c for c in r_df.columns if 'KWH' in str(c).upper()]
+        for field in kwh_fields:
+            r_df[field] = pd.to_numeric(r_df[field], errors='coerce').fillna(0)
             
-        if kwh_cols and not r_df.empty:
-            st.markdown(f"<h5 style='color:#2E3A59;'>⚡ Measured Running Capacity Draw Performance ({kwh_cols[0]})</h5>", unsafe_allow_html=True)
-            st.bar_chart(r_df.set_index(first_col)[kwh_cols[0]], color="#FF9F43")
+        if kwh_fields and not r_df.empty:
+            st.markdown(f"<h5 style='color:#1E1E2F;'>⚡ Active Load Consumption Volume Chart ({kwh_fields[0]})</h5>", unsafe_allow_html=True)
+            st.bar_chart(r_df.set_index(f_col)[kwh_fields[0]], color="#FF9F43")
             
         st.markdown("<br>", unsafe_allow_html=True)
-        with st.expander("🔍 View Detailed Operational Running Duty Logs (Sheet 2 Raw)"):
+        with st.expander("🔍 Expand Active Duty Asset Ledger (Sheet 2 Raw)"):
             st.dataframe(r_df, use_container_width=True, hide_index=True)
     else:
-        st.info("ℹ️ 'Power consumption freon.xlsx' (Sheet 2) not discovered or layout values are currently empty.")
+        st.info("ℹ️ 'Power consumption freon.xlsx' (Sheet 2) is currently empty or file pointer path is broken.")
 
 
 # ==========================================================
-# SYSTEM TAB 4: COMPRESSOR MAINTENANCE OPTIMIZATION
+# TAB 4: NEW COMPRESSOR OPTIMIZATION & GRAPHICAL SUITE
 # ==========================================================
 with tab_compressor:
-    st.markdown("### 📉 Compressor Machinery Optimization Analytics")
-    compressor_sheet = load_excel_sheet('Sheet3', row_header=3)
+    st.markdown("### 📉 Compressor Machinery Optimization Analytics Suite")
+    compressor_sheet = load_dynamic_excel_sheet('Sheet3', fallback_header_row=3)
 
     if compressor_sheet is not None and not compressor_sheet.empty:
         c_df = compressor_sheet.copy()
-        c_df = c_df[c_df.iloc[:, 0].astype(str).str.strip().str.lower().str.contains('date|total') == False]
-        c_df.iloc[:, 0] = c_df.iloc[:, 0].apply(parse_power_sheet_date)
+        
+        # Clean out multi-level descriptive headers sitting in data rows
+        c_df = c_df[c_df.iloc[:, 0].astype(str).str.strip().str.lower().str.contains('date|total|stop|start') == False]
+        c_df.iloc[:, 0] = fast_parse_dates(c_df.iloc[:, 0])
         c_df = c_df.dropna(subset=[c_df.columns[0]]).sort_values(by=c_df.columns[0])
         
-        if 'Saving in hrs' in c_df.columns:
-            c_df['Saving in hrs'] = pd.to_numeric(c_df['Saving in hrs'], errors='coerce').fillna(0)
+        # Locate the exact savings index column
+        savings_hr_col = [c for c in c_df.columns if 'saving' in str(c).lower() or 'hrs' in str(c).lower()]
+        
+        if savings_hr_col:
+            target_hr_col = savings_hr_col[0]
+            c_df[target_hr_col] = pd.to_numeric(c_df[target_hr_col], errors='coerce').fillna(0)
             
-            st.markdown("<h5 style='color:#2E3A59;'>📉 Calculated Maintenance Savings Windows (Total Hours)</h5>", unsafe_allow_html=True)
-            st.line_chart(c_df.set_index(c_df.columns[0])['Saving in hrs'], color="#9B5DE5")
+            # CRITICAL: Vectorized cumulative running total calculation row
+            c_df['Cumulative Saved Run Hours'] = c_df[target_hr_col].cumsum()
+            
+            # Display metrics cards
+            tot_saved_hours = c_df[target_hr_col].sum()
+            avg_saved_hours = c_df[target_hr_col].mean()
+            
+            m1, m2 = st.columns(2)
+            with m1:
+                st.metric("Total Accumulated Saved Machinery Run Time", f"{tot_saved_hours:,.1f} Hours", delta="Optimization Gain", delta_color="inverse")
+            with m2:
+                st.metric("Average Daily Breaks/Savings Window", f"{avg_saved_hours:.1f} Hours / Day", delta="Machinery Rest Standard")
+            
+            # NEW COMPRESSOR GRAPHICAL ANALYTICS LAYOUT
+            st.markdown("---")
+            graph_col1, graph_col2 = st.columns(2)
+            
+            with graph_col1:
+                st.markdown("<h5 style='color:#1E1E2F;'>🕒 Chart A: Daily Maintenance Optimization Windows (Hours)</h5>", unsafe_allow_html=True)
+                st.line_chart(c_df.set_index(c_df.columns[0])[target_hr_col], color="#9B5DE5")
+                st.caption("Tracks day-by-day downtime allocation and optimization intervals across June.")
+                
+            with graph_col2:
+                st.markdown("<h5 style='color:#1E1E2F;'>📈 Chart B: Progressive Running Sum (Cumulative Hours Saved)</h5>", unsafe_allow_html=True)
+                st.area_chart(c_df.set_index(c_df.columns[0])['Cumulative Saved Run Hours'], color="#F15BB5")
+                st.caption("Demonstrates the absolute accumulated volume of saved operating hours over the month layout.")
+        else:
+            st.warning("⚠️ Optimization column ('Saving in hrs') not detected in Sheet 3 header layers.")
             
         st.markdown("<br>", unsafe_allow_html=True)
-        with st.expander("🔍 View Detailed Compressor Runtime Ledger (Sheet 3 Raw)"):
+        with st.expander("🔍 Expand Compressor Runtime Ledger (Sheet 3 Raw)"):
             st.dataframe(c_df, use_container_width=True, hide_index=True)
     else:
-        st.info("ℹ️ 'Power consumption freon.xlsx' (Sheet 3) not discovered or layout values are currently empty.")
+        st.info("ℹ️ 'Power consumption freon.xlsx' (Sheet 3) is currently empty or file pointer path is broken.")
