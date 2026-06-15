@@ -110,7 +110,7 @@ div[data-testid="stMetricValue"] div {
     color: #002D62;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    margin: 24px 0 14px 0;
+    margin: 32px 0 14px 0;
     padding-bottom: 10px;
     border-bottom: 2px solid #EEF2F6;
 }
@@ -309,7 +309,7 @@ tab_temp, tab_power, tab_runtime, tab_comp = st.tabs([
 
 
 # ==========================================================
-# TAB 1 — THERMODYNAMIC PROFILES (REWORKED STATISTICS)
+# TAB 1 — THERMODYNAMIC PROFILES (PREMIUM STATISTICS)
 # ==========================================================
 with tab_temp:
     temp_df = load_temperature_data()
@@ -327,7 +327,7 @@ with tab_temp:
         chart_df = temp_df.set_index('Time')[['Dough Cooler1 Temp', 'Dough Cooler2 Temp', 'Perishable Cooler Temp']]
         st.line_chart(chart_df, color=["#002D62", "#0EA5E9", "#E01934"])
 
-        # ── HIGH-END REWORKED THERMODYNAMIC STATISTICS MODULE ──
+        # ── FULLY REWORKED AND NEATENED THERMODYNAMIC STATISTICS MODULE ──
         st.markdown("""<div class="section-title">Cold-Chain Thermodynamic Quality & Stability Audits</div>""", unsafe_allow_html=True)
         
         summary_metrics = []
@@ -344,7 +344,7 @@ with tab_temp:
             
             summary_metrics.append({
                 "Asset Storage Unit": col.replace(" Temp", ""),
-                "Total Audited Logs": total_logs,
+                "Total Logs Audited": total_logs,
                 "Average Temp (°C)": round(mean_temp, 2),
                 "Peak Thermal Spike (°C)": round(max_temp, 2),
                 "Lowest Core Temp (°C)": round(min_temp, 2),
@@ -356,7 +356,7 @@ with tab_temp:
         df_summary_temp = pd.DataFrame(summary_metrics)
         st.dataframe(df_summary_temp, use_container_width=True, hide_index=True)
 
-        # LINKED SOURCE RECORDS GRID
+        # LINKED SOURCE RECORDS GRID SHOWING ALL RAW INTERAL ROWS
         st.markdown("""<div class="section-title">Chart Source Data — Comprehensive Telemetry Stream Logs</div>""", unsafe_allow_html=True)
         st.dataframe(temp_df, use_container_width=True, hide_index=True)
     else:
