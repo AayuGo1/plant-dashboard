@@ -6,28 +6,28 @@ import warnings
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 #  CORPORATE CROSS-SCREEN PAGE CONFIG
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="JFL – Plant Operations Dashboard",
     page_icon="🏭",
     layout="wide",
-    initial_sidebar_state="auto" # Auto collapses sidebar on mobile screens for clean space
+    initial_sidebar_state="auto"
 )
 
-# ─────────────────────────────────────────────
-#  MOBILE-RESPONSIVE ENTERPRISE STYLES
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
+#  PREMIUM LIGHT THEME & RESPONSIVE CSS INJECTION
+# ─────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-/* ── Corporate Typography & Fluid Canvas ── */
+/* ── Canvas Background & Typography ── */
 html, body, [class*="css"] { font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif; }
-.block-container { padding: 1.5rem 2.5rem 3rem; background: #F1F4F8; }
+.block-container { padding: 1.5rem 2.5rem 3rem; background: #F4F6F9; }
 
-/* ── Branded Mobile-Responsive Sidebar ── */
+/* ── Branded Left Navigation Sidebar ── */
 section[data-testid="stSidebar"] {
-    background: #002D62 !important; /* JFL Corporate Deep Navy */
+    background: #002D62 !important; /* JFL Deep Navy Blue */
     border-right: none !important;
 }
 section[data-testid="stSidebar"] * { color: #CBD5E0 !important; }
@@ -49,7 +49,54 @@ section[data-testid="stSidebar"] label {
     letter-spacing: 0.8px !important;
 }
 
-/* ── Fluid Tab Strip ── */
+/* ── Premium Light Theme Header Section ── */
+.jfl-header-container {
+    background: #FFFFFF;
+    border-radius: 8px;
+    padding: 24px;
+    margin-bottom: 24px;
+    border: 1px solid #E2E8F0;
+    border-left: 6px solid #E01934; /* JFL Brand Crimson Accent Stripe */
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02), 0 2px 4px -1px rgba(0,0,0,0.01);
+}
+.jfl-header-title {
+    font-size: 24px;
+    font-weight: 800;
+    color: #002D62;
+    letter-spacing: -0.5px;
+    line-height: 1.2;
+}
+.jfl-header-subtitle {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    color: #64748B;
+    margin-top: 4px;
+}
+.jfl-header-meta-box {
+    background: #F8FAFC;
+    border: 1px solid #E2E8F0;
+    border-radius: 6px;
+    padding: 10px 16px;
+    text-align: left;
+    height: 100%;
+}
+.jfl-meta-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #94A3B8;
+    margin-bottom: 2px;
+}
+.jfl-meta-value {
+    font-size: 13px;
+    font-weight: 700;
+    color: #002D62;
+}
+
+/* ── Tabs Strip ── */
 .stTabs [data-baseweb="tab-list"] {
     gap: 0;
     background: #FFFFFF;
@@ -62,7 +109,7 @@ section[data-testid="stSidebar"] label {
     border: none;
     border-bottom: 3px solid transparent;
     padding: 14px 22px;
-    font-size: 13px;
+    font-size: 12.5px;
     font-weight: 700;
     color: #64748B;
     letter-spacing: 0.2px;
@@ -71,11 +118,11 @@ section[data-testid="stSidebar"] label {
 .stTabs [data-baseweb="tab"]:hover { color: #002D62; }
 .stTabs [data-baseweb="tab"][aria-selected="true"] {
     color: #002D62 !important;
-    border-bottom: 3px solid #E01934 !important; /* JFL Crimson Accent */
+    border-bottom: 3px solid #E01934 !important;
     background: transparent !important;
 }
 
-/* ── Premium High-Contrast KPI Summary Blocks ── */
+/* ── KPI Cards ── */
 div[data-testid="stMetric"] {
     background: #FFFFFF !important;
     border: 1px solid #E2E8F0 !important;
@@ -86,14 +133,14 @@ div[data-testid="stMetric"] {
 }
 div[data-testid="stMetricLabel"] p {
     color: #64748B !important;
-    font-size: 11px !important;
+    font-size: 10.5px !important;
     font-weight: 700 !important;
     letter-spacing: 0.7px !important;
     text-transform: uppercase !important;
 }
 div[data-testid="stMetricValue"] div {
     color: #0F172A !important;
-    font-size: 28px !important;
+    font-size: 26px !important;
     font-weight: 800 !important;
     letter-spacing: -0.5px !important;
 }
@@ -102,7 +149,7 @@ div[data-testid="stMetricDelta"] div {
     font-weight: 600 !important;
 }
 
-/* ── Operational Title Dividers ── */
+/* ── Section Title ── */
 .sec-title {
     font-size: 11px;
     font-weight: 700;
@@ -114,7 +161,7 @@ div[data-testid="stMetricDelta"] div {
     border-bottom: 1px solid #E2E8F0;
 }
 
-/* ── Cross-Screen Status Alert Pill Boxes ── */
+/* ── Alert Containers ── */
 .alert-warn {
     background: #FFFBEB; border: 1px solid #FDE68A; border-left: 4px solid #F59E0B;
     border-radius: 6px; padding: 12px 16px; font-size: 13px; color: #92400E; margin-bottom:12px;
@@ -128,14 +175,8 @@ div[data-testid="stMetricDelta"] div {
     border-radius: 6px; padding: 12px 16px; font-size: 13px; color: #1E3A8A; margin-bottom:12px;
 }
 
-/* ── Compliance Progress Badges ── */
-.badge {
-    display: inline-block;
-    padding: 3px 10px;
-    border-radius: 20px;
-    font-size: 11px;
-    font-weight: 700;
-}
+/* ── Status Badges ── */
+.badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 700; }
 .badge-green { background:#D1FAE5; color:#065F46; }
 .badge-yellow { background:#FEF3C7; color:#92400E; }
 .badge-red { background:#FEE2E2; color:#991B1B; }
@@ -143,26 +184,19 @@ div[data-testid="stMetricDelta"] div {
 .status-ok  { background:#D1FAE5; color:#065F46; border:1px solid #A7F3D0; }
 .status-err { background:#FEE2E2; color:#991B1B; border:1px solid #FCA5A5; }
 
-/* ── Clean Fluid Table Grid Boundaries ── */
+/* ── Clean Dataframe Layouts ── */
 .stDataFrame { border-radius: 6px; overflow: hidden; }
 hr { border: none; border-top: 1px solid #E2E8F0; margin: 18px 0; }
 
-/* ─────────────────────────────────────────────────────────────
-   📱 ADVANCED MOBILE VIEWPORT OVERRIDE ENGINE (Media Queries)
-   ───────────────────────────────────────────────────────────── */
-@media (max-width: 768px) {
-    /* Compress outer layout canvas padding to maximize tracking area */
-    .block-container { padding: 1rem 1rem 2rem !important; }
-    
-    /* Auto-scale metrics layout so integers do not overflow cards boundary lines */
-    div[data-testid="stMetricValue"] div { font-size: 22px !important; font-weight: 700 !important; }
+/* ── Mobile UI Media Query Overrides ── */
+@media (max-width: 991px) {
+    .block-container { padding: 1rem 1.25rem 2rem !important; }
+    .jfl-header-container { padding: 16px !important; margin-bottom: 16px !important; }
+    .jfl-header-title { font-size: 18px !important; }
+    .jfl-header-meta-box { padding: 8px 12px !important; margin-top: 8px; }
+    div[data-testid="stMetricValue"] div { font-size: 22px !important; }
     div[data-testid="stMetric"] { padding: 14px 16px !important; }
-    
-    /* Condense tab strip heights so user choices stay horizontal without clipping */
-    .stTabs [data-baseweb="tab"] { padding: 10px 12px !important; font-size: 11.5px !important; }
-    
-    /* Shrink text labels inside alert ribbons */
-    .alert-ok, .alert-warn, .alert-info { padding: 10px 12px !important; font-size: 11.5px !important; }
+    .stTabs [data-baseweb="tab"] { padding: 10px 14px !important; font-size: 11.5px !important; }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -305,37 +339,23 @@ def load_excel_sheet(sheet_name, fallback_header_row):
 
 
 # ─────────────────────────────────────────────────────────────
-#  CORPORATE EXECUTIVE TOP BANNER
+#  REDESIGNED JUBILANT EXECUTIVE HEADER SECTION
 # ─────────────────────────────────────────────────────────────
 st.markdown("""
-<div style="display:flex; align-items:center; justify-content:space-between;
-            background:#FFFFFF; border-radius:8px; padding:18px 26px;
-            margin-bottom:22px; border:1px solid #E2E8F0;
-            border-left:6px solid #E01934;
-            box-shadow:0 1px 4px rgba(0,0,0,0.04);">
-    <div>
-        <div style="font-size:10px; font-weight:700; letter-spacing:1.3px;
-                    text-transform:uppercase; color:#94A3B8; margin-bottom:5px;">
-            Supply Chain &amp; Manufacturing · Noida Plant
+<div class="jfl-header-container">
+    <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px;">
+        <div style="flex: 1; min-width: 280px;">
+            <div class="jfl-header-subtitle">Supply Chain & Manufacturing · Noida Plant Group</div>
+            <div class="jfl-header-title">Plant Operational Intelligence Hub</div>
         </div>
-        <div style="font-size:22px; font-weight:800; color:#002D62; letter-spacing:-0.4px;">
-            Plant Operational Intelligence Hub
-        </div>
-    </div>
-    <div style="display:flex; gap:12px; align-items:center;">
-        <div style="text-align:right; background:#F8FAFC; border:1px solid #E2E8F0;
-                    border-radius:6px; padding:10px 16px; display:none; @media(min-width:769px){display:block;}">
-            <div style="font-size:9px; font-weight:700; letter-spacing:1px;
-                        text-transform:uppercase; color:#94A3B8;">Reporting Period</div>
-            <div style="font-size:13px; font-weight:700; color:#002D62;">
-                01 Jun – 06 Jun 2026
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; min-width: 240px;">
+            <div class="jfl-header-meta-box" style="flex: 1;">
+                <div class="jfl-meta-label">Reporting Window</div>
+                <div class="jfl-meta-value">01 Jun – 06 Jun 2026</div>
             </div>
-        </div>
-        <div style="text-align:right; background:#002D62; border-radius:6px; padding:10px 16px;">
-            <div style="font-size:9px; font-weight:700; letter-spacing:1px;
-                        text-transform:uppercase; color:#94A3B8;">Entity</div>
-            <div style="font-size:13px; font-weight:700; color:#FFFFFF;">
-                JFL
+            <div class="jfl-header-meta-box" style="flex: 1; border-top: 1px solid #E2E8F0;">
+                <div class="jfl-meta-label">Corporate Entity</div>
+                <div class="jfl-meta-value" style="color: #E01934;">Jubilant FoodWorks</div>
             </div>
         </div>
     </div>
@@ -343,7 +363,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# --- ATTACH RESPONSIVE NAVIGATION TABS ---
+# --- NAVIGATION DECK ---
 tab_temp, tab_power, tab_runtime, tab_comp = st.tabs([
     "🌡️  Cold Storage Temperatures",
     "⚡  Energy & Cost Savings",
@@ -353,7 +373,7 @@ tab_temp, tab_power, tab_runtime, tab_comp = st.tabs([
 
 
 # ==============================================================================
-#  TAB 1 — THERMODYNAMIC PROFILES (FLUID METRICS WITH CONFIG)
+#  TAB 1 — COLD STORAGE TEMPERATURES
 # ==============================================================================
 with tab_temp:
     temp_df = load_temperature_data()
@@ -361,9 +381,9 @@ with tab_temp:
     if temp_df is not None and not temp_df.empty:
         latest = temp_df.iloc[-1]
         sensors = ['Dough Cooler1 Temp', 'Dough Cooler2 Temp', 'Perishable Cooler Temp']
-        THRESHOLD = 4.0  # °C Food safety compliance standard limit
+        THRESHOLD = 4.0  # °C
 
-        # ── Summary KPIs (Auto stacks into vertical sequence on mobile) ──
+        # ── Summary KPIs ──
         c1, c2, c3, c4 = st.columns([1,1,1,1.2])
         with c1: st.metric("Dough Cooler 1", f"{latest['Dough Cooler1 Temp']:.2f} °C")
         with c2: st.metric("Dough Cooler 2", f"{latest['Dough Cooler2 Temp']:.2f} °C")
@@ -375,7 +395,7 @@ with tab_temp:
             st.metric("Fleet Compliance", f"{fleet_compliance:.1f}%",
                       delta=f"{total_exc} spikes >4.0°C", delta_color="inverse")
 
-        # ── Analytical Responsive Trend Charts ───────────────────
+        # ── Ingestion Charts ──
         st.markdown('<div class="sec-title">Temperature Trends — Ingestion Stream Logs</div>', unsafe_allow_html=True)
         st.line_chart(temp_df.set_index('Time')[sensors], color=["#002D62", "#0EA5E9", "#E01934"])
 
@@ -385,7 +405,7 @@ with tab_temp:
         daily_avg.index = daily_avg.index.astype(str)
         st.bar_chart(daily_avg, color=["#002D62", "#0EA5E9", "#E01934"])
 
-        # ── EXCELLENT COMPLIANCE CONFIGURATION GRID TABLE ──────────────
+        # ── Compliance Table Summary ──
         st.markdown('<div class="sec-title">Cold-Chain Thermodynamic Stability Audits</div>', unsafe_allow_html=True)
 
         labels = {
@@ -427,7 +447,7 @@ with tab_temp:
             }
         )
 
-        # ── Local Responsive Notification Alert Pill Boxes ──────
+        # ── Zone Alerts ──
         st.markdown('<div class="sec-title">Zone Alert Flags</div>', unsafe_allow_html=True)
         for col in sensors:
             exc = int((temp_df[col] > THRESHOLD).sum())
@@ -438,7 +458,6 @@ with tab_temp:
             else:
                 st.markdown(f'<div class="alert-warn">⚠ <strong>{label}</strong> — High load drift at {comp:.1f}% compliance. {exc} critical spikes above 4.0°C.</div>', unsafe_allow_html=True)
 
-        # ── Dynamic Underlying Data Expander Ledger ──────────
         st.markdown("<br>", unsafe_allow_html=True)
         with st.expander("Expand Tab Source Records — Telemetry Ingestion History"):
             st.dataframe(temp_df.drop(columns=['Date']), use_container_width=True, hide_index=True)
@@ -447,9 +466,9 @@ with tab_temp:
         st.markdown('<div class="alert-info"><strong>No telemetries loaded.</strong> Drop source DataLog files into directory to populate analytics.</div>', unsafe_allow_html=True)
 
 
-# ==============================================================================
-#  TAB 2 — ENERGY MANAGEMENT & SAVINGS
-# ==============================================================================
+# ==========================================================
+#  TAB 2 — ENERGY & COST SAVINGS
+# ==========================================================
 with tab_power:
     power_df = load_excel_sheet('Sheet1', fallback_header_row=1)
 
@@ -481,7 +500,6 @@ with tab_power:
             st.markdown('<div class="sec-title">Daily Financial Efficiency Recovery Curves (₹)</div>', unsafe_allow_html=True)
             st.bar_chart(p.set_index('Date')[savings_title], color="#16A34A")
 
-            # PREMIUM GRID OVERVIEW STATISTICS FOR TAB 2
             st.markdown('<div class="sec-title">Infrastructure Utility Summary Analysis Statistics</div>', unsafe_allow_html=True)
             stat_cols = ['Dunkin Blast', 'CLC Blast', savings_title]
             stats = p[stat_cols].describe().loc[['count','mean','min','max','std']].T.round(2)
@@ -510,9 +528,9 @@ with tab_power:
         st.markdown('<div class="alert-info">Infrastructure grid workbook source unmapped or empty.</div>', unsafe_allow_html=True)
 
 
-# ==============================================================================
-#  TAB 3 — PLANT ASSET CAPACITY & DUTY CYCLES
-# ==============================================================================
+# ==========================================================
+#  TAB 3 — ASSET DUTY CYCLES
+# ==========================================================
 with tab_runtime:
     runtime_df = load_excel_sheet('Sheet2', fallback_header_row=2)
 
@@ -529,14 +547,13 @@ with tab_runtime:
 
         if kwh_cols and not r.empty:
             c1, c2, c3 = st.columns(3)
-            with c1: st.metric("Consolidated Draw volume", f"{r[kwh_cols[0]].sum():,.0f} kWh")
+            with c1: st.metric("Consolidated Draw Volume", f"{r[kwh_cols[0]].sum():,.0f} kWh")
             with c2: st.metric("Peak Load Threshold", f"{r[kwh_cols[0]].max():,.0f} kWh")
             with c3: st.metric("Mean Daily Operational Load", f"{r[kwh_cols[0]].mean():,.0f} kWh")
 
             st.markdown(f'<div class="sec-title">Daily Measured Capacity Displacement Tracker — {kwh_cols[0]}</div>', unsafe_allow_html=True)
             st.bar_chart(r.set_index(fc)[kwh_cols[0]], color="#002D62")
 
-            # PREMIUM GRID OVERVIEW STATISTICS FOR TAB 3
             st.markdown('<div class="sec-title">Plant Component Duty Cycle Displacement Statistics</div>', unsafe_allow_html=True)
             stats_r = r[kwh_cols].describe().loc[['count','mean','min','max','std']].T.round(2)
             stats_r.insert(0, 'Aggregate Volume', r[kwh_cols].sum().round(2))
@@ -561,9 +578,9 @@ with tab_runtime:
         st.markdown('<div class="alert-info">Asset duty-cycle log workbook source unmapped or empty.</div>', unsafe_allow_html=True)
 
 
-# ==============================================================================
-#  TAB 4 — COMPRESSOR MAINTENANCE OPTIMIZATION SUITE
-# ==============================================================================
+# ==========================================================
+#  TAB 4 — COMPRESSOR OPTIMISATION
+# ==========================================================
 with tab_comp:
     comp_df = load_excel_sheet('Sheet3', fallback_header_row=3)
 
@@ -599,7 +616,6 @@ with tab_comp:
                 st.markdown('<div class="sec-title">Progressive Total Machinery Rest Accumulation (Running Sum)</div>', unsafe_allow_html=True)
                 st.area_chart(c.set_index(date_col)['Progressive Running Accumulation'], color="#FF9F1C")
 
-            # ── DESCENDING SORTED ASSET WEAR-AND-TEAR ANALYSIS FREQUENCY TRACKER ──
             st.markdown('<div class="sec-title">Asset Operational Degradation Risk Ranking (Cycle Counts)</div>', unsafe_allow_html=True)
             comp_metrics = {}
             for idx in range(1, 6):
@@ -611,7 +627,6 @@ with tab_comp:
             comp_chart_df = comp_chart_df.sort_values(by="Trigger Cycle Volume", ascending=False)
             st.bar_chart(comp_chart_df.set_index("Asset Component Node")["Trigger Cycle Volume"], color="#E01934")
 
-            # PREMIUM GRID OVERVIEW STATISTICS FOR TAB 4
             st.markdown('<div class="sec-title">Compressor Fleet Rest Optimization Efficiency Statistics</div>', unsafe_allow_html=True)
             stats_c = c[[sav_col]].describe().loc[['count','mean','min','max','std']].T.round(2)
             stats_c.insert(0, 'Total Optimized Rest', round(tot_hrs, 2))
