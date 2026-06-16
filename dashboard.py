@@ -380,7 +380,7 @@ tab_energy, tab_temp, tab_power, tab_runtime, tab_comp = st.tabs([
 ])
 
 # ==============================================================================
-#  TAB 1 — ACTIVE ENERGY METERS
+#  TAB 1 — ACTIVE ENERGY METERS (UPGRADED)
 # ==============================================================================
 with tab_energy:
     if e_df is not None and not e_df.empty:
@@ -393,26 +393,35 @@ with tab_energy:
         
         eq_cols = [c for c in [dunkin_col, clc_col, bmc_col, deep_col] if c is not None]
 
+        # Pre-calculate date labels for all charts to ensure consistency
+        x_dates = e_df['DateIndex'].dt.strftime('%d-%b').tolist()
+
+        # Helper function to safely sum columns and handle missing data
+        def get_sum(col_name):
+            if col_name and col_name in e_df.columns:
+                return pd.to_numeric(e_df[col_name], errors='coerce').sum()
+            return 0.0
+
         c1, c2, c3, c4, c5 = st.columns(5)
         with c1: st.metric("Total Days Recorded", f"{len(e_df)}")
-        with c2: st.metric("Dunkin Net Variance", f"{e_df[dunkin_col].sum() if dunkin_col else 0:,.1f}")
-        with c3: st.metric("CLC Net Variance",    f"{e_df[clc_col].sum() if clc_col else 0:,.1f}")
-        with c4: st.metric("BMC Net Variance",    f"{e_df[bmc_col].sum() if bmc_col else 0:,.1f}")
-        with c5: st.metric("Deep Net Variance",   f"{e_df[deep_col].sum() if deep_col else 0:,.1f}")
+        with c2: st.metric("Dunkin' Total Consump.", f"{get_sum(dunkin_col):,.1f} kWh")
+        with c3: st.metric("CLC Total Consump.",     f"{get_sum(clc_col):,.1f} kWh")
+        with c4: st.metric("BMC Total Consump.",     f"{get_sum(bmc_col):,.1f} kWh")
+        with c5: st.metric("Deep Freezer Consump.",  f"{get_sum(deep_col):,.1f} kWh")
 
         if consump_cols:
-            st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9 Channels (Strict 01 Jun - 15 Jun Window)</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sec-title">Daily Meter Channel Consumption Profile (V1 to V9)</div>', unsafe_allow_html=True)
             
             fig = go.Figure()
-            x_dates = e_df['DateIndex'].dt.strftime('%d-%b').tolist()
+            colors = ['#002D62', '#E01934', '#FF9F1C', '#16A34A', '#0EA5E9', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981']
             
-            for col in consump_cols:
+            for i, col in enumerate(consump_cols):
                 fig.add_trace(go.Scatter(
                     x=x_dates,
                     y=e_df[col].tolist(),
                     mode='lines+markers',
                     name=col,
-                    line=dict(width=2.5),
+                    line=dict(width=2.5, color=colors[i % len(colors)]),
                     marker=dict(size=5)
                 ))
                 
@@ -420,76 +429,127 @@ with tab_energy:
                 hovermode="x unified",
                 margin=dict(l=20, r=20, t=20, b=20),
                 height=420,
-                xaxis=dict(
-                    type='category',
-                    tickmode='array',
-                    tickvals=x_dates,
-                    fixedrange=True
-                ),
-                yaxis=dict(fixedrange=True),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+                xaxis=dict(type='category', tickmode='array', tickvals=x_dates, fixedrange=True),
+                yaxis=dict(title="Energy (kWh)", fixedrange=True),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)'
             )
             st.plotly_chart(fig, use_container_width=True)
 
         if eq_cols:
-            st.markdown('<div class="sec-title">Calculated Process Zone Loads (Cumulative Distribution)</div>', unsafe_allow_html=True)
-            bar_data = e_df[['DateIndex'] + eq_cols].copy()
-            bar_data['ChartDate'] = bar_data['DateIndex'].dt.strftime('%d-%b')
-            st.bar_chart(bar_data.set_index('ChartDate').drop(columns=['DateIndex']))
+            st.markdown('<div class="sec-title">Process Zone Daily Energy Consumption</div>', unsafe_allow_html=True)
+            
+            fig_zone = go.Figure()
+            zone_colors = {'dunkin': '#002D62', 'clc': '#FF9F1C', 'bmc': '#16A34A', 'deep': '#E01934'}
+            
+            for col in eq_cols:
+                col_lower = col.lower()
+                color = '#64748B'
+                for key, hex_color in zone_colors.items():
+                    if key in col_lower:
+                        color = hex_color
+                        break
+                
+                fig_zone.add_trace(go.Bar(
+                    x=x_dates,
+                    y=e_df[col].tolist(),
+                    name=col,
+                    marker_color=color
+                ))
+            
+            fig_zone.update_layout(
+                barmode='stack',
+                hovermode="x unified",
+                margin=dict(l=20, r=20, t=20, b=20),
+                height=400,
+                xaxis=dict(type='category', tickmode='array', tickvals=x_dates, fixedrange=True),
+                yaxis=dict(title="Energy (kWh)", fixedrange=True),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)'
+            )
+            st.plotly_chart(fig_zone, use_container_width=True)
 
-        st.markdown('<div class="sec-title">Daily Process Zone Net Energy Consumed (Chronological Progress Delta)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec-title">Day-over-Day Consumption Change (Δ vs Previous Day)</div>', unsafe_allow_html=True)
         
         diff_energy = pd.DataFrame()
-        diff_energy['ChartDate'] = e_df['DateIndex'].dt.strftime('%d-%b')
+        diff_energy['ChartDate'] = x_dates
         diff_cols = []
+        
         for col in eq_cols:
-            col_label = f"{col} Delta"
-            diff_energy[col_label] = (e_df[col] - e_df[col].shift(1)).fillna(0).values
+            col_label = f"{col} Δ"
+            # Simplified and robust delta calculation
+            diff_series = pd.to_numeric(e_df[col], errors='coerce').diff().fillna(0)
+            diff_energy[col_label] = diff_series.values
             diff_cols.append(col_label)
         
-        target_energy_row = diff_energy.iloc[-1] if not diff_energy.empty else None
-        
-        ec1, ec2, ec3, ec4 = st.columns(4)
-        with ec1:
-            val = target_energy_row.get(f"{dunkin_col} Delta", 0) if (target_energy_row is not None and dunkin_col) else 0
-            st.markdown(f"""
-            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #002D62;">
-                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Dunkin Consumption Delta</div>
-                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with ec2:
-            val = target_energy_row.get(f"{clc_col} Delta", 0) if (target_energy_row is not None and clc_col) else 0
-            st.markdown(f"""
-            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #FF9F1C;">
-                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">CLC Consumption Delta</div>
-                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with ec3:
-            val = target_energy_row.get(f"{bmc_col} Delta", 0) if (target_energy_row is not None and bmc_col) else 0
-            st.markdown(f"""
-            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #16A34A;">
-                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">BMC Consumption Delta</div>
-                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with ec4:
-            val = target_energy_row.get(f"{deep_col} Delta", 0) if (target_energy_row is not None and deep_col) else 0
-            st.markdown(f"""
-            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #E01934;">
-                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Deep Consumption Delta</div>
-                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
-            </div>
-            """, unsafe_allow_html=True)
+        if not diff_energy.empty:
+            target_energy_row = diff_energy.iloc[-1]
+            
+            ec1, ec2, ec3, ec4 = st.columns(4)
+            
+            def render_delta_metric(container, col_name, color, label):
+                if col_name and f"{col_name} Δ" in diff_energy.columns:
+                    val = target_energy_row[f"{col_name} Δ"]
+                    delta_str = f"{val:+,.1f} kWh"
+                    container.markdown(f"""
+                    <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid {color};">
+                        <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">{label} Daily Δ</div>
+                        <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{delta_str}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    container.markdown(f"""
+                    <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #CBD5E0;">
+                        <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">{label} Daily Δ</div>
+                        <div style="font-size:16px; font-weight:800; color:#94A3B8; margin-top:2px;">No Data</div>
+                    </div>
+                    """, unsafe_allow_html=True)
 
-        if diff_cols:
+            with ec1: render_delta_metric(ec1, dunkin_col, "#002D62", "Dunkin'")
+            with ec2: render_delta_metric(ec2, clc_col, "#FF9F1C", "CLC")
+            with ec3: render_delta_metric(ec3, bmc_col, "#16A34A", "BMC")
+            with ec4: render_delta_metric(ec4, deep_col, "#E01934", "Deep Freezer")
+
             st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
-            st.line_chart(diff_energy.set_index('ChartDate')[diff_cols])
+            
+            fig_delta = go.Figure()
+            delta_colors = ['#002D62', '#FF9F1C', '#16A34A', '#E01934']
+            for i, col in enumerate(diff_cols):
+                fig_delta.add_trace(go.Bar(
+                    x=x_dates,
+                    y=diff_energy[col].tolist(),
+                    name=col,
+                    marker_color=delta_colors[i % len(delta_colors)],
+                    opacity=0.8
+                ))
+            
+            fig_delta.update_layout(
+                barmode='group',
+                hovermode="x unified",
+                margin=dict(l=20, r=20, t=20, b=20),
+                height=350,
+                xaxis=dict(type='category', tickmode='array', tickvals=x_dates, fixedrange=True),
+                yaxis=dict(title="Δ Energy (kWh)", fixedrange=True),
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)'
+            )
+            st.plotly_chart(fig_delta, use_container_width=True)
 
-        st.markdown('<div class="sec-title">📥 Raw Data Inspector Portal</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
         with st.expander("📂 View Pre-Processed Active Energy File Data Table", expanded=False):
             st.dataframe(e_df.set_index('DateIndex'), use_container_width=True)
+            # Added download button for consistency with other tabs
+            csv_data = e_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="Download Active Energy Data as CSV",
+                data=csv_data,
+                file_name="processed_active_energy_data.csv",
+                mime="text/csv",
+                key="btn_download_energy"
+            )
     else:
         st.markdown('<div class="alert-info"><strong>No active energy data captured matching the current file window constraints.</strong></div>', unsafe_allow_html=True)
 
