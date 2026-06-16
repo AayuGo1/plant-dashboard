@@ -121,7 +121,7 @@ def fast_parse_dates(series):
     return parsed_df
 
 # ─────────────────────────────────────────────────────────────
-#  PROCESSED ENERGY FILE LOADER (TUNED 1-10 JUNE TIMELINE AXIS)
+#  PROCESSED ENERGY FILE LOADER
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_processed_energy_data():
@@ -145,14 +145,11 @@ def load_processed_energy_data():
         if not date_col:
             return None
             
-        # Parse Dates safely into formal Datetime timestamp instances
         df['DateIndex'] = pd.to_datetime(df[date_col].astype(str).str.strip(), errors='coerce')
         df = df.dropna(subset=['DateIndex'])
         
-        # Enforce exact reporting constraints matching June 1 to June 10, 2026
-        df = df[(df['DateIndex'] >= '2026-06-01') & (df['DateIndex'] <= '2026-06-10')]
-        
-        # Chronologically sequence data and map it directly onto a strict DatetimeIndex format
+        # Extended timeline mapping window up to 2026-06-15 to ingest all file elements
+        df = df[(df['DateIndex'] >= '2026-06-01') & (df['DateIndex'] <= '2026-06-15')]
         df = df.sort_values('DateIndex').set_index('DateIndex')
         
         for col in df.columns:
@@ -313,7 +310,7 @@ with st.sidebar:
 #  HEADER SYSTEM
 # ─────────────────────────────────────────────────────────────
 e_df = load_processed_energy_data()
-date_range_str = "01 Jun 2026 – 10 Jun 2026" if e_df is not None and not e_df.empty else "No Data Loaded"
+date_range_str = "01 Jun 2026 – 15 Jun 2026" if e_df is not None and not e_df.empty else "No Data Loaded"
 
 st.markdown(f"""
 <div class="jfl-header-container">
@@ -352,12 +349,14 @@ tab_energy, tab_temp, tab_power, tab_runtime, tab_comp = st.tabs([
 # ==============================================================================
 with tab_energy:
     if e_df is not None and not e_df.empty:
+        # Match exact 'consump. v1' to 'consump. v9' format
         consump_cols = [c for c in e_df.columns if 'consump. v' in c.lower()]
         
-        dunkin_col = next((c for c in e_df.columns if 'dunkin' in c.lower() and 'consum' in c.lower()), None)
-        clc_col = next((c for c in e_df.columns if 'clc' in c.lower() and 'consum' in c.lower()), None)
-        bmc_col = next((c for c in e_df.columns if 'bmc' in c.lower() and 'consum' in c.lower()), None)
-        deep_col = next((c for c in e_df.columns if 'deep' in c.lower() and 'consum' in c.lower()), None)
+        # Map corporate zone aggregation tags based on literal strings in the uploaded csv
+        dunkin_col = next((c for c in e_df.columns if 'dunkin consmp.' in c.lower()), None)
+        clc_col = next((c for c in e_df.columns if 'clc consump.' in c.lower()), None)
+        bmc_col = next((c for c in e_df.columns if 'bmc consump.' in c.lower()), None)
+        deep_col = next((c for c in e_df.columns if 'deep consumption' in c.lower()), None)
         
         eq_cols = [c for c in [dunkin_col, clc_col, bmc_col, deep_col] if c is not None]
 
@@ -369,11 +368,11 @@ with tab_energy:
         with c5: st.metric("Deep Net Variance",   f"{e_df[deep_col].sum() if deep_col else 0:,.1f}")
 
         if consump_cols:
-            st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9 (June 1 - June 10)</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9 Channels</div>', unsafe_allow_html=True)
             st.line_chart(e_df[consump_cols])
 
         if eq_cols:
-            st.markdown('<div class="sec-title">Calculated Process Zone Loads (June 1 - June 10)</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sec-title">Calculated Process Zone Loads (Cumulative Distribution)</div>', unsafe_allow_html=True)
             st.bar_chart(e_df[eq_cols])
 
         st.markdown('<div class="sec-title">Daily Process Zone Net Energy Consumed (Adjacent Day Differences)</div>', unsafe_allow_html=True)
@@ -382,6 +381,7 @@ with tab_energy:
         diff_cols = []
         for col in eq_cols:
             col_label = f"{col} Delta"
+            # Standard sequential step difference
             diff_energy[col_label] = (e_df[col] - e_df[col].shift(-1)).fillna(0)
             diff_cols.append(col_label)
         
@@ -429,7 +429,7 @@ with tab_energy:
         with st.expander("📂 View Pre-Processed Active Energy File Data Table", expanded=False):
             st.dataframe(e_df, use_container_width=True)
     else:
-        st.markdown('<div class="alert-info"><strong>No active energy data captured matching the window constraint (1-10 June).</strong></div>', unsafe_allow_html=True)
+        st.markdown('<div class="alert-info"><strong>No active energy data captured matching the current file window constraints.</strong></div>', unsafe_allow_html=True)
 
 # ==============================================================================
 #  TAB 2 — COLD STORAGE TEMPERATURES
@@ -453,7 +453,7 @@ with tab_temp:
             st.metric("Thermal Compliance Index", f"{compliance:.1f}%",
                       delta=f"{total_exc} critical violations", delta_color="inverse")
 
-        st.markdown('<div class="sec-title">Real-Time Temperature Stream (Normal Data)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec-title">Real-Time Temperature Stream</div>', unsafe_allow_html=True)
         st.line_chart(temp_df.set_index('Time')[sensors], color=["#002D62","#0EA5E9","#E01934"])
 
         st.markdown('<div class="sec-title">Daily Mean Thermal Signature</div>', unsafe_allow_html=True)
@@ -462,7 +462,7 @@ with tab_temp:
         daily_avg.index = daily_avg.index.astype(str)
         st.bar_chart(daily_avg, color=["#002D62","#0EA5E9","#E01934"])
 
-        st.markdown('<div class="sec-title">Daily Temperature Delta Row Variances (Differenced Data)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec-title">Temperature Log Delta Variations</div>', unsafe_allow_html=True)
         
         d1_sum = temp_df['consump. dough1'].sum()
         d2_sum = temp_df['consump. dough2'].sum()
@@ -536,195 +536,3 @@ with tab_temp:
             )
     else:
         st.markdown('<div class="alert-info">No environment logs could be successfully loaded.</div>', unsafe_allow_html=True)
-
-# ==============================================================================
-#  TAB 3 — ENERGY & COST SAVINGS
-# ==============================================================================
-with tab_power:
-    power_df = load_excel_sheet('Sheet1', fallback_header_row=1)
-    if power_df is not None and not power_df.empty:
-        p = power_df.copy()
-        p['Date'] = fast_parse_dates(p['Date'])
-        p = p.dropna(subset=['Date']).sort_values('Date')
-        
-        dunkin_col = next((c for c in p.columns if 'dunkin' in c.lower()), None)
-        clc_col = next((c for c in p.columns if 'clc' in c.lower()), None)
-        
-        if dunkin_col and clc_col:
-            p[dunkin_col] = pd.to_numeric(p[dunkin_col], errors='coerce').fillna(0)
-            p[clc_col]    = pd.to_numeric(p[clc_col],    errors='coerce').fillna(0)
-            savings_col   = next((c for c in p.columns if 'saving' in str(c).lower()), None)
-            if savings_col:
-                p[savings_col] = pd.to_numeric(p[savings_col], errors='coerce').fillna(0)
-            
-            p = p[p[dunkin_col] < 500_000]
-
-            if not p.empty:
-                c1, c2, c3, c4 = st.columns(4)
-                with c1: st.metric("Dunkin' Blast Sum", f"{p[dunkin_col].sum():,.0f} kWh")
-                with c2: st.metric("CLC Blast Sum",     f"{p[clc_col].sum():,.0f} kWh")
-                with c3: st.metric("Combined Load Matrix", f"{p[dunkin_col].sum()+p[clc_col].sum():,.0f} kWh")
-                with c4:
-                    if savings_col:
-                        st.metric("Optimized Value Catch", f"₹ {p[savings_col].sum():,.2f}", delta="Valid Integration")
-
-                st.markdown('<div class="sec-title">Daily Power Grid Footprint (kWh)</div>', unsafe_allow_html=True)
-                st.area_chart(p.set_index('Date')[[dunkin_col, clc_col]], color=["#002D62","#FF9F1C"])
-                
-                if savings_col:
-                    st.markdown('<div class="sec-title">Daily Recovery Realized (₹)</div>', unsafe_allow_html=True)
-                    st.bar_chart(p.set_index('Date')[savings_col], color="#16A34A")
-
-                st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
-                with st.expander("📂 View & Download Energy & Cost Savings Raw Sheet Data", expanded=False):
-                    st.dataframe(p, use_container_width=True, hide_index=True)
-                    csv_data = p.to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="Download Sheet1 Cost Data as CSV",
-                        data=csv_data,
-                        file_name="freon_sheet1_energy_savings.csv",
-                        mime="text/csv",
-                        key="btn_download_power"
-                    )
-        else:
-            st.error("Expected Blast column labels could not be parsed from Sheet1.")
-    else:
-        st.markdown('<div class="alert-info">Power consumption analytical worksheet missing from repo root.</div>', unsafe_allow_html=True)
-
-# ==============================================================================
-#  TAB 4 — ASSET DUTY CYCLES
-# ==============================================================================
-with tab_runtime:
-    runtime_df = load_excel_sheet('Sheet2', fallback_header_row=2)
-    if runtime_df is not None and not runtime_df.empty:
-        r  = runtime_df.copy()
-        fc = r.columns[0]
-        r  = r[~r[fc].astype(str).str.contains('Date|From|Total|Running', case=False, na=False)]
-        r[fc] = fast_parse_dates(r[fc])
-        r  = r.dropna(subset=[fc]).sort_values(fc)
-        
-        kwh_cols = [c for c in r.columns if 'KWH' in str(c).upper()]
-        for col in kwh_cols:
-            r[col] = pd.to_numeric(r[col], errors='coerce').fillna(0)
-
-        if kwh_cols and not r.empty:
-            c1, c2, c3 = st.columns(3)
-            with c1: st.metric("Consolidated Ingested Draw", f"{r[kwh_cols[0]].sum():,.0f} kWh")
-            with c2: st.metric("Peak System Load Vector",    f"{r[kwh_cols[0]].max():,.0f} kWh")
-            with c3: st.metric("Mean Constant Load Metric", f"{r[kwh_cols[0]].mean():,.0f} kWh")
-
-            st.markdown('<div class="sec-title">Daily Asset Displacement Matrix (Normal Data Logs)</div>', unsafe_allow_html=True)
-            st.bar_chart(r.set_index(fc)[kwh_cols[0]], color="#002D62")
-
-            r['Date_Key'] = r[fc].dt.date
-            daily_runtime = r.groupby('Date_Key')[kwh_cols[0]].agg(['sum', 'max', 'mean']).reset_index()
-            daily_runtime = daily_runtime.rename(columns={
-                'Date_Key': 'Date',
-                'sum': 'Energy Drew (kWh)',
-                'max': 'Peak System Load Vector (kWh)',
-                'mean': 'Mean Load Vector (kWh)'
-            })
-            daily_runtime['Date'] = pd.to_datetime(daily_runtime['Date'])
-
-            st.markdown('<div class="sec-title">Date-Wise Energy Ingestion Profiles (Differenced Daily Breakdown)</div>', unsafe_allow_html=True)
-            target_day = daily_runtime.iloc[-2] if len(daily_runtime) >= 2 else daily_runtime.iloc[-1]
-            
-            rc1, rc2, rc3 = st.columns(3)
-            with rc1:
-                st.markdown(f"""
-                <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #002D62;">
-                    <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Energy Drew</div>
-                    <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{target_day['Energy Drew (kWh)']:,.1f} kWh</div>
-                </div>
-                """, unsafe_allow_html=True)
-            with rc2:
-                st.markdown(f"""
-                <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #FF9F1C;">
-                    <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Peak System Load Vector</div>
-                    <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{target_day['Peak System Load Vector (kWh)']:,.1f} kWh</div>
-                </div>
-                """, unsafe_allow_html=True)
-            with rc3:
-                st.markdown(f"""
-                <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #E01934;">
-                    <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Mean Load Vector</div>
-                    <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{target_day['Mean Load Vector (kWh)']:,.1f} kWh</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
-            st.line_chart(daily_runtime.set_index('Date')[['Energy Drew (kWh)', 'Peak System Load Vector (kWh)', 'Mean Load Vector (kWh)']])
-
-            st.markdown('<div class="sec-title">Date-Wise Asset Duty Performance Log Metrics</div>', unsafe_allow_html=True)
-            st.dataframe(daily_runtime, use_container_width=True, hide_index=True)
-
-            st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
-            with st.expander("📂 View & Download Asset Duty Cycle Raw Sheet Data", expanded=False):
-                st.dataframe(r.drop(columns=['Date_Key']), use_container_width=True, hide_index=True)
-                csv_data = daily_runtime.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="Download Date-Wise Duty Cycles as CSV",
-                    data=csv_data,
-                    file_name="datewise_asset_duty_cycles.csv",
-                    mime="text/csv",
-                    key="btn_download_runtime"
-                )
-    else:
-        st.markdown('<div class="alert-info">Asset duty-cycle log metrics are not active.</div>', unsafe_allow_html=True)
-
-# ==============================================================================
-#  TAB 5 — COMPRESSOR OPTIMISATION
-# ==============================================================================
-with tab_comp:
-    comp_df = load_excel_sheet('Sheet3', fallback_header_row=3)
-    if comp_df is not None and not comp_df.empty:
-        c  = comp_df.copy()
-        c  = c[~c.iloc[:,0].astype(str).str.strip().str.lower().str.fullmatch(r'date|total|from|sr\.?\s*no\.?|stop|start', na=False)]
-        c.iloc[:,0] = fast_parse_dates(c.iloc[:,0])
-        c  = c.dropna(subset=[c.columns[0]]).sort_values(c.columns[0])
-        sav_col = next((col for col in c.columns if 'saving' in str(col).lower()), None)
-
-        if sav_col:
-            c[sav_col] = pd.to_numeric(c[sav_col], errors='coerce').fillna(0)
-            c['Cumulative Savings'] = c[sav_col].cumsum()
-            date_col = c.columns[0]
-
-            k1, k2, k3, k4 = st.columns(4)
-            with k1: st.metric("Relief Window Saved", f"{c[sav_col].sum():,.1f} hrs")
-            with k2: st.metric("Mean Daily Dampening", f"{c[sav_col].mean():.1f} hrs")
-            with k3: st.metric("Peak Single Window Stop", f"{c[sav_col].max():.1f} hrs")
-            with k4: st.metric("Audited Shift Blocks",     f"{len(c)}")
-
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown('<div class="sec-title">Daily Rest Allocations (hrs)</div>', unsafe_allow_html=True)
-                st.line_chart(c.set_index(date_col)[sav_col], color="#002D62")
-            with col2:
-                st.markdown('<div class="sec-title">Cumulative Rest Curve Metrics</div>', unsafe_allow_html=True)
-                st.area_chart(c.set_index(date_col)['Cumulative Savings'], color="#FF9F1C")
-
-            st.markdown('<div class="sec-title">Compressor Structural Load Activation Cycles</div>', unsafe_allow_html=True)
-            comp_metrics = {}
-            run_cols = [col for col in c.columns if any(phrase in str(col).lower() for phrase in ['stop', 'start', 'run', 'comp'])]
-            
-            for idx, col_name in enumerate(run_cols[:5], 1):
-                active_logs = c[c[col_name].astype(str).str.strip().str.len() > 0]
-                comp_metrics[f"Compressor Component {idx}"] = len(active_logs)
-                
-            if comp_metrics:
-                cm_df = pd.DataFrame(list(comp_metrics.items()), columns=["Component", "Cycle Count"]).sort_values("Cycle Count", ascending=False)
-                st.bar_chart(cm_df.set_index("Component")["Cycle Count"], color="#E01934")
-
-            st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
-            with st.expander("📂 View & Download Compressor Optimization Raw Sheet Data", expanded=False):
-                st.dataframe(c, use_container_width=True, hide_index=True)
-                csv_data = c.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="Download Sheet3 Optimisation Data as CSV",
-                    data=csv_data,
-                    file_name="freon_sheet3_compressor_optimization.csv",
-                    mime="text/csv",
-                    key="btn_download_comp"
-                )
-    else:
-        st.markdown('<div class="alert-info">Compressor analytical tracking components not parsed.</div>', unsafe_allow_html=True)
