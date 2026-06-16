@@ -111,17 +111,17 @@ def read_csv_from_github(url: str, **kwargs):
     return pd.read_csv(io.BytesIO(fetch_file_bytes(url)), **kwargs)
 
 # ─────────────────────────────────────────────────────────────
-#  DATE PARSER ASSISTANT
+#  DATE PARSER ASSISTANT (FIXED TO AVOID STR-MIXUPS)
 # ─────────────────────────────────────────────────────────────
 def fast_parse_dates(series):
     cleansed = series.astype(str).str.strip().str.split(' ').str[0]
-    parsed_df = pd.to_datetime(cleansed, errors='coerce', dayfirst=True)
-    if parsed_df.isna().all() and not cleansed.isna().all():
-        parsed_df = pd.to_datetime(cleansed, errors='coerce')
+    parsed_df = pd.to_datetime(cleansed, errors='coerce', format='%Y-%m-%d')
+    if parsed_df.isna().all():
+        parsed_df = pd.to_datetime(cleansed, errors='coerce', dayfirst=True)
     return parsed_df
 
 # ─────────────────────────────────────────────────────────────
-#  PROCESSED ENERGY FILE LOADER (WITH ADVANCED AUTO-RECALCULATION)
+#  PROCESSED ENERGY FILE LOADER (FIXED AXIS ORDERING)
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_processed_energy_data():
@@ -140,43 +140,48 @@ def load_processed_energy_data():
         else:
             df = read_excel_from_github(url)
             
-        # Strip descriptive header row artifacts reliably
-        df = df[~df.iloc[:, 0].astype(str).str.contains(r'source|v1|Date', case=False, na=False)]
+        # Strip structural descriptive row definitions cleanly
+        df = df[~df.iloc[:, 0].astype(str).str.contains(r'source|v1|Date|consump', case=False, na=False)]
         df.columns = [str(c).strip() for c in df.columns]
         
         date_col = next((c for c in df.columns if c.lower() in ['date', 'timestamp', 'time']), None)
         if not date_col:
             return None
             
+        # FIX: Enforce uniform string cleanup before casting to datetime to avoid mixed sorting types
         df[date_col] = df[date_col].astype(str).str.strip()
-        df['DateIndex'] = pd.to_datetime(df[date_col], errors='coerce')
+        df['DateIndex'] = pd.to_datetime(df[date_col], errors='coerce', format='%Y-%m-%d')
+        
+        # Fallback if parsing missed rows
+        if df['DateIndex'].isna().any():
+            df.loc[df['DateIndex'].isna(), 'DateIndex'] = pd.to_datetime(df.loc[df['DateIndex'].isna(), date_col], errors='coerce')
+            
         df = df.dropna(subset=['DateIndex'])
         
-        # Enforce strict 1 to 15 June data window constraints
+        # Enforce strict 1 to 15 June data scope window
         df = df[(df['DateIndex'] >= '2026-06-01') & (df['DateIndex'] <= '2026-06-15')]
-        df = df.sort_values('DateIndex')
         
-        # Convert numeric columns securely
+        # FIX: Sort data *explicitly* by true datetime index before building layout to fix chronological X-axis
+        df = df.sort_values('DateIndex').reset_index(drop=True)
+        
+        # Convert numeric columns safely
         for col in df.columns:
-            if col != 'DateIndex':
+            if col != 'DateIndex' and col != date_col:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
         
-        # DYNAMIC FIX FOR TRAILING DROPS TO ZERO (e.g. June 15th anomalies)
-        # Re-derive daily consumption using absolute meter registers if the raw file reports 0
+        # Auto-recalculate trailing 0 parameters from raw registers
         for i in range(1, 10):
             consump_col = f"consump. v{i}"
             reg_col = f"V{i}"
             
             if consump_col in df.columns and reg_col in df.columns:
-                # Identify indexes where the file hardcoded 0 but the register actually increased
                 computed_diff = df[reg_col].diff()
-                # Use register diff where file input is 0 or NaN, except for the first entry
                 df[consump_col] = df.apply(
                     lambda row: computed_diff.loc[row.name] if (pd.isna(row[consump_col]) or row[consump_col] == 0) and pd.notna(computed_diff.loc[row.name]) and computed_diff.loc[row.name] > 0 else row[consump_col],
                     axis=1
                 )
         
-        # Recalculate brand total aggregations if they dropped out on the last day
+        # Total aggregations fix
         dunkin_c = 'dunkin consmp.'
         clc_c = 'clc consump.'
         bmc_c = 'bmc consump.'
@@ -403,7 +408,7 @@ with tab_energy:
         with c5: st.metric("Deep Net Variance",   f"{e_df[deep_col].sum() if deep_col else 0:,.1f}")
 
         if consump_cols:
-            st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9 Channels (1-15 June)</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9 Channels (June 01 to June 15)</div>', unsafe_allow_html=True)
             st.line_chart(e_df[consump_cols])
 
         if eq_cols:
