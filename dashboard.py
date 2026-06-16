@@ -584,91 +584,86 @@ with tab_energy:
         
         st.markdown('<div class="sec-title">📉 Day-over-Day Consumption Change (Δ vs Previous Day)</div>', unsafe_allow_html=True)
         
-        # Filter out rows with zero or invalid consumption data before calculating deltas
-valid_data_mask = (e_df[eq_cols].sum(axis=1) > 0)
-e_df_valid = e_df[valid_data_mask].copy()
-
-st.markdown('<div class="sec-title">📉 Day-over-Day Consumption Change (Δ vs Previous Day)</div>', unsafe_allow_html=True)
-
-diff_energy = pd.DataFrame()
-diff_energy['ChartDate'] = e_df_valid[date_col].dt.strftime('%d-%b').tolist()
-diff_energy['DateObj'] = e_df_valid[date_col]
-diff_cols = []
-
-for col in eq_cols:
-    col_label = f"{col} Δ"
-    # Calculate diff only on valid data
-    diff_series = pd.to_numeric(e_df_valid[col], errors='coerce').diff().fillna(0)
-    # Ensure no negative values (consumption can't be negative)
-    diff_series = diff_series.clip(lower=0)
-    diff_energy[col_label] = diff_series.values
-    diff_cols.append(col_label)
-
-if not diff_energy.empty:
-    # Latest day metrics
-    target_energy_row = diff_energy.iloc[-1]
-    
-    ec1, ec2, ec3, ec4 = st.columns(4)
-    
-    def render_delta_metric(container, col_name, color, label):
-        if col_name and f"{col_name} Δ" in diff_energy.columns:
-            val = target_energy_row[f"{col_name} Δ"]
-            delta_str = f"{val:+,.1f} kWh"
-            container.metric(f"{label} Daily Δ", delta_str)
-        else:
-            container.metric(f"{label} Daily Δ", "No Data")
-    
-    with ec1: render_delta_metric(ec1, dunkin_col, "#002D62", "Dunkin'")
-    with ec2: render_delta_metric(ec2, clc_col, "#FF9F1C", "CLC")
-    with ec3: render_delta_metric(ec3, bmc_col, "#16A34A", "BMC")
-    with ec4: render_delta_metric(ec4, deep_col, "#E01934", "Deep Freezer")
-    
-    st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
-    
-    # Delta visualization
-    fig_delta = go.Figure()
-    delta_colors = ['#002D62', '#FF9F1C', '#16A34A', '#E01934']
-    
-    for i, col in enumerate(diff_cols):
-        fig_delta.add_trace(go.Bar(
-            x=diff_energy['ChartDate'].tolist(),
-            y=diff_energy[col].tolist(),
-            name=col.replace(' Δ', ''),
-            marker_color=delta_colors[i % len(delta_colors)],
-            opacity=0.8,
-            hovertemplate=f'{col}<br>Date: %{{x}}<br>Δ: %{{y:+,.2f}} kWh<extra></extra>'
-        ))
-    
-    fig_delta.update_layout(
-        barmode='group',
-        hovermode="x unified",
-        margin=dict(l=60, r=20, t=40, b=60),
-        height=400,
-        xaxis=dict(
-            title='Date',
-            type='category',
-            tickmode='array',
-            tickvals=diff_energy['ChartDate'].tolist(),
-            tickangle=45,
-            fixedrange=True
-        ),
-        yaxis=dict(
-            title='Daily Change (kWh)',
-            fixedrange=True,
-            gridcolor='#E2E8F0'
-        ),
-        legend=dict(
-            orientation="h", 
-            yanchor="bottom", 
-            y=1.02, 
-            xanchor="right", 
-            x=1
-        ),
-        plot_bgcolor='rgba(0,0,0,0)',
-        paper_bgcolor='rgba(0,0,0,0)',
-        shapes=[dict(type='line', xref='paper', yref='y', x0=0, y0=0, x1=1, y1=0, line=dict(color='red', width=2, dash='dash'))]
-    )
-    st.plotly_chart(fig_delta, use_container_width=True)
+        # Filter out rows with zero or invalid consumption data
+        valid_data_mask = (e_df[eq_cols].sum(axis=1) > 0)
+        e_df_valid = e_df[valid_data_mask].copy()
+        
+        diff_energy = pd.DataFrame()
+        diff_energy['ChartDate'] = e_df_valid[date_col].dt.strftime('%d-%b').tolist()
+        diff_energy['DateObj'] = e_df_valid[date_col]
+        diff_cols = []
+        
+        for col in eq_cols:
+            col_label = f"{col} Δ"
+            diff_series = pd.to_numeric(e_df_valid[col], errors='coerce').diff().fillna(0)
+            # Ensure no negative values
+            diff_series = diff_series.clip(lower=0)
+            diff_energy[col_label] = diff_series.values
+            diff_cols.append(col_label)
+        
+        if not diff_energy.empty:
+            target_energy_row = diff_energy.iloc[-1]
+            
+            ec1, ec2, ec3, ec4 = st.columns(4)
+            
+            def render_delta_metric(container, col_name, color, label):
+                if col_name and f"{col_name} Δ" in diff_energy.columns:
+                    val = target_energy_row[f"{col_name} Δ"]
+                    delta_str = f"{val:+,.1f} kWh"
+                    container.metric(f"{label} Daily Δ", delta_str)
+                else:
+                    container.metric(f"{label} Daily Δ", "No Data")
+            
+            with ec1: render_delta_metric(ec1, dunkin_col, "#002D62", "Dunkin'")
+            with ec2: render_delta_metric(ec2, clc_col, "#FF9F1C", "CLC")
+            with ec3: render_delta_metric(ec3, bmc_col, "#16A34A", "BMC")
+            with ec4: render_delta_metric(ec4, deep_col, "#E01934", "Deep Freezer")
+            
+            st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
+            
+            fig_delta = go.Figure()
+            delta_colors = ['#002D62', '#FF9F1C', '#16A34A', '#E01934']
+            
+            for i, col in enumerate(diff_cols):
+                fig_delta.add_trace(go.Bar(
+                    x=diff_energy['ChartDate'].tolist(),
+                    y=diff_energy[col].tolist(),
+                    name=col.replace(' Δ', ''),
+                    marker_color=delta_colors[i % len(delta_colors)],
+                    opacity=0.8,
+                    hovertemplate=f'{col}<br>Date: %{{x}}<br>Δ: %{{y:+,.2f}} kWh<extra></extra>'
+                ))
+            
+            fig_delta.update_layout(
+                barmode='group',
+                hovermode="x unified",
+                margin=dict(l=60, r=20, t=40, b=60),
+                height=400,
+                xaxis=dict(
+                    title='Date',
+                    type='category',
+                    tickmode='array',
+                    tickvals=diff_energy['ChartDate'].tolist(),
+                    tickangle=45,
+                    fixedrange=True
+                ),
+                yaxis=dict(
+                    title='Daily Change (kWh)',
+                    fixedrange=True,
+                    gridcolor='#E2E8F0'
+                ),
+                legend=dict(
+                    orientation="h", 
+                    yanchor="bottom", 
+                    y=1.02, 
+                    xanchor="right", 
+                    x=1
+                ),
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)',
+                shapes=[dict(type='line', xref='paper', yref='y', x0=0, y0=0, x1=1, y1=0, line=dict(color='red', width=2, dash='dash'))]
+            )
+            st.plotly_chart(fig_delta, use_container_width=True)
         
         st.markdown('<div class="sec-title">📋 Statistical Summary by Zone</div>', unsafe_allow_html=True)
         
