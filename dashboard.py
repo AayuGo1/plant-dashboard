@@ -148,7 +148,7 @@ def load_processed_energy_data():
         return None
 
 # ─────────────────────────────────────────────────────────────
-#  TEMPERATURE DATA LOADER (WITH ROW DELTA VARIANCE)
+#  TEMPERATURE DATA LOADER 
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_temperature_data():
@@ -200,7 +200,6 @@ def load_temperature_data():
         .reset_index(drop=True)
     )
 
-    # Calculate row-by-row differences sequential tracking format
     combined['consump. dough1'] = (combined['Dough Cooler1 Temp'] - combined['Dough Cooler1 Temp'].shift(1)).fillna(0)
     combined['consump. dough2'] = (combined['Dough Cooler2 Temp'] - combined['Dough Cooler2 Temp'].shift(1)).fillna(0)
     combined['consump. perishable'] = (combined['Perishable Cooler Temp'] - combined['Perishable Cooler Temp'].shift(1)).fillna(0)
@@ -308,7 +307,7 @@ with st.sidebar:
     st.markdown("""
         <div style="position:fixed; bottom:18px; left:0; width:238px; text-align:center;
                     font-size:10px; color:#94A3B8; font-weight:600; padding:0 8px;">
-            JFL Internal Operations Tool &nbsp;·&nbsp; v3.5
+            JFL Internal Operations Tool &nbsp;·&nbsp; v3.6
         </div>
     """, unsafe_allow_html=True)
 
@@ -394,7 +393,7 @@ with tab_energy:
         st.markdown('<div class="alert-info"><strong>No processed energy report found inside repository.</strong></div>', unsafe_allow_html=True)
 
 # ==============================================================================
-#  TAB 2 — COLD STORAGE TEMPERATURES (NORMAL DATA FIRST, DIFFERENCED LATER)
+#  TAB 2 — COLD STORAGE TEMPERATURES
 # ==============================================================================
 with tab_temp:
     temp_df = load_temperature_data()
@@ -406,7 +405,7 @@ with tab_temp:
 
         c1, c2, c3, c4 = st.columns([1,1,1,1.2])
         with c1: st.metric("Dough Cooler 1",   f"{latest['Dough Cooler1 Temp']:.2f} °C")
-        with c2: st.metric("Dough Cooler 2",   f"{latest['Dough Cooler2 Temp']:.2f} °C")
+        with r_idx := c2: st.metric("Dough Cooler 2", f"{latest['Dough Cooler2 Temp']:.2f} °C")
         with c3: st.metric("Perishable Store", f"{latest['Perishable Cooler Temp']:.2f} °C")
         with c4:
             total_logs = len(temp_df)
@@ -415,7 +414,6 @@ with tab_temp:
             st.metric("Thermal Compliance Index", f"{compliance:.1f}%",
                       delta=f"{total_exc} critical violations", delta_color="inverse")
 
-        # ─── PART A: NORMAL REAL-TIME DATA (FIRST) ───
         st.markdown('<div class="sec-title">Real-Time Temperature Stream (Normal Data)</div>', unsafe_allow_html=True)
         st.line_chart(temp_df.set_index('Time')[sensors], color=["#002D62","#0EA5E9","#E01934"])
 
@@ -425,7 +423,6 @@ with tab_temp:
         daily_avg.index = daily_avg.index.astype(str)
         st.bar_chart(daily_avg, color=["#002D62","#0EA5E9","#E01934"])
 
-        # ─── PART B: DIFFERENCED ADJACENT ROW DATA (LATER) ───
         st.markdown('<div class="sec-title">Daily Temperature Delta Row Variances (Differenced Data)</div>', unsafe_allow_html=True)
         st.line_chart(temp_df.set_index('Time')[delta_cols])
 
@@ -458,7 +455,6 @@ with tab_temp:
             else:
                 st.markdown(f'<div class="alert-warn">⚠ <strong>{lbl}</strong> — Out-of-bounds drop at {comp:.1f}% compliance level.</div>', unsafe_allow_html=True)
 
-        # ─── SYNCED INSPECTOR CONTAINER AT BOTTOM ───
         st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
         with st.expander("📂 View & Download Compiled Temperature Log File Data with Delta Metrics", expanded=False):
             st.dataframe(temp_df, use_container_width=True, hide_index=True)
@@ -528,7 +524,7 @@ with tab_power:
         st.markdown('<div class="alert-info">Power consumption analytical worksheet missing from repo root.</div>', unsafe_allow_html=True)
 
 # ==============================================================================
-#  TAB 4 — ASSET DUTY CYCLES
+#  TAB 4 — ASSET DUTY CYCLES (DATE-WISE BREAKDOWN INTEGRATED)
 # ==============================================================================
 with tab_runtime:
     runtime_df = load_excel_sheet('Sheet2', fallback_header_row=2)
@@ -538,27 +534,43 @@ with tab_runtime:
         r  = r[~r[fc].astype(str).str.contains('Date|From|Total|Running', case=False, na=False)]
         r[fc] = fast_parse_dates(r[fc])
         r  = r.dropna(subset=[fc]).sort_values(fc)
+        
         kwh_cols = [c for c in r.columns if 'KWH' in str(c).upper()]
         for col in kwh_cols:
             r[col] = pd.to_numeric(r[col], errors='coerce').fillna(0)
 
         if kwh_cols and not r.empty:
-            c1, c2, c3 = st.columns(3)
-            with c1: st.metric("Consolidated Ingested Draw", f"{r[kwh_cols[0]].sum():,.0f} kWh")
-            with c2: st.metric("Peak System Load Vector",    f"{r[kwh_cols[0]].max():,.0f} kWh")
-            with c3: st.metric("Mean Constant Load Metric", f"{r[kwh_cols[0]].mean():,.0f} kWh")
+            # Group data natively by Date to parse individual day values
+            r['Date_Key'] = r[fc].dt.date
+            daily_runtime = r.groupby('Date_Key')[kwh_cols[0]].agg(['sum', 'max', 'mean']).reset_index()
+            daily_runtime = daily_runtime.rename(columns={
+                'Date_Key': 'Date',
+                'sum': 'Energy Drew (kWh)',
+                'max': 'Peak System Load Vector (kWh)',
+                'mean': 'Mean Load Vector (kWh)'
+            })
+            daily_runtime['Date'] = pd.to_datetime(daily_runtime['Date'])
 
-            st.markdown('<div class="sec-title">Daily Asset Displacement Matrix</div>', unsafe_allow_html=True)
-            st.bar_chart(r.set_index(fc)[kwh_cols[0]], color="#002D62")
+            latest_day = daily_runtime.iloc[-1]
+            c1, c2, c3 = st.columns(3)
+            with c1: st.metric("Latest Energy Drew", f"{latest_day['Energy Drew (kWh)']:,.0f} kWh")
+            with c2: st.metric("Latest Peak Load Vector", f"{latest_day['Peak System Load Vector (kWh)']:,.0f} kWh")
+            with c3: st.metric("Latest Mean Load Vector", f"{latest_day['Mean Load Vector (kWh)']:,.0f} kWh")
+
+            st.markdown('<div class="sec-title">Date-Wise Energy Ingestion Profiles</div>', unsafe_allow_html=True)
+            st.line_chart(daily_runtime.set_index('Date')[['Energy Drew (kWh)', 'Peak System Load Vector (kWh)', 'Mean Load Vector (kWh)']])
+
+            st.markdown('<div class="sec-title">Date-Wise Asset Duty Performance Log Matrix</div>', unsafe_allow_html=True)
+            st.dataframe(daily_runtime, use_container_width=True, hide_index=True)
 
             st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
             with st.expander("📂 View & Download Asset Duty Cycle Raw Sheet Data", expanded=False):
-                st.dataframe(r, use_container_width=True, hide_index=True)
-                csv_data = r.to_csv(index=False).encode('utf-8')
+                st.dataframe(r.drop(columns=['Date_Key']), use_container_width=True, hide_index=True)
+                csv_data = daily_runtime.to_csv(index=False).encode('utf-8')
                 st.download_button(
-                    label="Download Sheet2 Duty Cycles as CSV",
+                    label="Download Date-Wise Duty Cycles as CSV",
                     data=csv_data,
-                    file_name="freon_sheet2_asset_duty_cycles.csv",
+                    file_name="datewise_asset_duty_cycles.csv",
                     mime="text/csv",
                     key="btn_download_runtime"
                 )
