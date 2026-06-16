@@ -111,7 +111,7 @@ def read_csv_from_github(url: str, **kwargs):
     return pd.read_csv(io.BytesIO(fetch_file_bytes(url)), **kwargs)
 
 # ─────────────────────────────────────────────────────────────
-#  DATE PARSER ASSISTANT (FIXED TO AVOID STR-MIXUPS)
+#  DATE PARSER ASSISTANT
 # ─────────────────────────────────────────────────────────────
 def fast_parse_dates(series):
     cleansed = series.astype(str).str.strip().str.split(' ').str[0]
@@ -121,7 +121,7 @@ def fast_parse_dates(series):
     return parsed_df
 
 # ─────────────────────────────────────────────────────────────
-#  PROCESSED ENERGY FILE LOADER (FIXED AXIS ORDERING)
+#  PROCESSED ENERGY FILE LOADER (FORCED SEQUENTIAL SORTING)
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_processed_energy_data():
@@ -140,7 +140,7 @@ def load_processed_energy_data():
         else:
             df = read_excel_from_github(url)
             
-        # Strip structural descriptive row definitions cleanly
+        # Clean out header text lines safely
         df = df[~df.iloc[:, 0].astype(str).str.contains(r'source|v1|Date|consump', case=False, na=False)]
         df.columns = [str(c).strip() for c in df.columns]
         
@@ -148,28 +148,25 @@ def load_processed_energy_data():
         if not date_col:
             return None
             
-        # FIX: Enforce uniform string cleanup before casting to datetime to avoid mixed sorting types
         df[date_col] = df[date_col].astype(str).str.strip()
         df['DateIndex'] = pd.to_datetime(df[date_col], errors='coerce', format='%Y-%m-%d')
         
-        # Fallback if parsing missed rows
         if df['DateIndex'].isna().any():
             df.loc[df['DateIndex'].isna(), 'DateIndex'] = pd.to_datetime(df.loc[df['DateIndex'].isna(), date_col], errors='coerce')
             
         df = df.dropna(subset=['DateIndex'])
         
-        # Enforce strict 1 to 15 June data scope window
+        # Lock reporting window range strictly to June 1 - June 15
         df = df[(df['DateIndex'] >= '2026-06-01') & (df['DateIndex'] <= '2026-06-15')]
         
-        # FIX: Sort data *explicitly* by true datetime index before building layout to fix chronological X-axis
+        # FORCE strict chronological sorting here
         df = df.sort_values('DateIndex').reset_index(drop=True)
         
-        # Convert numeric columns safely
         for col in df.columns:
             if col != 'DateIndex' and col != date_col:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
         
-        # Auto-recalculate trailing 0 parameters from raw registers
+        # Calculate consumption diffs if file row lists unpopulated tracking parameters
         for i in range(1, 10):
             consump_col = f"consump. v{i}"
             reg_col = f"V{i}"
@@ -181,7 +178,6 @@ def load_processed_energy_data():
                     axis=1
                 )
         
-        # Total aggregations fix
         dunkin_c = 'dunkin consmp.'
         clc_c = 'clc consump.'
         bmc_c = 'bmc consump.'
@@ -196,7 +192,6 @@ def load_processed_energy_data():
         if deep_c in df.columns:
             df[deep_c] = df.apply(lambda r: (r['consump. v4'] if pd.notna(r['consump. v4']) else 0) + (r['consump. v5'] if pd.notna(r['consump. v5']) else 0) + (r['consump. v9'] if pd.notna(r['consump. v9']) else 0) if r[deep_c] == 0 else r[deep_c], axis=1)
 
-        df = df.set_index('DateIndex')
         return df
     except Exception as e:
         st.sidebar.error(f"Failed parsing processed energy file {name}: {e}")
@@ -407,21 +402,31 @@ with tab_energy:
         with c4: st.metric("BMC Net Variance",    f"{e_df[bmc_col].sum() if bmc_col else 0:,.1f}")
         with c5: st.metric("Deep Net Variance",   f"{e_df[deep_col].sum() if deep_col else 0:,.1f}")
 
+        # NEW LINE CHART BUILDING STRATEGY (SOLVES MIXED SORTING ISSUES)
         if consump_cols:
             st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9 Channels (June 01 to June 15)</div>', unsafe_allow_html=True)
-            st.line_chart(e_df[consump_cols])
+            
+            # Re-generate explicitly ordered dataframe layout to pass to chart
+            chart_data = e_df[['DateIndex'] + consump_cols].copy()
+            chart_data['ChartDate'] = chart_data['DateIndex'].dt.strftime('%d-%b')
+            chart_data = chart_data.set_index('ChartDate').drop(columns=['DateIndex'])
+            
+            st.line_chart(chart_data)
 
         if eq_cols:
             st.markdown('<div class="sec-title">Calculated Process Zone Loads (Cumulative Distribution)</div>', unsafe_allow_html=True)
-            st.bar_chart(e_df[eq_cols])
+            bar_data = e_df[['DateIndex'] + eq_cols].copy()
+            bar_data['ChartDate'] = bar_data['DateIndex'].dt.strftime('%d-%b')
+            st.bar_chart(bar_data.set_index('ChartDate').drop(columns=['DateIndex']))
 
         st.markdown('<div class="sec-title">Daily Process Zone Net Energy Consumed (Chronological Progress Delta)</div>', unsafe_allow_html=True)
         
-        diff_energy = pd.DataFrame(index=e_df.index)
+        diff_energy = pd.DataFrame()
+        diff_energy['ChartDate'] = e_df['DateIndex'].dt.strftime('%d-%b')
         diff_cols = []
         for col in eq_cols:
             col_label = f"{col} Delta"
-            diff_energy[col_label] = (e_df[col] - e_df[col].shift(1)).fillna(0)
+            diff_energy[col_label] = (e_df[col] - e_df[col].shift(1)).fillna(0).values
             diff_cols.append(col_label)
         
         target_energy_row = diff_energy.iloc[-1] if not diff_energy.empty else None
@@ -462,11 +467,11 @@ with tab_energy:
 
         if diff_cols:
             st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
-            st.line_chart(diff_energy[diff_cols])
+            st.line_chart(diff_energy.set_index('ChartDate')[diff_cols])
 
         st.markdown('<div class="sec-title">📥 Raw Data Inspector Portal</div>', unsafe_allow_html=True)
         with st.expander("📂 View Pre-Processed Active Energy File Data Table", expanded=False):
-            st.dataframe(e_df, use_container_width=True)
+            st.dataframe(e_df.set_index('DateIndex'), use_container_width=True)
     else:
         st.markdown('<div class="alert-info"><strong>No active energy data captured matching the current file window constraints.</strong></div>', unsafe_allow_html=True)
 
