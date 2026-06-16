@@ -112,6 +112,18 @@ def read_csv_from_github(url: str, **kwargs):
     return pd.read_csv(io.BytesIO(fetch_file_bytes(url)), **kwargs)
 
 # ─────────────────────────────────────────────────────────────
+#  DATE PARSER ASSISTANT
+# ─────────────────────────────────────────────────────────────
+def fast_parse_dates(series):
+    """Robust fallback string-splitting parser to neutralize timestamp layout inconsistencies."""
+    cleansed = series.astype(str).str.strip().str.split(' ').str[0]
+    parsed_df = pd.to_datetime(cleansed, errors='coerce', dayfirst=True)
+    # Fallback to iso format order matching if dayfirst flags failed layout interpretation
+    if parsed_df.isna().all() and not cleansed.isna().all():
+        parsed_df = pd.to_datetime(cleansed, errors='coerce')
+    return parsed_df
+
+# ─────────────────────────────────────────────────────────────
 #  PROCESSED ENERGY FILE LOADER
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
@@ -119,7 +131,7 @@ def load_processed_energy_data():
     all_files = list_github_files()
     target_files = [
         (name, url) for name, url in all_files
-        if name.startswith("PROCESSED_DAILY_VARS_Active_Energy_Report") and (name.endswith(".xlsx") or name.endswith(".csv"))
+        if "PROCESSED_DAILY_VARS_Active_Energy_Report" in name and (name.endswith(".xlsx") or name.endswith(".csv"))
     ]
     if not target_files:
         return None
@@ -136,7 +148,7 @@ def load_processed_energy_data():
         if not date_col:
             return None
             
-        df['Date'] = pd.to_datetime(df[date_col], errors='coerce').dt.date
+        df['Date'] = fast_parse_dates(df[date_col]).dt.date
         df = df.dropna(subset=['Date']).sort_values('Date').reset_index(drop=True)
         
         for col in df.columns:
@@ -212,15 +224,15 @@ def load_temperature_data():
 @st.cache_data(ttl=300)
 def load_excel_sheet(sheet_name, fallback_header_row):
     all_files = list_github_files()
-    match = next((u for n, u in all_files if n == "Power consumption freon.xlsx"), None)
+    match = next((u for n, u in all_files if "freon" in n.lower() and n.endswith(".xlsx")), None)
     if not match:
         return None
     try:
         preview = read_excel_from_github(match, sheet_name=sheet_name, header=None, engine='openpyxl')
         hdr = fallback_header_row
-        for i in range(min(10, len(preview))):
+        for i in range(min(15, len(preview))):
             row = [str(x).lower() for x in preview.iloc[i].dropna()]
-            if any('date' in x or 'stop time' in x for x in row):
+            if any('date' in x or 'stop time' in x or 'start time' in x for x in row):
                 hdr = i
                 break
         df = read_excel_from_github(match, sheet_name=sheet_name, header=hdr, engine='openpyxl')
@@ -244,12 +256,6 @@ def load_excel_sheet(sheet_name, fallback_header_row):
     except Exception as e:
         st.warning(f"Could not load sheet {sheet_name}: {e}")
         return None
-
-def fast_parse_dates(series):
-    return pd.to_datetime(
-        series.astype(str).str.strip().str.split(' ').str[0],
-        errors='coerce', dayfirst=True
-    )
 
 # ─────────────────────────────────────────────────────────────
 #  SIDEBAR
@@ -277,9 +283,9 @@ with st.sidebar:
                     text-transform:uppercase; margin:12px 0 6px;">Auto-refresh every 5 min</div>""", unsafe_allow_html=True)
 
     all_files = list_github_files()
-    processed_energy_files = [n for n, _ in all_files if n.startswith("PROCESSED_DAILY_VARS_Active_Energy_Report")]
+    processed_energy_files = [n for n, _ in all_files if "PROCESSED_DAILY_VARS_Active_Energy_Report" in n]
     csv_files    = [n for n, _ in all_files if n.startswith("DataLog_") and n.endswith(".csv")]
-    has_freon    = any(n == "Power consumption freon.xlsx" for n, _ in all_files)
+    has_freon    = any("freon" in n.lower() for n, _ in all_files)
 
     st.markdown("<hr style='border-color:#1E3A8A; margin:14px 0;'>", unsafe_allow_html=True)
     st.markdown("""<div style="font-size:9px; font-weight:700; letter-spacing:1.2px;
@@ -364,7 +370,6 @@ with tab_energy:
         consump_cols = [c for c in e.columns if 'consump. v' in c.lower()]
         eq_cols = [c for c in ['dunkin consmp.', 'clc consump.', 'bmc consump.', 'deep consumption'] if c in e.columns]
 
-        # Metric alignment featuring total recorded days alongside zone loads
         c1, c2, c3, c4, c5 = st.columns(5)
         with c1: st.metric("Total Days Recorded", f"{len(e)}")
         with c2: st.metric("Dunkin Net Variance", f"{e['dunkin consmp.'].sum() if 'dunkin consmp.' in e else 0:,.1f}")
@@ -380,7 +385,6 @@ with tab_energy:
             st.markdown('<div class="sec-title">Calculated Process Zone Loads (Dunkin / CLC / BMC / Deep)</div>', unsafe_allow_html=True)
             st.bar_chart(e.set_index('Date')[eq_cols])
 
-        # ─── PART C: DIFFERENCED DATE-WISE ENERGY PROFILE (LOOK-AHEAD SHIFT APPLIED) ───
         st.markdown('<div class="sec-title">Daily Process Zone Net Energy Consumed (Adjacent Day Differences)</div>', unsafe_allow_html=True)
         
         diff_energy = e[['Date']].copy()
@@ -388,8 +392,6 @@ with tab_energy:
             diff_energy[f"{col} Delta"] = (e[col] - e[col].shift(-1)).fillna(0)
         
         diff_cols = [f"{col} Delta" for col in eq_cols]
-        
-        # Pull second-last processed row tracking format (iloc[-2])
         target_energy_row = diff_energy.iloc[-2] if len(diff_energy) >= 2 else diff_energy.iloc[-1]
         
         ec1, ec2, ec3, ec4 = st.columns(4)
@@ -404,14 +406,14 @@ with tab_energy:
             st.markdown(f"""
             <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #FF9F1C;">
                 <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">CLC Consumption Delta</div>
-                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{target_energy_row.get('clc consump. Delta', 0):,.1f} kWh</div>
+                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{target_energy_row.get('clc consmp. Delta', 0):,.1f} kWh</div>
             </div>
             """, unsafe_allow_html=True)
         with ec3:
             st.markdown(f"""
             <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #16A34A;">
                 <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">BMC Consumption Delta</div>
-                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{target_energy_row.get('bmc consump. Delta', 0):,.1f} kWh</div>
+                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{target_energy_row.get('bmc consmp. Delta', 0):,.1f} kWh</div>
             </div>
             """, unsafe_allow_html=True)
         with ec4:
@@ -461,7 +463,6 @@ with tab_temp:
             st.metric("Thermal Compliance Index", f"{compliance:.1f}%",
                       delta=f"{total_exc} critical violations", delta_color="inverse")
 
-        # ─── PART A: NORMAL REAL-TIME DATA ───
         st.markdown('<div class="sec-title">Real-Time Temperature Stream (Normal Data)</div>', unsafe_allow_html=True)
         st.line_chart(temp_df.set_index('Time')[sensors], color=["#002D62","#0EA5E9","#E01934"])
 
@@ -471,7 +472,6 @@ with tab_temp:
         daily_avg.index = daily_avg.index.astype(str)
         st.bar_chart(daily_avg, color=["#002D62","#0EA5E9","#E01934"])
 
-        # ─── PART B: DIFFERENCED ADJACENT ROW DATA ───
         st.markdown('<div class="sec-title">Daily Temperature Delta Row Variances (Differenced Data)</div>', unsafe_allow_html=True)
         
         d1_sum = temp_df['consump. dough1'].sum()
@@ -626,7 +626,6 @@ with tab_runtime:
             st.markdown('<div class="sec-title">Daily Asset Displacement Matrix (Normal Data Logs)</div>', unsafe_allow_html=True)
             st.bar_chart(r.set_index(fc)[kwh_cols[0]], color="#002D62")
 
-            # ─── PART B: DIFFERENCED DATE-WISE BREAKDOWN ───
             r['Date_Key'] = r[fc].dt.date
             daily_runtime = r.groupby('Date_Key')[kwh_cols[0]].agg(['sum', 'max', 'mean']).reset_index()
             daily_runtime = daily_runtime.rename(columns={
@@ -638,8 +637,6 @@ with tab_runtime:
             daily_runtime['Date'] = pd.to_datetime(daily_runtime['Date'])
 
             st.markdown('<div class="sec-title">Date-Wise Energy Ingestion Profiles (Differenced Daily Breakdown)</div>', unsafe_allow_html=True)
-            
-            # Extract secondary loop row value (Second-Last day index) for target summaries
             target_day = daily_runtime.iloc[-2] if len(daily_runtime) >= 2 else daily_runtime.iloc[-1]
             
             rc1, rc2, rc3 = st.columns(3)
