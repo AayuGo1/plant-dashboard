@@ -17,7 +17,6 @@ warnings.filterwarnings("ignore", category=UserWarning)
 GITHUB_USER   = "AayuGo1"
 GITHUB_REPO   = "plant-dashboard"
 GITHUB_BRANCH = "main"
-GITHUB_FOLDER = ""
 
 RAW_BASE = f"https://raw.githubusercontent.com/{GITHUB_USER}/{GITHUB_REPO}/{GITHUB_BRANCH}"
 API_BASE = f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}/contents?ref={GITHUB_BRANCH}"
@@ -124,7 +123,7 @@ def fast_parse_dates(series):
     return parsed_df
 
 # ─────────────────────────────────────────────────────────────
-#  PROCESSED ENERGY FILE LOADER - ENHANCED
+#  PROCESSED ENERGY FILE LOADER - ENHANCED & ROBUST
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_processed_energy_data():
@@ -136,60 +135,122 @@ def load_processed_energy_data():
     if not target_files:
         return None
         
+    # Get the latest file
     name, url = sorted(target_files)[-1]
+    
     try:
         if name.endswith(".csv"):
             df = read_csv_from_github(url)
         else:
-            df = read_excel_from_github(url)
+            # Read Excel without assuming header row initially to inspect structure
+            raw_df = read_excel_from_github(url, header=None)
             
-        df = df[~df.iloc[:, 0].astype(str).str.contains(r'source|v1|Date|consump', case=False, na=False)]
+            # Identify the header row dynamically
+            header_row_idx = 0
+            for i, row in raw_df.iterrows():
+                if any('date' in str(x).lower() for x in row if pd.notna(x)):
+                    header_row_idx = i
+                    break
+            
+            # Read again with correct header
+            df = read_excel_from_github(url, header=header_row_idx)
+            
+        # Clean column names
         df.columns = [str(c).strip() for c in df.columns]
         
-        date_col = next((c for c in df.columns if c.lower() in ['date', 'timestamp', 'time']), None)
+        # Identify Date Column
+        date_col = next((c for c in df.columns if 'date' in c.lower()), None)
         if not date_col:
+            # Fallback: assume first column is date if it looks like dates
+            if pd.api.types.is_datetime64_any_dtype(df.iloc[:,0]) or '2026' in str(df.iloc[0,0]):
+                date_col = df.columns[0]
+                df.rename(columns={date_col: 'Date'}, inplace=True)
+                date_col = 'Date'
+            else:
+                return None
+
+        # Parse Dates
+        df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+        df = df.dropna(subset=[date_col])
+        df = df.sort_values(by=date_col).reset_index(drop=True)
+        
+        if df.empty:
             return None
-            
-        df[date_col] = df[date_col].astype(str).str.strip()
-        df['DateIndex'] = pd.to_datetime(df[date_col], errors='coerce', format='%Y-%m-%d')
-        
-        if df['DateIndex'].isna().any():
-            df.loc[df['DateIndex'].isna(), 'DateIndex'] = pd.to_datetime(df.loc[df['DateIndex'].isna(), date_col], errors='coerce')
-            
-        df = df.dropna(subset=['DateIndex'])
-        
-        for col in df.columns:
-            if col != 'DateIndex' and col != date_col:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
+
+        # Identify Register Columns (V1 - V9) and Consumption Columns
+        # Based on the sample data, V1-V9 are cumulative registers
+        register_cols = []
+        consump_cols_map = {} # Map register to its consumption column if it exists
         
         for i in range(1, 10):
-            consump_col = f"consump. v{i}"
-            reg_col = f"V{i}"
+            v_col = f"V{i}"
+            # Check for exact match or close match in columns
+            matched_v = next((c for c in df.columns if c.upper() == v_col.upper() or c.startswith(f"V{i} ")), None)
+            if matched_v:
+                register_cols.append(matched_v)
+                
+        # Calculate Consumption from Registers if consumption columns are empty/missing
+        # We will create standardized consumption columns: 'calc_consump_v1' ... 'calc_consump_v9'
+        
+        calculated_consumption = {}
+        
+        for reg_col in register_cols:
+            # Extract the index number from column name e.g. "V1 - DUNKIN BLAST" -> 1
+            # Or just use the order if naming is inconsistent. 
+            # Let's rely on the column name containing V1, V2 etc.
+            v_num = None
+            for i in range(1, 10):
+                if f"V{i}" in reg_col.upper():
+                    v_num = i
+                    break
             
-            if consump_col in df.columns and reg_col in df.columns:
-                computed_diff = df[reg_col].diff()
-                df[consump_col] = df.apply(
-                    lambda row: computed_diff.loc[row.name] if (pd.isna(row[consump_col]) or row[consump_col] == 0) and pd.notna(computed_diff.loc[row.name]) and computed_diff.loc[row.name] > 0 else row[consump_col],
-                    axis=1
-                )
+            if v_num:
+                # Calculate Diff
+                diffs = df[reg_col].diff()
+                # Handle negative diffs (meter reset) or NaNs
+                diffs = diffs.where(diffs >= 0, other=np.nan) # Simple check, might need more complex logic for resets
+                calculated_consumption[f'calc_consump_v{v_num}'] = diffs.fillna(0)
+                
+        # Add calculated columns to DF
+        for col_name, series in calculated_consumption.items():
+            df[col_name] = series
+            
+        # Define Zone Mappings based on standard JFL naming conventions found in sample
+        # V1: Dunkin Blast, V6: Dunkin Rack -> Dunkin
+        # V3: CLC Blast, V8: CLC Rack -> CLC
+        # V2: BMC Blast, V7: BMC Rack -> BMC
+        # V4: Deep1, V5: Deep2, V9: Deep Rack -> Deep
         
-        dunkin_c = 'dunkin consmp.'
-        clc_c = 'clc consump.'
-        bmc_c = 'bmc consump.'
-        deep_c = 'deep consumption'
+        def get_zone_consumption(v_nums):
+            total = pd.Series(np.zeros(len(df)), index=df.index)
+            for v in v_nums:
+                col = f'calc_consump_v{v}'
+                if col in df.columns:
+                    total += df[col]
+            return total
+            
+        df['Dunkin Consumption'] = get_zone_consumption([1, 6])
+        df['CLC Consumption'] = get_zone_consumption([3, 8])
+        df['BMC Consumption'] = get_zone_consumption([2, 7])
+        df['Deep Consumption'] = get_zone_consumption([4, 5, 9])
         
-        if dunkin_c in df.columns:
-            df[dunkin_c] = df.apply(lambda r: (r['consump. v1'] if pd.notna(r['consump. v1']) else 0) + (r['consump. v6'] if pd.notna(r['consump. v6']) else 0) if r[dunkin_c] == 0 else r[dunkin_c], axis=1)
-        if clc_c in df.columns:
-            df[clc_c] = df.apply(lambda r: (r['consump. v3'] if pd.notna(r['consump. v3']) else 0) + (r['consump. v8'] if pd.notna(r['consump. v8']) else 0) if r[clc_c] == 0 else r[clc_c], axis=1)
-        if bmc_c in df.columns:
-            df[bmc_c] = df.apply(lambda r: (r['consump. v2'] if pd.notna(r['consump. v2']) else 0) + (r['consump. v7'] if pd.notna(r['consump. v7']) else 0) if r[bmc_c] == 0 else r[bmc_c], axis=1)
-        if deep_c in df.columns:
-            df[deep_c] = df.apply(lambda r: (r['consump. v4'] if pd.notna(r['consump. v4']) else 0) + (r['consump. v5'] if pd.notna(r['consump. v5']) else 0) + (r['consump. v9'] if pd.notna(r['consump. v9']) else 0) if r[deep_c] == 0 else r[deep_c], axis=1)
+        # Also keep individual V channels for detailed view
+        df['V1_Consumption'] = df.get('calc_consump_v1', pd.Series(0, index=df.index))
+        df['V2_Consumption'] = df.get('calc_consump_v2', pd.Series(0, index=df.index))
+        df['V3_Consumption'] = df.get('calc_consump_v3', pd.Series(0, index=df.index))
+        df['V4_Consumption'] = df.get('calc_consump_v4', pd.Series(0, index=df.index))
+        df['V5_Consumption'] = df.get('calc_consump_v5', pd.Series(0, index=df.index))
+        df['V6_Consumption'] = df.get('calc_consump_v6', pd.Series(0, index=df.index))
+        df['V7_Consumption'] = df.get('calc_consump_v7', pd.Series(0, index=df.index))
+        df['V8_Consumption'] = df.get('calc_consump_v8', pd.Series(0, index=df.index))
+        df['V9_Consumption'] = df.get('calc_consump_v9', pd.Series(0, index=df.index))
 
         return df
+        
     except Exception as e:
         st.sidebar.error(f"Failed parsing processed energy file {name}: {e}")
+        import traceback
+        st.sidebar.text(traceback.format_exc())
         return None
 
 # ─────────────────────────────────────────────────────────────
@@ -257,7 +318,7 @@ def load_temperature_data():
 @st.cache_data(ttl=300)
 def load_excel_sheet(sheet_name, fallback_header_row):
     all_files = list_github_files()
-    match = next((u for n, u in all_files if "freon" in n.lower() and n.endswith(".xlsx")), None)
+    match = next((u for n, _ in all_files if "freon" in n.lower() and n.endswith(".xlsx")), None)
     if not match:
         return None
     try:
@@ -345,8 +406,8 @@ e_df = load_processed_energy_data()
 temp_df = load_temperature_data()
 
 if e_df is not None and not e_df.empty:
-    start_date = e_df['DateIndex'].min().strftime('%d %b %Y')
-    end_date = e_df['DateIndex'].max().strftime('%d %b %Y')
+    start_date = e_df['Date'].min().strftime('%d %b %Y')
+    end_date = e_df['Date'].max().strftime('%d %b %Y')
     date_range_str = f"{start_date} – {end_date}"
 else:
     date_range_str = "No Data Loaded"
@@ -390,7 +451,7 @@ with tab_energy:
     if e_df is not None and not e_df.empty:
         st.markdown('<div class="sec-title">📊 Data Quality & Structure Summary</div>', unsafe_allow_html=True)
         
-        date_col = 'DateIndex'
+        date_col = 'Date'
         total_records = len(e_df)
         start_date = e_df[date_col].min()
         end_date = e_df[date_col].max()
@@ -406,15 +467,13 @@ with tab_energy:
         with col_q4:
             st.metric("Coverage", f"{total_days} days")
         
-        consump_cols = [c for c in e_df.columns if 'consump. v' in c.lower() and c != 'consumption']
-        v_meter_cols = [c for c in e_df.columns if c.startswith('V') and c[1:].isdigit()]
+        # Define Zone Columns
+        dunkin_col = 'Dunkin Consumption'
+        clc_col = 'CLC Consumption'
+        bmc_col = 'BMC Consumption'
+        deep_col = 'Deep Consumption'
         
-        dunkin_col = next((c for c in e_df.columns if 'dunkin consmp.' in c.lower()), None)
-        clc_col = next((c for c in e_df.columns if 'clc consump.' in c.lower()), None)
-        bmc_col = next((c for c in e_df.columns if 'bmc consump.' in c.lower()), None)
-        deep_col = next((c for c in e_df.columns if 'deep consumption' in c.lower()), None)
-        
-        eq_cols = [c for c in [dunkin_col, clc_col, bmc_col, deep_col] if c is not None]
+        eq_cols = [dunkin_col, clc_col, bmc_col, deep_col]
         
         missing_dates = pd.date_range(start=start_date, end=end_date).difference(e_df[date_col])
         if len(missing_dates) > 0:
@@ -427,18 +486,13 @@ with tab_energy:
         st.markdown('<div class="sec-title">📈 Total Energy Consumption Summary (kWh)</div>', unsafe_allow_html=True)
         
         def get_sum(col_name):
-            if col_name and col_name in e_df.columns:
-                return pd.to_numeric(e_df[col_name], errors='coerce').sum()
+            if col_name in e_df.columns:
+                return e_df[col_name].sum()
             return 0.0
         
         def get_avg(col_name):
-            if col_name and col_name in e_df.columns:
-                return pd.to_numeric(e_df[col_name], errors='coerce').mean()
-            return 0.0
-        
-        def get_max(col_name):
-            if col_name and col_name in e_df.columns:
-                return pd.to_numeric(e_df[col_name], errors='coerce').max()
+            if col_name in e_df.columns:
+                return e_df[col_name].mean()
             return 0.0
         
         c1, c2, c3, c4, c5 = st.columns(5)
@@ -459,27 +513,31 @@ with tab_energy:
             st.metric("Grand Total", f"{total_all:,.1f} kWh",
                      delta=f"{total_days} days")
         
-        if consump_cols:
+        # Individual V Channels Plot
+        v_channels = [f'V{i}_Consumption' for i in range(1, 10)]
+        existing_v_channels = [c for c in v_channels if c in e_df.columns]
+        
+        if existing_v_channels:
             st.markdown('<div class="sec-title">📊 Daily Consumption Profile — V1 to V9 Channels</div>', unsafe_allow_html=True)
-            st.markdown(f"*Analyzing {len(consump_cols)} meter channels across {total_days} days*")
+            st.markdown(f"*Analyzing {len(existing_v_channels)} meter channels across {total_days} days*")
             
             fig = go.Figure()
             x_dates = e_df[date_col].dt.strftime('%d-%b').tolist()
             
             colors = ['#002D62', '#E01934', '#FF9F1C', '#16A34A', '#0EA5E9', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981']
             meter_names = {
-                'consump. v1': 'V1 - Dunkin Blast',
-                'consump. v2': 'V2 - BMC Blast',
-                'consump. v3': 'V3 - CLC Blast',
-                'consump. v4': 'V4 - Deep1 Blast',
-                'consump. v5': 'V5 - Deep2 Blast',
-                'consump. v6': 'V6 - Dunkin Rack',
-                'consump. v7': 'V7 - BMC Rack',
-                'consump. v8': 'V8 - CLC Rack',
-                'consump. v9': 'V9 - Deep Rack'
+                'V1_Consumption': 'V1 - Dunkin Blast',
+                'V2_Consumption': 'V2 - BMC Blast',
+                'V3_Consumption': 'V3 - CLC Blast',
+                'V4_Consumption': 'V4 - Deep1 Blast',
+                'V5_Consumption': 'V5 - Deep2 Blast',
+                'V6_Consumption': 'V6 - Dunkin Rack',
+                'V7_Consumption': 'V7 - BMC Rack',
+                'V8_Consumption': 'V8 - CLC Rack',
+                'V9_Consumption': 'V9 - Deep Rack'
             }
             
-            for i, col in enumerate(consump_cols):
+            for i, col in enumerate(existing_v_channels):
                 display_name = meter_names.get(col, col)
                 fig.add_trace(go.Scatter(
                     x=x_dates,
@@ -522,65 +580,59 @@ with tab_energy:
             )
             st.plotly_chart(fig, use_container_width=True)
         
-        if eq_cols:
-            st.markdown('<div class="sec-title">🏭 Process Zone Daily Energy Distribution</div>', unsafe_allow_html=True)
+        # Zone Distribution Plot
+        st.markdown('<div class="sec-title">🏭 Process Zone Daily Energy Distribution</div>', unsafe_allow_html=True)
+        
+        fig_zone = go.Figure()
+        zone_colors = {
+            dunkin_col: '#002D62',
+            clc_col: '#FF9F1C',
+            bmc_col: '#16A34A',
+            deep_col: '#E01934'
+        }
+        
+        for col in eq_cols:
+            color = zone_colors.get(col, '#64748B')
+            display_name = col.replace(' Consumption', '').title()
             
-            fig_zone = go.Figure()
-            zone_colors = {
-                'dunkin': '#002D62',
-                'clc': '#FF9F1C',
-                'bmc': '#16A34A',
-                'deep': '#E01934'
-            }
-            
-            for col in eq_cols:
-                col_lower = col.lower()
-                color = '#64748B'
-                display_name = col
-                for key, hex_color in zone_colors.items():
-                    if key in col_lower:
-                        color = hex_color
-                        display_name = col.replace(' consump.', '').replace(' consmp.', '').replace(' consumption', '').title()
-                        break
-                
-                fig_zone.add_trace(go.Bar(
-                    x=x_dates,
-                    y=e_df[col].tolist(),
-                    name=display_name,
-                    marker_color=color,
-                    hovertemplate=f'{display_name}<br>Date: %{{x}}<br>Energy: %{{y:,.2f}} kWh<extra></extra>'
-                ))
-            
-            fig_zone.update_layout(
-                barmode='stack',
-                hovermode="x unified",
-                margin=dict(l=60, r=20, t=40, b=60),
-                height=450,
-                xaxis=dict(
-                    title='Date',
-                    type='category',
-                    tickmode='array',
-                    tickvals=x_dates,
-                    tickangle=45,
-                    fixedrange=True
-                ),
-                yaxis=dict(
-                    title='Total Energy (kWh)',
-                    fixedrange=True,
-                    gridcolor='#E2E8F0'
-                ),
-                legend=dict(
-                    orientation="h", 
-                    yanchor="bottom", 
-                    y=1.02, 
-                    xanchor="right", 
-                    x=1,
-                    bgcolor='rgba(255,255,255,0.8)'
-                ),
-                plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)'
-            )
-            st.plotly_chart(fig_zone, use_container_width=True)
+            fig_zone.add_trace(go.Bar(
+                x=x_dates,
+                y=e_df[col].tolist(),
+                name=display_name,
+                marker_color=color,
+                hovertemplate=f'{display_name}<br>Date: %{{x}}<br>Energy: %{{y:,.2f}} kWh<extra></extra>'
+            ))
+        
+        fig_zone.update_layout(
+            barmode='stack',
+            hovermode="x unified",
+            margin=dict(l=60, r=20, t=40, b=60),
+            height=450,
+            xaxis=dict(
+                title='Date',
+                type='category',
+                tickmode='array',
+                tickvals=x_dates,
+                tickangle=45,
+                fixedrange=True
+            ),
+            yaxis=dict(
+                title='Total Energy (kWh)',
+                fixedrange=True,
+                gridcolor='#E2E8F0'
+            ),
+            legend=dict(
+                orientation="h", 
+                yanchor="bottom", 
+                y=1.02, 
+                xanchor="right", 
+                x=1,
+                bgcolor='rgba(255,255,255,0.8)'
+            ),
+            plot_bgcolor='rgba(0,0,0,0)',
+            paper_bgcolor='rgba(0,0,0,0)'
+        )
+        st.plotly_chart(fig_zone, use_container_width=True)
         
         st.markdown('<div class="sec-title">📉 Day-over-Day Consumption Change (Δ vs Previous Day)</div>', unsafe_allow_html=True)
         
@@ -595,7 +647,7 @@ with tab_energy:
         
         for col in eq_cols:
             col_label = f"{col} Δ"
-            diff_series = pd.to_numeric(e_df_valid[col], errors='coerce').diff().fillna(0)
+            diff_series = e_df_valid[col].diff().fillna(0)
             # Ensure no negative values
             diff_series = diff_series.clip(lower=0)
             diff_energy[col_label] = diff_series.values
@@ -607,7 +659,7 @@ with tab_energy:
             ec1, ec2, ec3, ec4 = st.columns(4)
             
             def render_delta_metric(container, col_name, color, label):
-                if col_name and f"{col_name} Δ" in diff_energy.columns:
+                if f"{col_name} Δ" in diff_energy.columns:
                     val = target_energy_row[f"{col_name} Δ"]
                     delta_str = f"{val:+,.1f} kWh"
                     container.metric(f"{label} Daily Δ", delta_str)
@@ -676,17 +728,16 @@ with tab_energy:
         }
         
         for col in eq_cols:
-            if col:
-                series = pd.to_numeric(e_df[col], errors='coerce')
-                summary_data.append({
-                    "Zone": zone_labels.get(col, col),
-                    "Total (kWh)": f"{series.sum():,.2f}",
-                    "Mean (kWh/day)": f"{series.mean():,.2f}",
-                    "Min (kWh)": f"{series.min():,.2f}",
-                    "Max (kWh)": f"{series.max():,.2f}",
-                    "Std Dev": f"{series.std():,.2f}",
-                    "CV (%)": f"{(series.std()/series.mean()*100) if series.mean() != 0 else 0:.1f}"
-                })
+            series = e_df[col]
+            summary_data.append({
+                "Zone": zone_labels.get(col, col),
+                "Total (kWh)": f"{series.sum():,.2f}",
+                "Mean (kWh/day)": f"{series.mean():,.2f}",
+                "Min (kWh)": f"{series.min():,.2f}",
+                "Max (kWh)": f"{series.max():,.2f}",
+                "Std Dev": f"{series.std():,.2f}",
+                "CV (%)": f"{(series.std()/series.mean()*100) if series.mean() != 0 else 0:.1f}"
+            })
         
         summary_df = pd.DataFrame(summary_data)
         st.dataframe(summary_df, use_container_width=True, hide_index=True)
@@ -694,23 +745,24 @@ with tab_energy:
         st.markdown('<div class="sec-title">🚨 Anomaly Detection & Alerts</div>', unsafe_allow_html=True)
         
         for col in eq_cols:
-            if col:
-                series = pd.to_numeric(e_df[col], errors='coerce')
-                mean_val = series.mean()
-                std_val = series.std()
-                threshold_upper = mean_val + 2 * std_val
-                threshold_lower = mean_val - 2 * std_val
-                
-                anomalies = e_df[(series > threshold_upper) | (series < threshold_lower)]
-                
-                if len(anomalies) > 0:
-                    st.markdown(f'<div class="alert-warn"><strong>{zone_labels.get(col, col)}:</strong> {len(anomalies)} anomaly day(s) detected (outside ±2σ)</div>', unsafe_allow_html=True)
-                    for idx, row in anomalies.iterrows():
-                        date_str = row[date_col].strftime('%d %b %Y')
-                        val = row[col]
-                        st.markdown(f"  - {date_str}: {val:,.2f} kWh (Mean: {mean_val:,.2f}, Threshold: {threshold_upper:,.2f})")
-                else:
-                    st.markdown(f'<div class="alert-ok"><strong>{zone_labels.get(col, col)}:</strong> No anomalies detected - stable consumption pattern</div>', unsafe_allow_html=True)
+            series = e_df[col]
+            mean_val = series.mean()
+            std_val = series.std()
+            if std_val == 0: continue
+            
+            threshold_upper = mean_val + 2 * std_val
+            threshold_lower = mean_val - 2 * std_val
+            
+            anomalies = e_df[(series > threshold_upper) | (series < threshold_lower)]
+            
+            if len(anomalies) > 0:
+                st.markdown(f'<div class="alert-warn"><strong>{zone_labels.get(col, col)}:</strong> {len(anomalies)} anomaly day(s) detected (outside ±2σ)</div>', unsafe_allow_html=True)
+                for idx, row in anomalies.iterrows():
+                    date_str = row[date_col].strftime('%d %b %Y')
+                    val = row[col]
+                    st.markdown(f"  - {date_str}: {val:,.2f} kWh (Mean: {mean_val:,.2f}, Threshold: {threshold_upper:,.2f})")
+            else:
+                st.markdown(f'<div class="alert-ok"><strong>{zone_labels.get(col, col)}:</strong> No anomalies detected - stable consumption pattern</div>', unsafe_allow_html=True)
         
         st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
         with st.expander("📂 View Pre-Processed Active Energy File Data Table", expanded=False):
