@@ -121,7 +121,7 @@ def fast_parse_dates(series):
     return parsed_df
 
 # ─────────────────────────────────────────────────────────────
-#  PROCESSED ENERGY FILE LOADER (UPDATED DATE CORRECTION STRATEGY)
+#  PROCESSED ENERGY FILE LOADER (UPDATED AND FIXED)
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_processed_energy_data():
@@ -140,19 +140,20 @@ def load_processed_energy_data():
         else:
             df = read_excel_from_github(url)
             
-        # Strip string patterns matching the structural descriptive header definitions
-        df = df[~df.iloc[:, 0].astype(str).str.contains(r'source|v1|Date', case=False, na=False)]
+        # Strip string patterns matching the structural descriptive definitions cleanly
+        df = df[~df.iloc[:, 0].astype(str).str.contains(r'source|v1|Date|consump', case=False, na=False)]
         
         df.columns = [str(c).strip() for c in df.columns]
         date_col = next((c for c in df.columns if c.lower() in ['date', 'timestamp', 'time']), None)
         if not date_col:
             return None
             
-        # Parse cleanly matching ISO format (YYYY-MM-DD)
-        df['DateIndex'] = pd.to_datetime(df[date_col].astype(str).str.strip(), format='%Y-%m-%d', errors='coerce')
+        # Parse cleanly using a resilient fallback parsing route strategy
+        df[date_col] = df[date_col].astype(str).str.strip()
+        df['DateIndex'] = pd.to_datetime(df[date_col], errors='coerce')
         df = df.dropna(subset=['DateIndex'])
         
-        # Extended window constraints to intercept full sequence up to June 15th
+        # Intercept full targeted sequence window correctly matching your raw data matrix 
         df = df[(df['DateIndex'] >= '2026-06-01') & (df['DateIndex'] <= '2026-06-15')]
         df = df.sort_values('DateIndex').set_index('DateIndex')
         
@@ -377,20 +378,21 @@ with tab_energy:
             st.markdown('<div class="sec-title">Calculated Process Zone Loads (Cumulative Distribution)</div>', unsafe_allow_html=True)
             st.bar_chart(e_df[eq_cols])
 
-        st.markdown('<div class="sec-title">Daily Process Zone Net Energy Consumed (Adjacent Day Differences)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec-title">Daily Process Zone Net Energy Consumed (Chronological Progress Delta)</div>', unsafe_allow_html=True)
         
         diff_energy = pd.DataFrame(index=e_df.index)
         diff_cols = []
         for col in eq_cols:
             col_label = f"{col} Delta"
-            diff_energy[col_label] = (e_df[col] - e_df[col].shift(-1)).fillna(0)
+            # Fixed math calculation shift direction to track actual growth differences chronologically
+            diff_energy[col_label] = (e_df[col] - e_df[col].shift(1)).fillna(0)
             diff_cols.append(col_label)
         
-        target_energy_row = diff_energy.iloc[-2] if len(diff_energy) >= 2 else diff_energy.iloc[-1]
+        target_energy_row = diff_energy.iloc[-1] if not diff_energy.empty else None
         
         ec1, ec2, ec3, ec4 = st.columns(4)
         with ec1:
-            val = target_energy_row.get(f"{dunkin_col} Delta", 0) if dunkin_col else 0
+            val = target_energy_row.get(f"{dunkin_col} Delta", 0) if (target_energy_row is not None and dunkin_col) else 0
             st.markdown(f"""
             <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #002D62;">
                 <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Dunkin Consumption Delta</div>
@@ -398,7 +400,7 @@ with tab_energy:
             </div>
             """, unsafe_allow_html=True)
         with ec2:
-            val = target_energy_row.get(f"{clc_col} Delta", 0) if clc_col else 0
+            val = target_energy_row.get(f"{clc_col} Delta", 0) if (target_energy_row is not None and clc_col) else 0
             st.markdown(f"""
             <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #FF9F1C;">
                 <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">CLC Consumption Delta</div>
@@ -406,7 +408,7 @@ with tab_energy:
             </div>
             """, unsafe_allow_html=True)
         with ec3:
-            val = target_energy_row.get(f"{bmc_col} Delta", 0) if bmc_col else 0
+            val = target_energy_row.get(f"{bmc_col} Delta", 0) if (target_energy_row is not None and bmc_col) else 0
             st.markdown(f"""
             <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #16A34A;">
                 <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">BMC Consumption Delta</div>
@@ -414,7 +416,7 @@ with tab_energy:
             </div>
             """, unsafe_allow_html=True)
         with ec4:
-            val = target_energy_row.get(f"{deep_col} Delta", 0) if deep_col else 0
+            val = target_energy_row.get(f"{deep_col} Delta", 0) if (target_energy_row is not None and deep_col) else 0
             st.markdown(f"""
             <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #E01934;">
                 <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Deep Consumption Delta</div>
@@ -628,28 +630,31 @@ with tab_runtime:
             daily_runtime['Date'] = pd.to_datetime(daily_runtime['Date'])
 
             st.markdown('<div class="sec-title">Date-Wise Energy Ingestion Profiles (Differenced Daily Breakdown)</div>', unsafe_allow_html=True)
-            target_day = daily_runtime.iloc[-2] if len(daily_runtime) >= 2 else daily_runtime.iloc[-1]
+            target_day = daily_runtime.iloc[-1] if not daily_runtime.empty else None
             
             rc1, rc2, rc3 = st.columns(3)
             with rc1:
+                val = target_day['Energy Drew (kWh)'] if target_day is not None else 0
                 st.markdown(f"""
                 <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #002D62;">
                     <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Energy Drew</div>
-                    <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{target_day['Energy Drew (kWh)']:,.1f} kWh</div>
+                    <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
                 </div>
                 """, unsafe_allow_html=True)
             with rc2:
+                val = target_day['Peak System Load Vector (kWh)'] if target_day is not None else 0
                 st.markdown(f"""
                 <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #FF9F1C;">
                     <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Peak System Load Vector</div>
-                    <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{target_day['Peak System Load Vector (kWh)']:,.1f} kWh</div>
+                    <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
                 </div>
                 """, unsafe_allow_html=True)
             with rc3:
+                val = target_day['Mean Load Vector (kWh)'] if target_day is not None else 0
                 st.markdown(f"""
                 <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #E01934;">
                     <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Mean Load Vector</div>
-                    <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{target_day['Mean Load Vector (kWh)']:,.1f} kWh</div>
+                    <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
                 </div>
                 """, unsafe_allow_html=True)
 
