@@ -124,7 +124,7 @@ def load_processed_energy_data():
     if not target_files:
         return None
         
-    name, url = sorted(target_files)[-1]
+    name, url = sorted(target_files)[[-1]]
     try:
         if name.endswith(".csv"):
             df = read_csv_from_github(url)
@@ -372,13 +372,61 @@ with tab_energy:
         with c4: st.metric("BMC Net Variance",    f"{e['bmc consump.'].sum() if 'bmc consump.' in e else 0:,.1f}")
         with c5: st.metric("Deep Net Variance",   f"{e['deep consumption'].sum() if 'deep consumption' in e else 0:,.1f}")
 
+        # --- NORMAL PER-DAY ACTIVE METER VALUE VARIATION PROFILE ---
         if consump_cols:
-            st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9 (Normal Data)</div>', unsafe_allow_html=True)
             st.line_chart(e.set_index('Date')[consump_cols])
 
+        # --- PROCESS ZONE QUANTITATIVE TREND COEFICIENTS ---
         if eq_cols:
             st.markdown('<div class="sec-title">Calculated Process Zone Loads (Dunkin / CLC / BMC / Deep)</div>', unsafe_allow_html=True)
             st.bar_chart(e.set_index('Date')[eq_cols])
+
+        # ─── ADDED SECTION: LOOK-AHEAD HISTORICAL DIFFERENCED ENERGY DATA ───
+        st.markdown('<div class="sec-title">Daily Process Zone Net Energy Consumed (Adjacent Day Differences)</div>', unsafe_allow_html=True)
+        
+        # Calculate daily row differences (June 1st Data = June 1st - June 2nd) matching your required layout
+        diff_energy = e[['Date']].copy()
+        for col in eq_cols:
+            diff_energy[f"{col} Delta"] = (e[col] - e[col].shift(-1)).fillna(0)
+        
+        diff_cols = [f"{col} Delta" for col in eq_cols]
+        
+        # Pull second-last processed row metric layout cards directly above the chart stream
+        target_energy_row = diff_energy.iloc[-2] if len(diff_energy) >= 2 else diff_energy.iloc[-1]
+        
+        ec1, ec2, ec3, ec4 = st.columns(4)
+        with ec1:
+            st.markdown(f"""
+            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #002D62;">
+                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Dunkin Consumption Delta</div>
+                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{target_energy_row.get('dunkin consmp. Delta', 0):,.1f} kWh</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with ec2:
+            st.markdown(f"""
+            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #FF9F1C;">
+                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">CLC Consumption Delta</div>
+                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{target_energy_row.get('clc consump. Delta', 0):,.1f} kWh</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with ec3:
+            st.markdown(f"""
+            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #16A34A;">
+                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">BMC Consumption Delta</div>
+                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{target_energy_row.get('bmc consump. Delta', 0):,.1f} kWh</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with ec4:
+            st.markdown(f"""
+            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #E01934;">
+                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Deep Consumption Delta</div>
+                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{target_energy_row.get('deep consumption Delta', 0):,.1f} kWh</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+        st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
+        st.line_chart(diff_energy.set_index('Date')[diff_cols])
 
         st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
         with st.expander("📂 View & Download Pre-Processed Active Energy File Data", expanded=False):
@@ -426,7 +474,7 @@ with tab_temp:
         daily_avg.index = daily_avg.index.astype(str)
         st.bar_chart(daily_avg, color=["#002D62","#0EA5E9","#E01934"])
 
-        # ─── PART B: DIFFERENCED ADJACENT ROW DATA WITH SUMMARY HEADERS ABOVE THE CHART ───
+        # ─── PART B: DIFFERENCED ADJACENT ROW DATA ───
         st.markdown('<div class="sec-title">Daily Temperature Delta Row Variances (Differenced Data)</div>', unsafe_allow_html=True)
         
         d1_sum = temp_df['consump. dough1'].sum()
@@ -673,7 +721,7 @@ with tab_comp:
 
             st.markdown('<div class="sec-title">Compressor Structural Load Activation Cycles</div>', unsafe_allow_html=True)
             comp_metrics = {}
-            run_cols = [col for c in c.columns if any(phrase in str(col).lower() for phrase in ['stop', 'start', 'run', 'comp'])]
+            run_cols = [col for col in c.columns if any(phrase in str(col).lower() for phrase in ['stop', 'start', 'run', 'comp'])]
             
             for idx, col_name in enumerate(run_cols[:5], 1):
                 active_logs = c[c[col_name].astype(str).str.strip().str.len() > 0]
