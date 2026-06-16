@@ -236,17 +236,19 @@ with st.sidebar:
     st.markdown("<hr style='border-color:#1E3A8A; margin:14px 0;'>", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────
-#  AUTOMATED PIPELINE LOADERS
+#  AUTOMATED PIPELINE LOADERS (STRICT DATE CONSTRAINTS)
 # ─────────────────────────────────────────────────────────────
 def fast_parse_dates(series):
+    # Cleans leading/trailing white spaces and parses with explicit Day-Month-Year mapping
+    cleaned_series = series.astype(str).str.strip().str.split(' ').str[0]
     return pd.to_datetime(
-        series.astype(str).str.strip().str.split(' ').str[0],
-        errors='coerce', dayfirst=True
+        cleaned_series,
+        format="%d-%m-%Y",
+        errors='coerce'
     )
 
 @st.cache_data(ttl=60)
 def load_temperature_data_from_github():
-    # Use pagination parameters (?per_page=100) to ensure we scan up to 100 files in the repo root
     api_url = f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}/contents?per_page=100"
     
     try:
@@ -274,6 +276,8 @@ def load_temperature_data_from_github():
                         if sub[c].dtype == object:
                             sub[c] = sub[c].astype(str).str.replace(r'.*NOP.*', '0', regex=True)
                         sub[c] = pd.to_numeric(sub[c], errors='coerce').ffill().bfill()
+                    
+                    # Also map telemetry timestamps correctly safely handling standard log string formats
                     sub['Time'] = pd.to_datetime(sub['Time'], dayfirst=True, errors='coerce')
                     frames.append(sub)
                     
@@ -287,7 +291,6 @@ def load_temperature_data_from_github():
 
 @st.cache_data(ttl=60)
 def load_excel_sheet_from_github(sheet_name, fallback_header_row):
-    # Direct raw request URL bypasses the limited GitHub directory structure tree completely
     raw_url = f"{RAW_BASE_URL}/Power%20consumption%20freon.xlsx"
     
     try:
@@ -327,9 +330,9 @@ power_raw = load_excel_sheet_from_github('Sheet1', fallback_header_row=1)
 runtime_raw = load_excel_sheet_from_github('Sheet2', fallback_header_row=2)
 comp_raw = load_excel_sheet_from_github('Sheet3', fallback_header_row=3)
 
-# Automatically generate date boundaries from file data logs
+# Automatically generate dynamic fallback boundaries
 min_reporting_date = "01 Jun 2026"
-max_reporting_date = "06 Jun 2026"
+max_reporting_date = "10 Jun 2026"
 
 if power_raw is not None and not power_raw.empty and 'Date' in power_raw.columns:
     parsed_dates = fast_parse_dates(power_raw['Date']).dropna()
@@ -359,7 +362,7 @@ with st.sidebar:
         <div style="position:fixed; bottom:18px; left:0; width:238px;
                     text-align:center; font-size:10px; color:#94A3B8;
                     font-weight:600; letter-spacing:0.3px; padding:0 8px;">
-            JFL Internal Operations Tool &nbsp;·&nbsp; v2.8
+            JFL Internal Operations Tool &nbsp;·&nbsp; v2.9
         </div>
     """, unsafe_allow_html=True)
 
