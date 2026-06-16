@@ -457,6 +457,18 @@ with tab_energy:
         st.markdown('<div class="sec-title">Full Daily Aggregated Execution Sheet</div>', unsafe_allow_html=True)
         display_cols = ['Date'] + [col for col in METER_COLS.values() if col in e.columns] + consump_cols + eq_cols
         st.dataframe(e[display_cols], use_container_width=True, hide_index=True)
+
+        # ─── SECTION BOTTOM: RAW DATA INSPECTOR & EXPORT ───
+        st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
+        with st.expander("📂 View & Download Compiled Active Energy Raw File Data", expanded=False):
+            st.dataframe(e, use_container_width=True)
+            csv_data = e.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="Download Compiled Energy Data as CSV",
+                data=csv_data,
+                file_name="compiled_active_energy_meters.csv",
+                mime="text/csv"
+            )
     else:
         st.markdown('<div class="alert-info"><strong>No Active Energy data metrics compiled.</strong> Check file stream synchronization properties.</div>', unsafe_allow_html=True)
 
@@ -522,6 +534,18 @@ with tab_temp:
                 st.markdown(f'<div class="alert-ok">✓ <strong>{lbl}</strong> — Stable at {comp:.1f}% operational compliance.</div>', unsafe_allow_html=True)
             else:
                 st.markdown(f'<div class="alert-warn">⚠ <strong>{lbl}</strong> — Out-of-bounds drop at {comp:.1f}% compliance level.</div>', unsafe_allow_html=True)
+
+        # ─── SECTION BOTTOM: RAW DATA INSPECTOR & EXPORT ───
+        st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
+        with st.expander("📂 View & Download Compiled Temperature Log Raw File Data", expanded=False):
+            st.dataframe(temp_df, use_container_width=True)
+            csv_data = temp_df.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="Download Compiled Temperature Data as CSV",
+                data=csv_data,
+                file_name="compiled_temperature_logs.csv",
+                mime="text/csv"
+            )
     else:
         st.markdown('<div class="alert-info">No environment logs could be successfully loaded.</div>', unsafe_allow_html=True)
 
@@ -566,6 +590,18 @@ with tab_power:
                     st.bar_chart(p.set_index('Date')[savings_col], color="#16A34A")
                     with st.expander("🔎 View Daily Cost Recovery Savings Dataset", expanded=False):
                         st.dataframe(p[['Date', savings_col]], use_container_width=True, hide_index=True)
+
+                # ─── SECTION BOTTOM: RAW DATA INSPECTOR & EXPORT ───
+                st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
+                with st.expander("📂 View & Download Energy & Cost Savings Raw Sheet Data", expanded=False):
+                    st.dataframe(p, use_container_width=True)
+                    csv_data = p.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="Download Sheet1 Cost Data as CSV",
+                        data=csv_data,
+                        file_name="freon_sheet1_energy_savings.csv",
+                        mime="text/csv"
+                    )
         else:
             st.error("Expected Blast column labels could not be parsed from Sheet1.")
     else:
@@ -596,6 +632,18 @@ with tab_runtime:
             st.bar_chart(r.set_index(fc)[kwh_cols[0]], color="#002D62")
             with st.expander("🔎 View Asset Displacement Log Metrics", expanded=False):
                 st.dataframe(r[[fc, kwh_cols[0]]], use_container_width=True, hide_index=True)
+
+            # ─── SECTION BOTTOM: RAW DATA INSPECTOR & EXPORT ───
+            st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
+            with st.expander("📂 View & Download Asset Duty Cycle Raw Sheet Data", expanded=False):
+                st.dataframe(r, use_container_width=True)
+                csv_data = r.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="Download Sheet2 Duty Cycles as CSV",
+                    data=csv_data,
+                    file_name="freon_sheet2_asset_duty_cycles.csv",
+                    mime="text/csv"
+                )
     else:
         st.markdown('<div class="alert-info">Asset duty-cycle log metrics are not active.</div>', unsafe_allow_html=True)
 
@@ -648,5 +696,17 @@ with tab_comp:
                 st.bar_chart(cm_df.set_index("Component")["Cycle Count"], color="#E01934")
                 with st.expander("🔎 View Component Structural Activation Counts", expanded=False):
                     st.dataframe(cm_df, use_container_width=True, hide_index=True)
+
+            # ─── SECTION BOTTOM: RAW DATA INSPECTOR & EXPORT ───
+            st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
+            with st.expander("📂 View & Download Compressor Optimization Raw Sheet Data", expanded=False):
+                st.dataframe(c, use_container_width=True)
+                csv_data = c.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="Download Sheet3 Optimisation Data as CSV",
+                    data=csv_data,
+                    file_name="freon_sheet3_compressor_optimization.csv",
+                    mime="text/csv"
+                )
     else:
         st.markdown('<div class="alert-info">Compressor analytical tracking components not parsed.</div>', unsafe_allow_html=True)
