@@ -353,7 +353,7 @@ with tab_energy:
         with c5: st.metric("Deep Net Variance",   f"{e_df[deep_col].sum() if deep_col else 0:,.1f}")
 
         # ─────────────────────────────────────────────────────────────
-        #  V1 TO V9 DAILY CHRONOLOGICAL PROFILE GRAPH
+        #  V1 TO V9 DAILY CHRONOLOGICAL PROFILE GRAPH (STRICT FORMATTING)
         # ─────────────────────────────────────────────────────────────
         if consump_cols:
             st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9 Channels (Strict 01 Jun - 15 Jun Window)</div>', unsafe_allow_html=True)
@@ -388,7 +388,7 @@ with tab_energy:
             st.plotly_chart(fig_lines, use_container_width=True)
 
         # ─────────────────────────────────────────────────────────────
-        #  BAR AND PIE CHARTS INTEGRAL RENDERING BLOCK
+        #  BAR CHARTS RENDER SECTION
         # ─────────────────────────────────────────────────────────────
         if eq_cols:
             st.markdown('<div class="sec-title">Daily Energy Consumption by Process Area</div>', unsafe_allow_html=True)
@@ -406,17 +406,6 @@ with tab_energy:
                 hovermode="x unified", legend_title="Plant Area", margin=dict(l=40, r=20, t=20, b=40)
             )
             st.plotly_chart(fig_bar, use_container_width=True)
-
-            st.markdown('<div class="sec-title">Consumption Share by Process Area</div>', unsafe_allow_html=True)
-            pie_labels, pie_values = [], []
-            if dunkin_col: pie_labels.append("Dunkin"); pie_values.append(e_df[dunkin_col].sum())
-            if clc_col: pie_labels.append("CLC"); pie_values.append(e_df[clc_col].sum())
-            if bmc_col: pie_labels.append("BMC"); pie_values.append(e_df[bmc_col].sum())
-            if deep_col: pie_labels.append("Deep Freeze"); pie_values.append(e_df[deep_col].sum())
-
-            pie_fig = go.Figure(data=[go.Pie(labels=pie_labels, values=pie_values, hole=0.45)])
-            pie_fig.update_layout(height=450, margin=dict(l=20, r=20, t=20, b=20))
-            st.plotly_chart(pie_fig, use_container_width=True)
 
             st.markdown('<div class="sec-title">Calculated Process Zone Loads (Cumulative Distribution)</div>', unsafe_allow_html=True)
             bar_data = e_df.copy()
