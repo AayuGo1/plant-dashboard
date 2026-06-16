@@ -446,9 +446,13 @@ with tab_energy:
 
         st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9</div>', unsafe_allow_html=True)
         st.line_chart(e.set_index('Date')[consump_cols])
+        with st.expander("🔎 View Delta Consumption (V1-V9) Dataset", expanded=False):
+            st.dataframe(e[['Date'] + consump_cols], use_container_width=True, hide_index=True)
 
         st.markdown('<div class="sec-title">Calculated Process Zone Loads (Dunkin / CLC / BMC / Deep)</div>', unsafe_allow_html=True)
         st.bar_chart(e.set_index('Date')[eq_cols])
+        with st.expander("🔎 View Calculated Process Zone Loads Dataset", expanded=False):
+            st.dataframe(e[['Date'] + eq_cols], use_container_width=True, hide_index=True)
 
         st.markdown('<div class="sec-title">Full Daily Aggregated Execution Sheet</div>', unsafe_allow_html=True)
         display_cols = ['Date'] + [col for col in METER_COLS.values() if col in e.columns] + consump_cols + eq_cols
@@ -479,12 +483,16 @@ with tab_temp:
 
         st.markdown('<div class="sec-title">Real-Time Temperature Stream</div>', unsafe_allow_html=True)
         st.line_chart(temp_df.set_index('Time')[sensors], color=["#002D62","#0EA5E9","#E01934"])
+        with st.expander("🔎 View Real-Time Temperature Stream Log Sheet", expanded=False):
+            st.dataframe(temp_df[['Time'] + sensors], use_container_width=True, hide_index=True)
 
         st.markdown('<div class="sec-title">Daily Mean Thermal Signature</div>', unsafe_allow_html=True)
         temp_df['Date'] = temp_df['Time'].dt.date
         daily_avg = temp_df.groupby('Date')[sensors].mean().round(2)
         daily_avg.index = daily_avg.index.astype(str)
         st.bar_chart(daily_avg, color=["#002D62","#0EA5E9","#E01934"])
+        with st.expander("🔎 View Daily Mean Thermal Metrics Table", expanded=False):
+            st.dataframe(daily_avg.reset_index(), use_container_width=True, hide_index=True)
 
         st.markdown('<div class="sec-title">Cold-Chain Thermodynamic Stability Audits</div>', unsafe_allow_html=True)
         labels = {'Dough Cooler1 Temp':'Dough Cooler 1','Dough Cooler2 Temp':'Dough Cooler 2','Perishable Cooler Temp':'Perishable Storage'}
@@ -550,10 +558,14 @@ with tab_power:
 
                 st.markdown('<div class="sec-title">Daily Power Grid Footprint (kWh)</div>', unsafe_allow_html=True)
                 st.area_chart(p.set_index('Date')[[dunkin_col, clc_col]], color=["#002D62","#FF9F1C"])
+                with st.expander("🔎 View Power Grid Footprint Dataset", expanded=False):
+                    st.dataframe(p[['Date', dunkin_col, clc_col]], use_container_width=True, hide_index=True)
                 
                 if savings_col:
                     st.markdown('<div class="sec-title">Daily Recovery Realized (₹)</div>', unsafe_allow_html=True)
                     st.bar_chart(p.set_index('Date')[savings_col], color="#16A34A")
+                    with st.expander("🔎 View Daily Cost Recovery Savings Dataset", expanded=False):
+                        st.dataframe(p[['Date', savings_col]], use_container_width=True, hide_index=True)
         else:
             st.error("Expected Blast column labels could not be parsed from Sheet1.")
     else:
@@ -582,6 +594,8 @@ with tab_runtime:
 
             st.markdown('<div class="sec-title">Daily Asset Displacement Matrix</div>', unsafe_allow_html=True)
             st.bar_chart(r.set_index(fc)[kwh_cols[0]], color="#002D62")
+            with st.expander("🔎 View Asset Displacement Log Metrics", expanded=False):
+                st.dataframe(r[[fc, kwh_cols[0]]], use_container_width=True, hide_index=True)
     else:
         st.markdown('<div class="alert-info">Asset duty-cycle log metrics are not active.</div>', unsafe_allow_html=True)
 
@@ -612,9 +626,13 @@ with tab_comp:
             with col1:
                 st.markdown('<div class="sec-title">Daily Rest Allocations (hrs)</div>', unsafe_allow_html=True)
                 st.line_chart(c.set_index(date_col)[sav_col], color="#002D62")
+                with st.expander("🔎 View Daily Rest Time Dataset", expanded=False):
+                    st.dataframe(c[[date_col, sav_col]], use_container_width=True, hide_index=True)
             with col2:
                 st.markdown('<div class="sec-title">Cumulative Rest Curve Metrics</div>', unsafe_allow_html=True)
                 st.area_chart(c.set_index(date_col)['Cumulative Savings'], color="#FF9F1C")
+                with st.expander("🔎 View Cumulative Savings Dataset", expanded=False):
+                    st.dataframe(c[[date_col, 'Cumulative Savings']], use_container_width=True, hide_index=True)
 
             st.markdown('<div class="sec-title">Compressor Structural Load Activation Cycles</div>', unsafe_allow_html=True)
             comp_metrics = {}
@@ -628,5 +646,7 @@ with tab_comp:
             if comp_metrics:
                 cm_df = pd.DataFrame(list(comp_metrics.items()), columns=["Component", "Cycle Count"]).sort_values("Cycle Count", ascending=False)
                 st.bar_chart(cm_df.set_index("Component")["Cycle Count"], color="#E01934")
+                with st.expander("🔎 View Component Structural Activation Counts", expanded=False):
+                    st.dataframe(cm_df, use_container_width=True, hide_index=True)
     else:
         st.markdown('<div class="alert-info">Compressor analytical tracking components not parsed.</div>', unsafe_allow_html=True)
