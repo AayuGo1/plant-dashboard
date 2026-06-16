@@ -124,7 +124,7 @@ def load_processed_energy_data():
     if not target_files:
         return None
         
-    name, url = sorted(target_files)[[-1]]
+    name, url = sorted(target_files)[-1]
     try:
         if name.endswith(".csv"):
             df = read_csv_from_github(url)
@@ -307,7 +307,7 @@ with st.sidebar:
     st.markdown("""
         <div style="position:fixed; bottom:18px; left:0; width:238px; text-align:center;
                     font-size:10px; color:#94A3B8; font-weight:600; padding:0 8px;">
-            JFL Internal Operations Tool &nbsp;·&nbsp; v3.8
+            JFL Internal Operations Tool &nbsp;·&nbsp; v3.9
         </div>
     """, unsafe_allow_html=True)
 
@@ -372,27 +372,24 @@ with tab_energy:
         with c4: st.metric("BMC Net Variance",    f"{e['bmc consump.'].sum() if 'bmc consump.' in e else 0:,.1f}")
         with c5: st.metric("Deep Net Variance",   f"{e['deep consumption'].sum() if 'deep consumption' in e else 0:,.1f}")
 
-        # --- NORMAL PER-DAY ACTIVE METER VALUE VARIATION PROFILE ---
         if consump_cols:
             st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9 (Normal Data)</div>', unsafe_allow_html=True)
             st.line_chart(e.set_index('Date')[consump_cols])
 
-        # --- PROCESS ZONE QUANTITATIVE TREND COEFICIENTS ---
         if eq_cols:
             st.markdown('<div class="sec-title">Calculated Process Zone Loads (Dunkin / CLC / BMC / Deep)</div>', unsafe_allow_html=True)
             st.bar_chart(e.set_index('Date')[eq_cols])
 
-        # ─── ADDED SECTION: LOOK-AHEAD HISTORICAL DIFFERENCED ENERGY DATA ───
+        # ─── PART C: DIFFERENCED DATE-WISE ENERGY PROFILE (LOOK-AHEAD SHIFT APPLIED) ───
         st.markdown('<div class="sec-title">Daily Process Zone Net Energy Consumed (Adjacent Day Differences)</div>', unsafe_allow_html=True)
         
-        # Calculate daily row differences (June 1st Data = June 1st - June 2nd) matching your required layout
         diff_energy = e[['Date']].copy()
         for col in eq_cols:
             diff_energy[f"{col} Delta"] = (e[col] - e[col].shift(-1)).fillna(0)
         
         diff_cols = [f"{col} Delta" for col in eq_cols]
         
-        # Pull second-last processed row metric layout cards directly above the chart stream
+        # Pull second-last processed row tracking format (iloc[-2])
         target_energy_row = diff_energy.iloc[-2] if len(diff_energy) >= 2 else diff_energy.iloc[-1]
         
         ec1, ec2, ec3, ec4 = st.columns(4)
