@@ -307,7 +307,7 @@ with st.sidebar:
     st.markdown("""
         <div style="position:fixed; bottom:18px; left:0; width:238px; text-align:center;
                     font-size:10px; color:#94A3B8; font-weight:600; padding:0 8px;">
-            JFL Internal Operations Tool &nbsp;·&nbsp; v3.7
+            JFL Internal Operations Tool &nbsp;·&nbsp; v3.8
         </div>
     """, unsafe_allow_html=True)
 
@@ -393,7 +393,7 @@ with tab_energy:
         st.markdown('<div class="alert-info"><strong>No processed energy report found inside repository.</strong></div>', unsafe_allow_html=True)
 
 # ==============================================================================
-#  TAB 2 — COLD STORAGE TEMPERATURES
+#  TAB 2 — COLD STORAGE TEMPERATURES (ADJACENT SUMMARY ADDED ABOVE CHART)
 # ==============================================================================
 with tab_temp:
     temp_df = load_temperature_data()
@@ -414,7 +414,7 @@ with tab_temp:
             st.metric("Thermal Compliance Index", f"{compliance:.1f}%",
                       delta=f"{total_exc} critical violations", delta_color="inverse")
 
-        # ─── PART A: NORMAL REAL-TIME DATA (FIRST) ───
+        # ─── PART A: NORMAL REAL-TIME DATA ───
         st.markdown('<div class="sec-title">Real-Time Temperature Stream (Normal Data)</div>', unsafe_allow_html=True)
         st.line_chart(temp_df.set_index('Time')[sensors], color=["#002D62","#0EA5E9","#E01934"])
 
@@ -424,8 +424,39 @@ with tab_temp:
         daily_avg.index = daily_avg.index.astype(str)
         st.bar_chart(daily_avg, color=["#002D62","#0EA5E9","#E01934"])
 
-        # ─── PART B: DIFFERENCED ADJACENT ROW DATA (LATER) ───
+        # ─── PART B: DIFFERENCED ADJACENT ROW DATA WITH SUMMARY HEADERS ABOVE THE CHART ───
         st.markdown('<div class="sec-title">Daily Temperature Delta Row Variances (Differenced Data)</div>', unsafe_allow_html=True)
+        
+        # Calculate totals for the adjacent row delta summaries
+        d1_sum = temp_df['consump. dough1'].sum()
+        d2_sum = temp_df['consump. dough2'].sum()
+        p_sum  = temp_df['consump. perishable'].sum()
+        
+        # Create a clean metadata layout directly above the daily line chart
+        sc1, sc2, sc3 = st.columns(3)
+        with sc1:
+            st.markdown(f"""
+            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #002D62;">
+                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Dough 1 Delta Variance Sum</div>
+                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{d1_sum:,.2f} °C</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with sc2:
+            st.markdown(f"""
+            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #0EA5E9;">
+                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Dough 2 Delta Variance Sum</div>
+                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{d2_sum:,.2f} °C</div>
+            </div>
+            """, unsafe_allow_html=True)
+        with sc3:
+            st.markdown(f"""
+            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #E01934;">
+                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Perishable Delta Variance Sum</div>
+                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{p_sum:,.2f} °C</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
         st.line_chart(temp_df.set_index('Time')[delta_cols])
 
         st.markdown('<div class="sec-title">Cold-Chain Thermodynamic Stability Audits</div>', unsafe_allow_html=True)
@@ -526,7 +557,7 @@ with tab_power:
         st.markdown('<div class="alert-info">Power consumption analytical worksheet missing from repo root.</div>', unsafe_allow_html=True)
 
 # ==============================================================================
-#  TAB 4 — ASSET DUTY CYCLES (NORMAL LOGS FIRST, DIFFERENCED DAILY BREAKDOWN LATER)
+#  TAB 4 — ASSET DUTY CYCLES
 # ==============================================================================
 with tab_runtime:
     runtime_df = load_excel_sheet('Sheet2', fallback_header_row=2)
@@ -542,7 +573,6 @@ with tab_runtime:
             r[col] = pd.to_numeric(r[col], errors='coerce').fillna(0)
 
         if kwh_cols and not r.empty:
-            # ─── PART A: NORMAL HISTORICAL RUNTIME PROFILE (FIRST) ───
             c1, c2, c3 = st.columns(3)
             with c1: st.metric("Consolidated Ingested Draw", f"{r[kwh_cols[0]].sum():,.0f} kWh")
             with c2: st.metric("Peak System Load Vector",    f"{r[kwh_cols[0]].max():,.0f} kWh")
@@ -551,7 +581,7 @@ with tab_runtime:
             st.markdown('<div class="sec-title">Daily Asset Displacement Matrix (Normal Data Logs)</div>', unsafe_allow_html=True)
             st.bar_chart(r.set_index(fc)[kwh_cols[0]], color="#002D62")
 
-            # ─── PART B: DIFFERENCED DATE-WISE BREAKDOWN (LATER) ───
+            # ─── PART B: DIFFERENCED DATE-WISE BREAKDOWN WITH METRIC HEADERS DIRECTLY ABOVE CHART ───
             r['Date_Key'] = r[fc].dt.date
             daily_runtime = r.groupby('Date_Key')[kwh_cols[0]].agg(['sum', 'max', 'mean']).reset_index()
             daily_runtime = daily_runtime.rename(columns={
@@ -563,12 +593,38 @@ with tab_runtime:
             daily_runtime['Date'] = pd.to_datetime(daily_runtime['Date'])
 
             st.markdown('<div class="sec-title">Date-Wise Energy Ingestion Profiles (Differenced Daily Breakdown)</div>', unsafe_allow_html=True)
+            
+            # Extract final row values to show the clean metric data boxes right above the chart
+            latest_day = daily_runtime.iloc[-1]
+            rc1, rc2, rc3 = st.columns(3)
+            with rc1:
+                st.markdown(f"""
+                <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #002D62;">
+                    <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Latest Energy Drew</div>
+                    <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{latest_day['Energy Drew (kWh)']:,.1f} kWh</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with rc2:
+                st.markdown(f"""
+                <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #FF9F1C;">
+                    <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Latest Peak System Load</div>
+                    <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{latest_day['Peak System Load Vector (kWh)']:,.1f} kWh</div>
+                </div>
+                """, unsafe_allow_html=True)
+            with rc3:
+                st.markdown(f"""
+                <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #E01934;">
+                    <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Latest Mean Load Vector</div>
+                    <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{latest_day['Mean Load Vector (kWh)']:,.1f} kWh</div>
+                </div>
+                """, unsafe_allow_html=True)
+
+            st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
             st.line_chart(daily_runtime.set_index('Date')[['Energy Drew (kWh)', 'Peak System Load Vector (kWh)', 'Mean Load Vector (kWh)']])
 
             st.markdown('<div class="sec-title">Date-Wise Asset Duty Performance Log Metrics</div>', unsafe_allow_html=True)
             st.dataframe(daily_runtime, use_container_width=True, hide_index=True)
 
-            # ─── SYNCED INSPECTOR CONTAINER AT BOTTOM ───
             st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
             with st.expander("📂 View & Download Asset Duty Cycle Raw Sheet Data", expanded=False):
                 st.dataframe(r.drop(columns=['Date_Key']), use_container_width=True, hide_index=True)
