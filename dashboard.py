@@ -128,7 +128,6 @@ def fast_parse_dates(series):
 @st.cache_data(ttl=300)
 def load_processed_energy_data():
     all_files = list_github_files()
-    # Fixed matching configuration to accept customized export names safely
     target_files = [
         (name, url) for name, url in all_files
         if "PROCESSED_DAILY_VARS_Active_Energy_Report" in name and (name.endswith(".xlsx") or name.endswith(".csv"))
@@ -367,15 +366,23 @@ with tab_energy:
         e = energy_df.copy()
         e['Date'] = pd.to_datetime(e['Date'])
 
+        # Robust case-insensitive substring matching for dynamic columns (e.g. V1 - DUNKIN BLAST)
         consump_cols = [c for c in e.columns if 'consump. v' in c.lower()]
-        eq_cols = [c for c in ['dunkin consmp.', 'clc consump.', 'bmc consump.', 'deep consumption'] if c in e.columns]
+        
+        # Exact fallback helper mappings to bind raw metric boxes safely
+        dunkin_col = next((c for c in e.columns if 'dunkin' in c.lower() and 'consum' in c.lower()), None)
+        clc_col = next((c for c in e.columns if 'clc' in c.lower() and 'consum' in c.lower()), None)
+        bmc_col = next((c for c in e.columns if 'bmc' in c.lower() and 'consum' in c.lower()), None)
+        deep_col = next((c for c in e.columns if 'deep' in c.lower() and 'consum' in c.lower()), None)
+        
+        eq_cols = [c for c in [dunkin_col, clc_col, bmc_col, deep_col] if c is not None]
 
         c1, c2, c3, c4, c5 = st.columns(5)
         with c1: st.metric("Total Days Recorded", f"{len(e)}")
-        with c2: st.metric("Dunkin Net Variance", f"{e['dunkin consmp.'].sum() if 'dunkin consmp.' in e.columns else 0:,.1f}")
-        with c3: st.metric("CLC Net Variance",    f"{e['clc consump.'].sum() if 'clc consump.' in e.columns else 0:,.1f}")
-        with c4: st.metric("BMC Net Variance",    f"{e['bmc consump.'].sum() if 'bmc consump.' in e.columns else 0:,.1f}")
-        with c5: st.metric("Deep Net Variance",   f"{e['deep consumption'].sum() if 'deep consumption' in e.columns else 0:,.1f}")
+        with c2: st.metric("Dunkin Net Variance", f"{e[dunkin_col].sum() if dunkin_col else 0:,.1f}")
+        with c3: st.metric("CLC Net Variance",    f"{e[clc_col].sum() if clc_col else 0:,.1f}")
+        with c4: st.metric("BMC Net Variance",    f"{e[bmc_col].sum() if bmc_col else 0:,.1f}")
+        with c5: st.metric("Deep Net Variance",   f"{e[deep_col].sum() if deep_col else 0:,.1f}")
 
         if consump_cols:
             st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9</div>', unsafe_allow_html=True)
@@ -388,15 +395,17 @@ with tab_energy:
         st.markdown('<div class="sec-title">Daily Process Zone Net Energy Consumed (Adjacent Day Differences)</div>', unsafe_allow_html=True)
         
         diff_energy = e[['Date']].copy()
+        diff_cols = []
         for col in eq_cols:
-            diff_energy[f"{col} Delta"] = (e[col] - e[col].shift(-1)).fillna(0)
+            col_label = f"{col} Delta"
+            diff_energy[col_label] = (e[col] - e[col].shift(-1)).fillna(0)
+            diff_cols.append(col_label)
         
-        diff_cols = [f"{col} Delta" for col in eq_cols]
         target_energy_row = diff_energy.iloc[-2] if len(diff_energy) >= 2 else diff_energy.iloc[-1]
         
         ec1, ec2, ec3, ec4 = st.columns(4)
         with ec1:
-            val = target_energy_row.get('dunkin consmp. Delta', 0)
+            val = target_energy_row.get(f"{dunkin_col} Delta", 0) if dunkin_col else 0
             st.markdown(f"""
             <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #002D62;">
                 <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Dunkin Consumption Delta</div>
@@ -404,7 +413,7 @@ with tab_energy:
             </div>
             """, unsafe_allow_html=True)
         with ec2:
-            val = target_energy_row.get('clc consump. Delta', 0)
+            val = target_energy_row.get(f"{clc_col} Delta", 0) if clc_col else 0
             st.markdown(f"""
             <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #FF9F1C;">
                 <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">CLC Consumption Delta</div>
@@ -412,7 +421,7 @@ with tab_energy:
             </div>
             """, unsafe_allow_html=True)
         with ec3:
-            val = target_energy_row.get('bmc consump. Delta', 0)
+            val = target_energy_row.get(f"{bmc_col} Delta", 0) if bmc_col else 0
             st.markdown(f"""
             <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #16A34A;">
                 <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">BMC Consumption Delta</div>
@@ -420,7 +429,7 @@ with tab_energy:
             </div>
             """, unsafe_allow_html=True)
         with ec4:
-            val = target_energy_row.get('deep consumption Delta', 0)
+            val = target_energy_row.get(f"{deep_col} Delta", 0) if deep_col else 0
             st.markdown(f"""
             <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #E01934;">
                 <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Deep Consumption Delta</div>
