@@ -315,45 +315,87 @@ def load_temperature_data():
 # ─────────────────────────────────────────────────────────────
 #  EXCEL SHEET LOADER
 # ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
+#  EXCEL SHEET LOADER - FIXED & ROBUST
+# ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_excel_sheet(sheet_name, fallback_header_row):
-    # 1. Fetch the files first
-    all_files = list_github_files()
-    
-    # 2. Find the freon file
-    match = next((u for n, _ in all_files if "freon" in n.lower() and n.endswith(".xlsx")), None)
-    
-    if not match:
-        return None
+    """
+    Loads a specific sheet from the Freon Excel workbook found in GitHub.
+    Includes dynamic header detection and defensive error handling.
+    """
     try:
-        preview = read_excel_from_github(match, sheet_name=sheet_name, header=None, engine='openpyxl')
-        hdr = fallback_header_row
-        for i in range(min(15, len(preview))):
-            row = [str(x).lower() for x in preview.iloc[i].dropna()]
-            if any('date' in x or 'stop time' in x or 'start time' in x for x in row):
-                hdr = i
+        # 1. Fetch the files list
+        all_files = list_github_files()
+        if not all_files:
+            return None
+        
+        # 2. Find the freon file correctly by unpacking both name (n) and url (u)
+        match_url = None
+        for n, u in all_files:
+            if "freon" in n.lower() and n.endswith(".xlsx"):
+                match_url = u
                 break
-                
-        df = read_excel_from_github(match, sheet_name=sheet_name, header=hdr, engine='openpyxl')
+        
+        if not match_url:
+            return None
+
+        # 3. Read a preview to detect the actual header row dynamically
+        try:
+            preview = read_excel_from_github(match_url, sheet_name=sheet_name, header=None, engine='openpyxl')
+        except Exception as e:
+            st.warning(f"Could not preview sheet '{sheet_name}' from Freon file: {e}")
+            return None
+
+        # Determine header row index
+        hdr = fallback_header_row
+        if not preview.empty:
+            for i in range(min(15, len(preview))):
+                # Convert row to string list, handling NaNs
+                row_vals = [str(x).lower() for x in preview.iloc[i] if pd.notna(x)]
+                if any('date' in x or 'stop time' in x or 'start time' in x or 'sr' in x for x in row_vals):
+                    hdr = i
+                    break
+        
+        # 4. Read the actual data with the detected header
+        try:
+            df = read_excel_from_github(match_url, sheet_name=sheet_name, header=hdr, engine='openpyxl')
+        except Exception as e:
+            st.warning(f"Failed to read data from sheet '{sheet_name}': {e}")
+            return None
+
+        if df.empty:
+            return None
+            
+        # 5. Clean Column Names
+        df.columns = [str(c).strip() for c in df.columns]
         df = df.dropna(axis=1, how='all')
         
-        if df.empty:
-            return df
-            
-        df.columns = [str(c).strip() for c in df.columns]
-        
-        if sheet_name == 'Sheet3' and len(df.columns) >= 12:
-            df.columns.values[11] = 'Saving in hrs'
-        elif sheet_name == 'Sheet3':
-            last = df.columns[-1]
-            if 'unnamed' in str(last).lower():
-                df = df.rename(columns={last: 'Saving in hrs'})
+        # 6. Specific Logic for Sheet3 (Compressor Optimization)
+        if sheet_name == 'Sheet3':
+            if len(df.columns) >= 12:
+                # Ensure the 12th column is named correctly if it exists
+                if 'Saving in hrs' not in df.columns:
+                     df.columns.values[11] = 'Saving in hrs'
+            else:
+                # Fallback: check last column for unnamed
+                last = df.columns[-1]
+                if 'unnamed' in str(last).lower():
+                    df = df.rename(columns={last: 'Saving in hrs'})
                 
-        fc = df.columns[0]
-        df = df[df[fc].astype(str).str.strip().str.lower() != 'total']
+        # 7. Filter out 'Total' rows if they exist in the first column
+        if not df.empty:
+            fc = df.columns[0]
+            # Keep rows where the first column is NOT 'total' (case-insensitive)
+            mask = df[fc].astype(str).str.strip().str.lower() != 'total'
+            df = df[mask]
+            
         return df
+
     except Exception as e:
-        st.warning(f"Could not load sheet {sheet_name}: {e}")
+        st.warning(f"Unexpected error loading sheet {sheet_name}: {e}")
+        import traceback
+        st.sidebar.text(traceback.format_exc())
         return None
 # ─────────────────────────────────────────────────────────────
 #  SIDEBAR
