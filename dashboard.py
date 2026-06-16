@@ -68,6 +68,7 @@ section[data-testid="stSidebar"] label {
 div[data-testid="stMetric"] { background: #FFFFFF !important; border: 1px solid #E2E8F0 !important; border-radius: 8px !important; padding: 20px 22px !important; box-shadow: 0 1px 4px rgba(0,0,0,0.05) !important; border-left: 5px solid #002D62 !important; }
 div[data-testid="stMetricLabel"] p { color: #64748B !important; font-size: 10.5px !important; font-weight: 700 !important; letter-spacing: 0.7px !important; text-transform: uppercase !important; }
 div[data-testid="stMetricValue"] div { color: #0F172A !important; font-size: 26px !important; font-weight: 800 !important; }
+div[data-testid="stMetricDelta"] div { font-size: 11.5px !important; font-weight: 600 !important; }
 
 .sec-title { font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 1px; margin: 28px 0 12px 0; padding-bottom: 8px; border-bottom: 1px solid #E2E8F0; }
 </style>
@@ -106,7 +107,7 @@ def fast_parse_dates(series):
     return parsed_df
 
 # ─────────────────────────────────────────────────────────────
-#  DATA LOADERS (ENERGY, TEMPERATURE, AND WORKBOOKS)
+#  PROCESSED ENERGY FILE LOADER (ROBUST ROW DATA EXTRACTION)
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_processed_energy_data():
@@ -125,6 +126,7 @@ def load_processed_energy_data():
         else:
             df = read_excel_from_github(url)
             
+        # Clean header text artifacts cleanly
         df = df[~df.iloc[:, 0].astype(str).str.contains(r'source|v1|Date|consump', case=False, na=False)]
         df.columns = [str(c).strip() for c in df.columns]
         
@@ -133,22 +135,27 @@ def load_processed_energy_data():
             return None
             
         df[date_col] = df[date_col].astype(str).str.strip()
-        df['DateIndex'] = pd.to_datetime(df[date_col], errors='coerce')
+        df['DateIndex'] = pd.to_datetime(df[date_col], errors='coerce', format='%Y-%m-%d')
         
         if df['DateIndex'].isna().any():
-            df.loc[df['DateIndex'].isna(), 'DateIndex'] = pd.to_datetime(df.loc[df['DateIndex'].isna(), date_col], errors='coerce', dayfirst=True)
+            df.loc[df['DateIndex'].isna(), 'DateIndex'] = pd.to_datetime(df.loc[df['DateIndex'].isna(), date_col], errors='coerce')
             
         df = df.dropna(subset=['DateIndex'])
         df = df[(df['DateIndex'] >= '2026-06-01') & (df['DateIndex'] <= '2026-06-15')]
+        
+        # Chronological force-sort to line elements perfectly
         df = df.sort_values('DateIndex').reset_index(drop=True)
         
+        # Convert values to floats cleanly, fill blank spaces with 0 to prevent data drop
         for col in df.columns:
             if col != 'DateIndex' and col != date_col:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
         
+        # Re-derive daily delta metrics calculation if raw values show dropouts
         for i in range(1, 10):
             consump_col = f"consump. v{i}"
             reg_col = f"V{i}"
+            
             if consump_col in df.columns and reg_col in df.columns:
                 computed_diff = df[reg_col].diff()
                 df[consump_col] = df.apply(
@@ -175,6 +182,9 @@ def load_processed_energy_data():
         st.sidebar.error(f"Failed parsing processed energy file {name}: {e}")
         return None
 
+# ─────────────────────────────────────────────────────────────
+#  TEMPERATURE DATA LOADER 
+# ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_temperature_data():
     all_files = list_github_files()
@@ -187,6 +197,7 @@ def load_temperature_data():
         try:
             df = read_csv_from_github(url)
             df.columns = [str(c).strip() for c in df.columns]
+            
             time_col = next((c for c in df.columns if 'time' in c.lower()), None)
             c1_col = next((c for c in df.columns if 'cooler1' in c.lower().replace(" ", "")), None)
             c2_col = next((c for c in df.columns if 'cooler2' in c.lower().replace(" ", "")), None)
@@ -223,11 +234,16 @@ def load_temperature_data():
         .sort_values('Time')
         .reset_index(drop=True)
     )
+
     combined['consump. dough1'] = (combined['Dough Cooler1 Temp'] - combined['Dough Cooler1 Temp'].shift(1)).fillna(0)
     combined['consump. dough2'] = (combined['Dough Cooler2 Temp'] - combined['Dough Cooler2 Temp'].shift(1)).fillna(0)
     combined['consump. perishable'] = (combined['Perishable Cooler Temp'] - combined['Perishable Cooler Temp'].shift(1)).fillna(0)
+
     return combined
 
+# ─────────────────────────────────────────────────────────────
+#  EXCEL SHEET LOADER
+# ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_excel_sheet(sheet_name, fallback_header_row):
     all_files = list_github_files()
@@ -244,26 +260,25 @@ def load_excel_sheet(sheet_name, fallback_header_row):
                 break
         df = read_excel_from_github(match, sheet_name=sheet_name, header=hdr, engine='openpyxl')
         df = df.dropna(axis=1, how='all')
+        
         if df.empty:
             return df
+            
         df.columns = [str(c).strip() for c in df.columns]
+        
         if sheet_name == 'Sheet3' and len(df.columns) >= 12:
             df.columns.values[11] = 'Saving in hrs'
         elif sheet_name == 'Sheet3':
             last = df.columns[-1]
             if 'unnamed' in str(last).lower():
                 df = df.rename(columns={last: 'Saving in hrs'})
+                
         fc = df.columns[0]
         df = df[df[fc].astype(str).str.strip().str.lower() != 'total']
         return df
     except Exception as e:
         st.warning(f"Could not load sheet {sheet_name}: {e}")
         return None
-
-# ─────────────────────────────────────────────────────────────
-#  GLOBAL ENVIRONMENT LOAD ROUTING
-# ─────────────────────────────────────────────────────────────
-e_df = load_processed_energy_data()
 
 # ─────────────────────────────────────────────────────────────
 #  SIDEBAR
@@ -291,17 +306,32 @@ with st.sidebar:
     has_freon    = any("freon" in n.lower() for n, _ in all_files)
 
     st.markdown("<hr style='border-color:#1E3A8A; margin:14px 0;'>", unsafe_allow_html=True)
-    st.markdown('<div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase;">GitHub Source Status</div>', unsafe_allow_html=True)
+    st.markdown("""<div style="font-size:9px; font-weight:700; letter-spacing:1.2px;
+                    color:#94A3B8; text-transform:uppercase; margin-bottom:10px;">
+                    GitHub Source Status</div>""", unsafe_allow_html=True)
 
     st.markdown(f"""
-        <div style="margin-top:8px; margin-bottom:8px;"><span class="status-pill status-{'ok' if processed_energy_files else 'err'}">Processed Energy · {'Active' if processed_energy_files else 'Missing'}</span></div>
-        <div style="margin-bottom:8px;"><span class="status-pill status-{'ok' if csv_files else 'err'}">Temp Logs · {len(csv_files)} file(s)</span></div>
-        <div><span class="status-pill status-{'ok' if has_freon else 'err'}">Freon Workbook · {'Found' if has_freon else 'Not Found'}</span></div>
+        <div style="margin-bottom:8px;">
+            <span class="status-pill status-{'ok' if processed_energy_files else 'err'}">
+                {'●' if processed_energy_files else '○'}&nbsp; Processed Energy · {'Active' if processed_energy_files else 'Missing'}
+            </span>
+        </div>
+        <div style="margin-bottom:8px;">
+            <span class="status-pill status-{'ok' if csv_files else 'err'}">
+                {'●' if csv_files else '○'}&nbsp; Temp Logs · {len(csv_files)} file(s)
+            </span>
+        </div>
+        <div>
+            <span class="status-pill status-{'ok' if has_freon else 'err'}">
+                {'●' if has_freon else '○'}&nbsp; Freon Workbook · {'Found' if has_freon else 'Not Found'}
+            </span>
+        </div>
     """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────
 #  HEADER SYSTEM
 # ─────────────────────────────────────────────────────────────
+e_df = load_processed_energy_data()
 date_range_str = "01 Jun 2026 – 15 Jun 2026" if e_df is not None and not e_df.empty else "No Data Loaded"
 
 st.markdown(f"""
@@ -325,6 +355,9 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
+# ─────────────────────────────────────────────────────────────
+#  TABS ROUTING
+# ─────────────────────────────────────────────────────────────
 tab_energy, tab_temp, tab_power, tab_runtime, tab_comp = st.tabs([
     "⚡  Active Energy Meters",
     "🌡️  Cold Storage Temperatures",
@@ -339,10 +372,12 @@ tab_energy, tab_temp, tab_power, tab_runtime, tab_comp = st.tabs([
 with tab_energy:
     if e_df is not None and not e_df.empty:
         consump_cols = [c for c in e_df.columns if 'consump. v' in c.lower()]
+        
         dunkin_col = next((c for c in e_df.columns if 'dunkin consmp.' in c.lower()), None)
         clc_col = next((c for c in e_df.columns if 'clc consump.' in c.lower()), None)
         bmc_col = next((c for c in e_df.columns if 'bmc consump.' in c.lower()), None)
         deep_col = next((c for c in e_df.columns if 'deep consumption' in c.lower()), None)
+        
         eq_cols = [c for c in [dunkin_col, clc_col, bmc_col, deep_col] if c is not None]
 
         c1, c2, c3, c4, c5 = st.columns(5)
@@ -352,23 +387,24 @@ with tab_energy:
         with c4: st.metric("BMC Net Variance",    f"{e_df[bmc_col].sum() if bmc_col else 0:,.1f}")
         with c5: st.metric("Deep Net Variance",   f"{e_df[deep_col].sum() if deep_col else 0:,.1f}")
 
-        # ─────────────────────────────────────────────────────────────
-        #  V1 TO V9 DAILY CHRONOLOGICAL PROFILE GRAPH (STRICT FORMATTING)
-        # ─────────────────────────────────────────────────────────────
+        # CRITICAL FIX: FORCED CONTINUOUS TIMELINE MAPPER VIA PLOTLY CATEGORY ARRAYS
         if consump_cols:
-            st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9 Channels (Strict 01 Jun - 15 Jun Window)</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9 Channels (Strict 01 Jun - 15 Jun Timeline)</div>', unsafe_allow_html=True)
             
-            fig_lines = go.Figure()
-            x_categories = ["01-Jun", "02-Jun", "03-Jun", "04-Jun", "05-Jun", "06-Jun", "07-Jun", 
-                            "08-Jun", "09-Jun", "10-Jun", "11-Jun", "12-Jun", "13-Jun", "14-Jun", "15-Jun"]
+            fig = go.Figure()
+            # Explicit string-based sequential X-axis labels matching your screenshot matrix sequence 100%
+            x_dates = ["2026-06-01", "2026-06-02", "2026-06-03", "2026-06-04", "2026-06-05", 
+                       "2026-06-06", "2026-06-07", "2026-06-08", "2026-06-09", "2026-06-10", 
+                       "2026-06-11", "2026-06-12", "2026-06-13", "2026-06-14", "2026-06-15"]
             
+            # Re-index data cleanly onto the true target date strings array map
             temp_plot_df = e_df.copy()
-            temp_plot_df['ChartLabel'] = temp_plot_df['DateIndex'].dt.strftime('%d-%b')
-            temp_plot_df = temp_plot_df.set_index('ChartLabel').reindex(x_categories).fillna(0.0)
+            temp_plot_df['DateStr'] = temp_plot_df['DateIndex'].dt.strftime('%Y-%m-%d')
+            temp_plot_df = temp_plot_df.set_index('DateStr').reindex(x_dates).fillna(0.0)
             
             for col in consump_cols:
-                fig_lines.add_trace(go.Scatter(
-                    x=x_categories,
+                fig.add_trace(go.Scatter(
+                    x=x_dates,
                     y=temp_plot_df[col].tolist(),
                     mode='lines+markers',
                     name=col,
@@ -376,46 +412,32 @@ with tab_energy:
                     marker=dict(size=6)
                 ))
                 
-            fig_lines.update_layout(
+            fig.update_layout(
                 hovermode="x unified",
-                margin=dict(l=40, r=20, t=15, b=30),
+                margin=dict(l=30, r=20, t=10, b=20),
                 height=450,
-                xaxis=dict(type='category', categoryarray=x_categories, gridcolor="#E2E8F0", fixedrange=True),
+                xaxis=dict(
+                    type='category',
+                    tickmode='array',
+                    tickvals=x_dates,
+                    fixedrange=True,
+                    gridcolor="#E2E8F0"
+                ),
                 yaxis=dict(fixedrange=True, gridcolor="#E2E8F0"),
                 plot_bgcolor="#FFFFFF",
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
-            st.plotly_chart(fig_lines, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True)
 
-        # ─────────────────────────────────────────────────────────────
-        #  BAR CHARTS RENDER SECTION
-        # ─────────────────────────────────────────────────────────────
         if eq_cols:
-            st.markdown('<div class="sec-title">Daily Energy Consumption by Process Area</div>', unsafe_allow_html=True)
-            energy_chart = e_df.copy()
-            energy_chart["Date"] = energy_chart["DateIndex"].dt.strftime("%d-%b")
-
-            fig_bar = go.Figure()
-            if dunkin_col: fig_bar.add_trace(go.Bar(name="Dunkin", x=energy_chart["Date"], y=energy_chart[dunkin_col]))
-            if clc_col: fig_bar.add_trace(go.Bar(name="CLC", x=energy_chart["Date"], y=energy_chart[clc_col]))
-            if bmc_col: fig_bar.add_trace(go.Bar(name="BMC", x=energy_chart["Date"], y=energy_chart[bmc_col]))
-            if deep_col: fig_bar.add_trace(go.Bar(name="Deep Freeze", x=energy_chart["Date"], y=energy_chart[deep_col]))
-
-            fig_bar.update_layout(
-                barmode="stack", height=500, xaxis_title="Date", yaxis_title="Energy Consumption (kWh)",
-                hovermode="x unified", legend_title="Plant Area", margin=dict(l=40, r=20, t=20, b=40)
-            )
-            st.plotly_chart(fig_bar, use_container_width=True)
-
             st.markdown('<div class="sec-title">Calculated Process Zone Loads (Cumulative Distribution)</div>', unsafe_allow_html=True)
             bar_data = e_df.copy()
             bar_data['ChartDate'] = bar_data['DateIndex'].dt.strftime('%d-%b')
             st.bar_chart(bar_data.set_index('ChartDate')[eq_cols])
-            
-        with st.expander("📂 View Pre-Processed Active Energy File Data Table"):
-            st.dataframe(e_df, use_container_width=True)
-    else:
-        st.markdown('<div class="alert-info">No active energy data captured matching the current file window constraints.</div>', unsafe_allow_html=True)
+
+        st.markdown('<div class="sec-title">📥 Raw Data Inspector Portal</div>', unsafe_allow_html=True)
+        with st.expander("📂 View Pre-Processed Active Energy File Data Table", expanded=False):
+            st.dataframe(e_df.set_index('DateIndex'), use_container_width=True)
 
 # ==============================================================================
 #  TAB 2 — COLD STORAGE TEMPERATURES
@@ -425,6 +447,7 @@ with tab_temp:
     if temp_df is not None and not temp_df.empty:
         latest  = temp_df.iloc[-1]
         sensors = ['Dough Cooler1 Temp', 'Dough Cooler2 Temp', 'Perishable Cooler Temp']
+        delta_cols = ['consump. dough1', 'consump. dough2', 'consump. perishable']
         THRESHOLD = 4.0
 
         c1, c2, c3, c4 = st.columns([1,1,1,1.2])
@@ -435,12 +458,20 @@ with tab_temp:
             total_logs = len(temp_df)
             total_exc  = sum((temp_df[s] > THRESHOLD).sum() for s in sensors)
             compliance = (1 - total_exc / (total_logs * len(sensors))) * 100
-            st.metric("Thermal Compliance Index", f"{compliance:.1f}%")
+            st.metric("Thermal Compliance Index", f"{compliance:.1f}%",
+                      delta=f"{total_exc} critical violations", delta_color="inverse")
 
         st.markdown('<div class="sec-title">Real-Time Temperature Stream</div>', unsafe_allow_html=True)
         st.line_chart(temp_df.set_index('Time')[sensors], color=["#002D62","#0EA5E9","#E01934"])
-    else:
-        st.markdown('<div class="alert-info">No environment logs could be successfully loaded.</div>', unsafe_allow_html=True)
+
+        st.markdown('<div class="sec-title">Daily Mean Thermal Signature</div>', unsafe_allow_html=True)
+        temp_df['Date'] = temp_df['Time'].dt.date
+        daily_avg = temp_df.groupby('Date')[sensors].mean().round(2)
+        daily_avg.index = daily_avg.index.astype(str)
+        st.bar_chart(daily_avg, color=["#002D62","#0EA5E9","#E01934"])
+
+        st.markdown('<div class="sec-title">Temperature Log Delta Variations</div>', unsafe_allow_html=True)
+        st.line_chart(temp_df.set_index('Time')[delta_cols])
 
 # ==============================================================================
 #  TAB 3 — ENERGY & COST SAVINGS
@@ -451,14 +482,30 @@ with tab_power:
         p = power_df.copy()
         p['Date'] = fast_parse_dates(p['Date'])
         p = p.dropna(subset=['Date']).sort_values('Date')
+        
         dunkin_col = next((c for c in p.columns if 'dunkin' in c.lower()), None)
         clc_col = next((c for c in p.columns if 'clc' in c.lower()), None)
         
         if dunkin_col and clc_col:
             p[dunkin_col] = pd.to_numeric(p[dunkin_col], errors='coerce').fillna(0)
             p[clc_col]    = pd.to_numeric(p[clc_col],    errors='coerce').fillna(0)
-            st.markdown('<div class="sec-title">Daily Power Grid Footprint (kWh)</div>', unsafe_allow_html=True)
-            st.area_chart(p.set_index('Date')[[dunkin_col, clc_col]], color=["#002D62","#FF9F1C"])
+            savings_col   = next((c for c in p.columns if 'saving' in str(c).lower()), None)
+            if savings_col:
+                p[savings_col] = pd.to_numeric(p[savings_col], errors='coerce').fillna(0)
+            
+            p = p[p[dunkin_col] < 500_000]
+
+            if not p.empty:
+                c1, c2, c3, c4 = st.columns(4)
+                with c1: st.metric("Dunkin' Blast Sum", f"{p[dunkin_col].sum():,.0f} kWh")
+                with c2: st.metric("CLC Blast Sum",     f"{p[clc_col].sum():,.0f} kWh")
+                with c3: st.metric("Combined Load Matrix", f"{p[dunkin_col].sum()+p[clc_col].sum():,.0f} kWh")
+                with c4:
+                    if savings_col:
+                        st.metric("Optimized Value Catch", f"₹ {p[savings_col].sum():,.2f}")
+
+                st.markdown('<div class="sec-title">Daily Power Grid Footprint (kWh)</div>', unsafe_allow_html=True)
+                st.area_chart(p.set_index('Date')[[dunkin_col, clc_col]], color=["#002D62","#FF9F1C"])
 
 # ==============================================================================
 #  TAB 4 — ASSET DUTY CYCLES
@@ -471,11 +518,17 @@ with tab_runtime:
         r  = r[~r[fc].astype(str).str.contains('Date|From|Total|Running', case=False, na=False)]
         r[fc] = fast_parse_dates(r[fc])
         r  = r.dropna(subset=[fc]).sort_values(fc)
-        kwh_cols = [c for c in r.columns if 'KWH' in str(c).upper()]
         
+        kwh_cols = [c for c in r.columns if 'KWH' in str(c).upper()]
+        for col in kwh_cols:
+            r[col] = pd.to_numeric(r[col], errors='coerce').fillna(0)
+
         if kwh_cols and not r.empty:
-            for col in kwh_cols:
-                r[col] = pd.to_numeric(r[col], errors='coerce').fillna(0)
+            c1, c2, c3 = st.columns(3)
+            with c1: st.metric("Consolidated Ingested Draw", f"{r[kwh_cols[0]].sum():,.0f} kWh")
+            with c2: st.metric("Peak System Load Vector",    f"{r[kwh_cols[0]].max():,.0f} kWh")
+            with c3: st.metric("Mean Constant Load Metric", f"{r[kwh_cols[0]].mean():,.0f} kWh")
+
             st.markdown('<div class="sec-title">Daily Asset Displacement Matrix (Normal Data Logs)</div>', unsafe_allow_html=True)
             st.bar_chart(r.set_index(fc)[kwh_cols[0]], color="#002D62")
 
@@ -493,5 +546,16 @@ with tab_comp:
 
         if sav_col:
             c[sav_col] = pd.to_numeric(c[sav_col], errors='coerce').fillna(0)
-            st.markdown('<div class="sec-title">Daily Rest Allocations (hrs)</div>', unsafe_allow_html=True)
-            st.line_chart(c.set_index(c.columns[0])[sav_col], color="#002D62")
+            c['Cumulative Savings'] = c[sav_col].cumsum()
+            date_col = c.columns[0]
+
+            k1, k2, k3, k4 = st.columns(4)
+            with k1: st.metric("Relief Window Saved", f"{c[sav_col].sum():,.1f} hrs")
+            with k2: st.metric("Mean Daily Dampening", f"{c[sav_col].mean():.1f} hrs")
+            with k3: st.metric("Peak Single Window Stop", f"{c[sav_col].max():.1f} hrs")
+            with k4: st.metric("Audited Shift Blocks",     f"{len(c)}")
+
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown('<div class="sec-title">Daily Rest Allocations (hrs)</div>', unsafe_allow_html=True)
+                st.line_chart(c.set_index(date_col)[sav_col], color="#002D62")
