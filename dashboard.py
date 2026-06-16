@@ -127,7 +127,7 @@ METER_COLS = {
 }
 
 # ─────────────────────────────────────────────────────────────
-#  ACTIVE ENERGY PROCESSOR
+#  ACTIVE ENERGY PROCESSOR (REWORKED ANALYSIS PIPELINE)
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_and_process_energy_files():
@@ -155,11 +155,10 @@ def load_and_process_energy_files():
                 if not date_candidate:
                     continue
 
-                df['Parsed_Date'] = pd.to_datetime(df[date_candidate], errors='coerce').dt.date
-                df = df.dropna(subset=['Parsed_Date'])
-                df = df.rename(columns={'Parsed_Date': 'Date'})
+                df['Parsed_Timestamp'] = pd.to_datetime(df[date_candidate], errors='coerce')
+                df = df.dropna(subset=['Parsed_Timestamp']).sort_values('Parsed_Timestamp')
+                df['Date'] = df['Parsed_Timestamp'].dt.date
                 
-                # Robust column renaming for spacing variations
                 rename_dict = {}
                 for col in df.columns:
                     col_clean = str(col).upper().replace(" ", "").replace("-", "")
@@ -185,8 +184,9 @@ def load_and_process_energy_files():
                     
                     if has_date or has_meters:
                         date_col = next((c for c in df.columns if c in ['Timestamp', 'Date', 'time', 'date']), df.columns[0])
-                        df['Date'] = pd.to_datetime(df[date_col], errors='coerce').dt.date
-                        df = df.dropna(subset=['Date'])
+                        df['Parsed_Timestamp'] = pd.to_datetime(df[date_col], errors='coerce')
+                        df = df.dropna(subset=['Parsed_Timestamp']).sort_values('Parsed_Timestamp')
+                        df['Date'] = df['Parsed_Timestamp'].dt.date
                         frames.append(df)
                         break
             except Exception as e:
@@ -202,10 +202,14 @@ def load_and_process_energy_files():
             combined_raw[col] = float('nan')
         else:
             combined_raw[col] = pd.to_numeric(combined_raw[col], errors='coerce')
+            
+    # Clean continuous cumulative registers using forward fill for empty parameters (e.g. BMC slots)
+    combined_raw[list(METER_COLS.values())] = combined_raw[list(METER_COLS.values())].ffill().bfill()
 
+    # CRITICAL FIX: Extract the maximum (or last) cumulative log signature per calendar day
     combined = (
         combined_raw.groupby('Date')[list(METER_COLS.values())]
-        .mean()
+        .max()
         .reset_index()
         .sort_values('Date')
         .reset_index(drop=True)
@@ -214,20 +218,23 @@ def load_and_process_energy_files():
     if combined.empty:
         return None
 
+    # Calculate Daily Consumption via simple differentiation
     for i in range(1, 10):
         col = METER_COLS[f'V{i}']
         combined[f'consump. v{i}'] = (combined[col] - combined[col].shift(1)).fillna(0)
+        # Drop logic drops below 0 to avoid distortion from resetting variables
+        combined[f'consump. v{i}'] = combined[f'consump. v{i}'].apply(lambda x: max(0, x))
 
     v = lambda n: combined[f'consump. v{n}']
-    combined['dunkin consmp.']   = 1250 - (v(1) + v(6))
-    combined['clc consump.']     = 1450 - (v(3) + v(8))
-    combined['bmc consump.']     = 1250 - (v(2) + v(7))
-    combined['deep consumption'] = 2200 - (v(4) + v(5) + v(9))
+    combined['dunkin consmp.']   = v(1) + v(6)
+    combined['clc consump.']     = v(3) + v(8)
+    combined['bmc consump.']     = v(2) + v(7)
+    combined['deep consumption'] = v(4) + v(5) + v(9)
 
     return combined
 
 # ─────────────────────────────────────────────────────────────
-#  TEMPERATURE DATA LOADER (ADAPTIVE HEADER FIX)
+#  TEMPERATURE DATA LOADER
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_temperature_data():
@@ -242,7 +249,6 @@ def load_temperature_data():
             df = read_csv_from_github(url)
             df.columns = [str(c).strip() for c in df.columns]
             
-            # Robust substring matcher that replaces spaces and handles typos like 'Cooler1Temp'
             time_col = next((c for c in df.columns if 'time' in c.lower()), None)
             c1_col = next((c for c in df.columns if 'cooler1' in c.lower().replace(" ", "")), None)
             c2_col = next((c for c in df.columns if 'cooler2' in c.lower().replace(" ", "")), None)
@@ -436,13 +442,13 @@ with tab_energy:
         e['Date'] = pd.to_datetime(e['Date'])
 
         consump_cols = [f'consump. v{i}' for i in range(1, 10)]
-        eq_cols = ['dunkin consmp.', 'clc consump.', 'bmc consump.', 'deep consumption']
+        eq_cols = ['dunkin consmp.', 'clc consump.', 'bmc consmp.', 'deep consumption']
 
         c1, c2, c3, c4 = st.columns(4)
         with c1: st.metric("Total Days Recorded", f"{len(e)}")
-        with c2: st.metric("Dunkin Net Variance", f"{e['dunkin consmp.'].sum():,.1f}")
-        with c3: st.metric("CLC Net Variance",    f"{e['clc consump.'].sum():,.1f}")
-        with c4: st.metric("Deep Net Variance",   f"{e['deep consumption'].sum():,.1f}")
+        with c2: st.metric("Dunkin Total (kWh)", f"{e['dunkin consmp.'].sum():,.1f}")
+        with c3: st.metric("CLC Total (kWh)",    f"{e['clc consump.'].sum():,.1f}")
+        with c4: st.metric("Deep Total (kWh)",   f"{e['deep consumption'].sum():,.1f}")
 
         st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9</div>', unsafe_allow_html=True)
         st.line_chart(e.set_index('Date')[consump_cols])
