@@ -315,38 +315,60 @@ with st.sidebar:
     processed_energy_files = [n for n, _ in all_files if "PROCESSED_DAILY_VARS_Active_Energy_Report" in n]
     csv_files    = [n for n, _ in all_files if n.startswith("DataLog_") and n.endswith(".csv")]
     has_freon    = any("freon" in n.lower() for n, _ in all_files)
-
-    st.markdown("<hr style='border-color:#1E3A8A; margin:14px 0;'>", unsafe_allow_html=True)
-    st.markdown("""<div style="font-size:9px; font-weight:700; letter-spacing:1.2px; color:#94A3B8; text-transform:uppercase; margin-bottom:10px;">GitHub Source Status</div>""", unsafe_allow_html=True)
-
-    st.markdown(f"""
-        <div style="margin-bottom:8px;">
-            <span class="status-pill status-{'ok' if processed_energy_files else 'err'}">
-                {'●' if processed_energy_files else '○'}&nbsp; Processed Energy · {'Active' if processed_energy_files else 'Missing'}
-            </span>
-        </div>
-        <div style="margin-bottom:8px;">
-            <span class="status-pill status-{'ok' if csv_files else 'err'}">
-                {'●' if csv_files else '○'}&nbsp; Temp Logs · {len(csv_files)} file(s)
-            </span>
-        </div>
-        <div>
-            <span class="status-pill status-{'ok' if has_freon else 'err'}">
-                {'●' if has_freon else '○'}&nbsp; Freon Workbook · {'Found' if has_freon else 'Not Found'}
-            </span>
-        </div>
-    """, unsafe_allow_html=True)
-
-# ─────────────────────────────────────────────────────────────
-#  GLOBAL RUNTIME INGESTION PIPELINE
-# ─────────────────────────────────────────────────────────────
-e_df = load_processed_energy_data()
-temp_df = load_temperature_data()
-comp_df = load_excel_sheet('Sheet3', fallback_header_row=3)
-
-date_range_str = "01 Jun 2026 – 15 Jun 2026" if e_df is not None and not e_df.empty else "No Data Loaded"
-
-st.markdown(f"""
+# ==============================================================================
+#  TAB 5 — COMPRESSOR DIAGNOSTICS ENGINE
+# ==============================================================================
+with tab_comp:
+    if comp_df is not None and not comp_df.empty and temp_df is not None and not temp_df.empty:
+        st.markdown('<div class="sec-title">🛠️ Advanced Production Diagnostic Engine</div>', unsafe_allow_html=True)
+        
+        # ─────────────────────────────────────────────────────────────
+        # DATA PRE-PROCESSING & NORMALIZATION PIPELINE
+        # ─────────────────────────────────────────────────────────────
+        c_clean = comp_df.copy()
+        c_clean = c_clean[~c_clean.iloc[:,0].astype(str).str.strip().str.lower().str.fullmatch(r'date|total|from|sr\.?\s*no\.?|stop|start', na=False)]
+        c_clean.iloc[:,0] = pd.to_datetime(c_clean.iloc[:,0], errors='coerce')
+        c_clean = c_clean.dropna(subset=[c_clean.columns[0]]).sort_values(c_clean.columns[0])
+        
+        sav_col = next((col for col in c_clean.columns if 'saving' in str(col).lower()), None)
+        date_col = c_clean.columns[0]
+        
+        if sav_col:
+            c_clean[sav_col] = pd.to_numeric(c_clean[sav_col], errors='coerce').fillna(0)
+            c_clean['Cumulative Savings'] = c_clean[sav_col].cumsum()
+            
+            # Aggregate daily rest windows
+            daily_compressor_rest = c_clean.groupby(c_clean[date_col].dt.date)[sav_col].sum().reset_index()
+            daily_compressor_rest.columns = ['Date', 'Rest_Hours']
+            daily_compressor_rest['Date'] = pd.to_datetime(daily_compressor_rest['Date'])
+            
+            # Dynamic Column Resolver to prevent KeyErrors
+            t_clean = temp_df.copy()
+            t_clean['Date'] = pd.to_datetime(t_clean['Time']).dt.date
+            
+            # Locate the exact string name for Dough Cooler 1 dynamically
+            dough1_col = next((col for col in t_clean.columns if 'cooler1' in col.lower().replace(" ", "")), None)
+            
+            if dough1_col:
+                daily_thermal = t_clean.groupby('Date').agg(
+                    Mean_Dough1=(dough1_col, 'mean'),
+                    Max_Dough1=(dough1_col, 'max'),
+                    Min_Dough1=(dough1_col, 'min')
+                ).reset_index()
+                daily_thermal['Date'] = pd.to_datetime(daily_thermal['Date'])
+                
+                # Merge diagnostic vectors
+                diagnostic_matrix = pd.merge(daily_compressor_rest, daily_thermal, on='Date', how='inner')
+            else:
+                st.warning("⚠️ Could not match 'Dough Cooler 1' column layout within temperature logs. Structural graphs are temporarily uncoupled.")
+                diagnostic_matrix = pd.DataFrame() # Fallback safely to prevent crashing downstream
+            
+            # Metric Summary Strips
+            k1, k2, k3, k4 = st.columns(4)
+            with k1: st.metric("Relief Window Saved", f"{c_clean[sav_col].sum():,.1f} hrs")
+            with k2: st.metric("Mean Daily Dampening", f"{c_clean[sav_col].mean():.1f} hrs")
+            with k3: st.metric("Peak Single Window Stop", f"{c_clean[sav_col].max():.1f} hrs")
+            with k4: st.metric("Audited Shift Blocks", f"{len(c_clean)}")
 <div class="jfl-header-container">
     <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px;">
         <div style="flex: 1; min-width: 280px;">
