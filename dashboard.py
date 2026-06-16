@@ -133,6 +133,37 @@ METER_COLS = {
 def load_and_process_energy_files():
     all_files = list_github_files()
     
+    # 1. Look for pre-processed final energy files first
+    processed_files = [
+        (name, url) for name, url in all_files
+        if (name.startswith("PROCESSED_DAILY_VARS_Active_Energy_Report") or "PROCESSED" in name.upper())
+        and (name.endswith(".xlsx") or name.endswith(".csv"))
+    ]
+    
+    if processed_files:
+        name, url = sorted(processed_files)[-1]
+        try:
+            if name.endswith(".csv"):
+                df = read_csv_from_github(url)
+            else:
+                df = read_excel_from_github(url)
+                
+            df.columns = [str(c).strip() for c in df.columns]
+            date_col = next((c for c in df.columns if c.lower() in ['date', 'timestamp', 'time']), None)
+            
+            if date_col:
+                df['Date'] = pd.to_datetime(df[date_col], errors='coerce').dt.date
+                df = df.dropna(subset=['Date']).sort_values('Date').reset_index(drop=True)
+                
+                # Coerce data columns to numeric format
+                for col in df.columns:
+                    if col != 'Date':
+                        df[col] = pd.to_numeric(df[col], errors='coerce')
+                return df
+        except Exception as e:
+            st.sidebar.warning(f"Error reading processed file {name}, falling back to raw: {e}")
+
+    # 2. Fallback execution: Load and compute raw individual files if no pre-processed data exists
     energy_files = [
         (name, url) for name, url in all_files
         if name.startswith("Active_Energy_Report") and (name.endswith(".xlsx") or name.endswith(".csv"))
@@ -159,7 +190,6 @@ def load_and_process_energy_files():
                 df = df.dropna(subset=['Parsed_Date'])
                 df = df.rename(columns={'Parsed_Date': 'Date'})
                 
-                # Robust column renaming for spacing variations
                 rename_dict = {}
                 for col in df.columns:
                     col_clean = str(col).upper().replace(" ", "").replace("-", "")
@@ -242,7 +272,6 @@ def load_temperature_data():
             df = read_csv_from_github(url)
             df.columns = [str(c).strip() for c in df.columns]
             
-            # Robust substring matcher that replaces spaces and handles typos like 'Cooler1Temp'
             time_col = next((c for c in df.columns if 'time' in c.lower()), None)
             c1_col = next((c for c in df.columns if 'cooler1' in c.lower().replace(" ", "")), None)
             c2_col = next((c for c in df.columns if 'cooler2' in c.lower().replace(" ", "")), None)
@@ -352,6 +381,7 @@ with st.sidebar:
 
     all_files = list_github_files()
     energy_files = [n for n, _ in all_files if n.startswith("Active_Energy_Report")]
+    processed_energy_files = [n for n, _ in all_files if n.startswith("PROCESSED_DAILY_VARS_Active_Energy_Report") or "PROCESSED" in n.upper()]
     csv_files    = [n for n, _ in all_files if n.startswith("DataLog_") and n.endswith(".csv")]
     has_freon    = any(n == "Power consumption freon.xlsx" for n, _ in all_files)
 
@@ -360,10 +390,13 @@ with st.sidebar:
                     color:#94A3B8; text-transform:uppercase; margin-bottom:10px;">
                     GitHub Source Status</div>""", unsafe_allow_html=True)
 
+    # Dynamic status pill to indicate raw or pre-processed pipeline status
+    status_color = "ok" if (energy_files or processed_energy_files) else "err"
+    status_label = "Processed File" if processed_energy_files else f"Raw Stream · {len(energy_files)} file(s)"
     st.markdown(f"""
         <div style="margin-bottom:8px;">
-            <span class="status-pill status-{'ok' if energy_files else 'err'}">
-                {'●' if energy_files else '○'}&nbsp; Energy Reports · {len(energy_files)} file(s)
+            <span class="status-pill status-{status_color}">
+                {'●' if (energy_files or processed_energy_files) else '○'}&nbsp; Energy Storage · {status_label}
             </span>
         </div>
         <div style="margin-bottom:8px;">
@@ -381,7 +414,7 @@ with st.sidebar:
     st.markdown("""
         <div style="position:fixed; bottom:18px; left:0; width:238px; text-align:center;
                     font-size:10px; color:#94A3B8; font-weight:600; padding:0 8px;">
-            JFL Internal Operations Tool &nbsp;·&nbsp; v3.0
+            JFL Internal Operations Tool &nbsp;·&nbsp; v3.1
         </div>
     """, unsafe_allow_html=True)
 
@@ -435,24 +468,26 @@ with tab_energy:
         e = energy_df.copy()
         e['Date'] = pd.to_datetime(e['Date'])
 
-        consump_cols = [f'consump. v{i}' for i in range(1, 10)]
-        eq_cols = ['dunkin consmp.', 'clc consump.', 'bmc consump.', 'deep consumption']
+        consump_cols = [f'consump. v{i}' for i in range(1, 10) if f'consump. v{i}' in e.columns]
+        eq_cols = [c for c in ['dunkin consmp.', 'clc consump.', 'bmc consump.', 'deep consumption'] if c in e.columns]
 
         c1, c2, c3, c4 = st.columns(4)
         with c1: st.metric("Total Days Recorded", f"{len(e)}")
-        with c2: st.metric("Dunkin Net Variance", f"{e['dunkin consmp.'].sum():,.1f}")
-        with c3: st.metric("CLC Net Variance",    f"{e['clc consump.'].sum():,.1f}")
-        with c4: st.metric("Deep Net Variance",   f"{e['deep consumption'].sum():,.1f}")
+        with c2: st.metric("Dunkin Net Variance", f"{e['dunkin consmp.'].sum() if 'dunkin consmp.' in e else 0:,.1f}")
+        with c3: st.metric("CLC Net Variance",    f"{e['clc consump.'].sum() if 'clc consump.' in e else 0:,.1f}")
+        with c4: st.metric("Deep Net Variance",   f"{e['deep consumption'].sum() if 'deep consumption' in e else 0:,.1f}")
 
-        st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9</div>', unsafe_allow_html=True)
-        st.line_chart(e.set_index('Date')[consump_cols])
-        with st.expander("🔎 View Delta Consumption (V1-V9) Dataset", expanded=False):
-            st.dataframe(e[['Date'] + consump_cols], use_container_width=True, hide_index=True)
+        if consump_cols:
+            st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9</div>', unsafe_allow_html=True)
+            st.line_chart(e.set_index('Date')[consump_cols])
+            with st.expander("🔎 View Delta Consumption (V1-V9) Dataset", expanded=False):
+                st.dataframe(e[['Date'] + consump_cols], use_container_width=True, hide_index=True)
 
-        st.markdown('<div class="sec-title">Calculated Process Zone Loads (Dunkin / CLC / BMC / Deep)</div>', unsafe_allow_html=True)
-        st.bar_chart(e.set_index('Date')[eq_cols])
-        with st.expander("🔎 View Calculated Process Zone Loads Dataset", expanded=False):
-            st.dataframe(e[['Date'] + eq_cols], use_container_width=True, hide_index=True)
+        if eq_cols:
+            st.markdown('<div class="sec-title">Calculated Process Zone Loads (Dunkin / CLC / BMC / Deep)</div>', unsafe_allow_html=True)
+            st.bar_chart(e.set_index('Date')[eq_cols])
+            with st.expander("🔎 View Calculated Process Zone Loads Dataset", expanded=False):
+                st.dataframe(e[['Date'] + eq_cols], use_container_width=True, hide_index=True)
 
         st.markdown('<div class="sec-title">Full Daily Aggregated Execution Sheet</div>', unsafe_allow_html=True)
         display_cols = ['Date'] + [col for col in METER_COLS.values() if col in e.columns] + consump_cols + eq_cols
