@@ -740,15 +740,15 @@ with tab_energy:
             )
             
             excel_buffer = io.BytesIO()
-            with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
-                e_df.set_index(date_col).to_excel(writer, sheet_name='Energy Data')
-            st.download_button(
-                label="📥 Download Active Energy Data as Excel",
-                data=excel_buffer.getvalue(),
-                file_name=f"active_energy_{start_date.strftime('%Y%m%d')}_to_{end_date.strftime('%Y%m%d')}.xlsx",
-                mime="application/vnd.ms-excel",
-                key="btn_download_energy_excel"
-            )
+with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
+    e_df.set_index(date_col).to_excel(writer, sheet_name='Energy Data')
+st.download_button(
+    label="📥 Download Active Energy Data as Excel",
+    data=excel_buffer.getvalue(),
+    file_name=f"active_energy_{start_date.strftime('%Y%m%d')}_to_{end_date.strftime('%Y%m%d')}.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    key="btn_download_energy_excel"
+)
     
     else:
         st.markdown('<div class="alert-info"><strong>⚠️ No active energy data captured matching the current file window constraints.</strong></div>', unsafe_allow_html=True)
