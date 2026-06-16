@@ -236,16 +236,20 @@ with st.sidebar:
     st.markdown("<hr style='border-color:#1E3A8A; margin:14px 0;'>", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────
-#  AUTOMATED PIPELINE LOADERS (STRICT DATE CONSTRAINTS)
+#  ADAPTIVE PIPELINE DATE RESOLVER
 # ─────────────────────────────────────────────────────────────
 def fast_parse_dates(series):
-    # Cleans leading/trailing white spaces and parses with explicit Day-Month-Year mapping
-    cleaned_series = series.astype(str).str.strip().str.split(' ').str[0]
-    return pd.to_datetime(
-        cleaned_series,
-        format="%d-%m-%Y",
-        errors='coerce'
-    )
+    # Returns series directly if already native excel parsed timestamps
+    if pd.api.types.is_datetime64_any_dtype(series):
+        return series
+    
+    cleaned = series.astype(str).str.strip().str.split(' ').str[0]
+    
+    # Adaptive try-catch strategy to prevent empty rows creation across different sheets
+    parsed = pd.to_datetime(cleaned, format="%d-%m-%Y", errors='coerce')
+    if parsed.isna().all():
+        parsed = pd.to_datetime(cleaned, dayfirst=True, errors='coerce')
+    return parsed
 
 @st.cache_data(ttl=60)
 def load_temperature_data_from_github():
@@ -277,7 +281,6 @@ def load_temperature_data_from_github():
                             sub[c] = sub[c].astype(str).str.replace(r'.*NOP.*', '0', regex=True)
                         sub[c] = pd.to_numeric(sub[c], errors='coerce').ffill().bfill()
                     
-                    # Also map telemetry timestamps correctly safely handling standard log string formats
                     sub['Time'] = pd.to_datetime(sub['Time'], dayfirst=True, errors='coerce')
                     frames.append(sub)
                     
@@ -330,7 +333,7 @@ power_raw = load_excel_sheet_from_github('Sheet1', fallback_header_row=1)
 runtime_raw = load_excel_sheet_from_github('Sheet2', fallback_header_row=2)
 comp_raw = load_excel_sheet_from_github('Sheet3', fallback_header_row=3)
 
-# Automatically generate dynamic fallback boundaries
+# Automatically generate dynamic boundaries from file data logs
 min_reporting_date = "01 Jun 2026"
 max_reporting_date = "10 Jun 2026"
 
@@ -362,7 +365,7 @@ with st.sidebar:
         <div style="position:fixed; bottom:18px; left:0; width:238px;
                     text-align:center; font-size:10px; color:#94A3B8;
                     font-weight:600; letter-spacing:0.3px; padding:0 8px;">
-            JFL Internal Operations Tool &nbsp;·&nbsp; v2.9
+            JFL Internal Operations Tool &nbsp;·&nbsp; v2.10
         </div>
     """, unsafe_allow_html=True)
 
@@ -495,7 +498,7 @@ with tab_power:
         if not p.empty:
             st.markdown('### 🎛️ Dynamic Scope Selector')
             min_d, max_d = p['Date'].min().date(), p['Date'].max().date()
-            sel_dates = st.slider("Target Timeline Range Window", min_value=min_d, max_value=max_d, value=(min_d, max_d))
+            sel_dates = st.slider("Target Timeline Range Window", min_value=min_d, max_value=max_d, value=(min_d, max_d), key="power_slider")
             
             p_filtered = p[(p['Date'].dt.date >= sel_dates[0]) & (p['Date'].dt.date <= sel_dates[1])]
 
@@ -566,13 +569,15 @@ with tab_runtime:
 with tab_comp:
     if comp_raw is not None and not comp_raw.empty:
         c = comp_raw.copy()
+        
+        # Remove description rows safely
         c = c[~c.iloc[:, 0].astype(str).str.strip().str.lower().str.fullmatch(r'date|total|from|sr\.?\s*no\.?|stop|start', na=False)]
         c.iloc[:, 0] = fast_parse_dates(c.iloc[:, 0])
         c = c.dropna(subset=[c.columns[0]]).sort_values(c.columns[0])
 
         sav_col = next((col for col in c.columns if 'saving' in str(col).lower()), None)
 
-        if sav_col:
+        if sav_col and not c.empty:
             c[sav_col] = pd.to_numeric(c[sav_col], errors='coerce').fillna(0)
             c['Progressive Running Accumulation'] = c[sav_col].cumsum()
 
@@ -605,5 +610,7 @@ with tab_comp:
                 comp_chart_df = pd.DataFrame(list(comp_metrics.items()), columns=["Asset Component Node", "Trigger Cycle Volume"])
                 comp_chart_df = comp_chart_df.sort_values(by="Trigger Cycle Volume", ascending=False)
                 st.bar_chart(comp_chart_df.set_index("Asset Component Node")["Trigger Cycle Volume"], color="#E01934")
+        else:
+            st.markdown('<div class="alert-warn">Optimization layout index column variant or empty lines encountered inside Sheet 3 framework.</div>', unsafe_allow_html=True)
     else:
         st.markdown('<div class="alert-info">Compressor statistics ledger unmapped or missing from GitHub.</div>', unsafe_allow_html=True)
