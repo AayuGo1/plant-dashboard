@@ -317,13 +317,14 @@ def load_temperature_data():
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_excel_sheet(sheet_name, fallback_header_row):
-    all_files = list_github_files()  # ← ADD THIS LINE (currently missing)
+    # 1. Fetch the files first
+    all_files = list_github_files()
+    
+    # 2. Find the freon file
     match = next((u for n, _ in all_files if "freon" in n.lower() and n.endswith(".xlsx")), None)
     
     if not match:
         return None
-    # ... rest stays the same
-    # ... rest of the function
     try:
         preview = read_excel_from_github(match, sheet_name=sheet_name, header=None, engine='openpyxl')
         hdr = fallback_header_row
@@ -332,6 +333,7 @@ def load_excel_sheet(sheet_name, fallback_header_row):
             if any('date' in x or 'stop time' in x or 'start time' in x for x in row):
                 hdr = i
                 break
+                
         df = read_excel_from_github(match, sheet_name=sheet_name, header=hdr, engine='openpyxl')
         df = df.dropna(axis=1, how='all')
         
@@ -353,7 +355,6 @@ def load_excel_sheet(sheet_name, fallback_header_row):
     except Exception as e:
         st.warning(f"Could not load sheet {sheet_name}: {e}")
         return None
-
 # ─────────────────────────────────────────────────────────────
 #  SIDEBAR
 # ─────────────────────────────────────────────────────────────
