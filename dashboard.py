@@ -128,6 +128,7 @@ def fast_parse_dates(series):
 @st.cache_data(ttl=300)
 def load_processed_energy_data():
     all_files = list_github_files()
+    # Fixed matching configuration to accept customized export names safely
     target_files = [
         (name, url) for name, url in all_files
         if "PROCESSED_DAILY_VARS_Active_Energy_Report" in name and (name.endswith(".xlsx") or name.endswith(".csv"))
@@ -371,10 +372,10 @@ with tab_energy:
 
         c1, c2, c3, c4, c5 = st.columns(5)
         with c1: st.metric("Total Days Recorded", f"{len(e)}")
-        with c2: st.metric("Dunkin Net Variance", f"{e['dunkin consmp.'].sum() if 'dunkin consmp.' in e else 0:,.1f}")
-        with c3: st.metric("CLC Net Variance",    f"{e['clc consump.'].sum() if 'clc consump.' in e else 0:,.1f}")
-        with c4: st.metric("BMC Net Variance",    f"{e['bmc consump.'].sum() if 'bmc consump.' in e else 0:,.1f}")
-        with c5: st.metric("Deep Net Variance",   f"{e['deep consumption'].sum() if 'deep consumption' in e else 0:,.1f}")
+        with c2: st.metric("Dunkin Net Variance", f"{e['dunkin consmp.'].sum() if 'dunkin consmp.' in e.columns else 0:,.1f}")
+        with c3: st.metric("CLC Net Variance",    f"{e['clc consump.'].sum() if 'clc consump.' in e.columns else 0:,.1f}")
+        with c4: st.metric("BMC Net Variance",    f"{e['bmc consump.'].sum() if 'bmc consump.' in e.columns else 0:,.1f}")
+        with c5: st.metric("Deep Net Variance",   f"{e['deep consumption'].sum() if 'deep consumption' in e.columns else 0:,.1f}")
 
         if consump_cols:
             st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9</div>', unsafe_allow_html=True)
@@ -395,36 +396,41 @@ with tab_energy:
         
         ec1, ec2, ec3, ec4 = st.columns(4)
         with ec1:
+            val = target_energy_row.get('dunkin consmp. Delta', 0)
             st.markdown(f"""
             <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #002D62;">
                 <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Dunkin Consumption Delta</div>
-                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{target_energy_row.get('dunkin consmp. Delta', 0):,.1f} kWh</div>
+                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
             </div>
             """, unsafe_allow_html=True)
         with ec2:
+            val = target_energy_row.get('clc consump. Delta', 0)
             st.markdown(f"""
             <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #FF9F1C;">
                 <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">CLC Consumption Delta</div>
-                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{target_energy_row.get('clc consmp. Delta', 0):,.1f} kWh</div>
+                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
             </div>
             """, unsafe_allow_html=True)
         with ec3:
+            val = target_energy_row.get('bmc consump. Delta', 0)
             st.markdown(f"""
             <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #16A34A;">
                 <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">BMC Consumption Delta</div>
-                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{target_energy_row.get('bmc consmp. Delta', 0):,.1f} kWh</div>
+                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
             </div>
             """, unsafe_allow_html=True)
         with ec4:
+            val = target_energy_row.get('deep consumption Delta', 0)
             st.markdown(f"""
             <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #E01934;">
                 <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Deep Consumption Delta</div>
-                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{target_energy_row.get('deep consumption Delta', 0):,.1f} kWh</div>
+                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
             </div>
             """, unsafe_allow_html=True)
 
-        st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
-        st.line_chart(diff_energy.set_index('Date')[diff_cols])
+        if diff_cols:
+            st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
+            st.line_chart(diff_energy.set_index('Date')[diff_cols])
 
         st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
         with st.expander("📂 View & Download Pre-Processed Active Energy File Data", expanded=False):
