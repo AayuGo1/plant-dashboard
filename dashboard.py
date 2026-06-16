@@ -148,7 +148,7 @@ def load_processed_energy_data():
         return None
 
 # ─────────────────────────────────────────────────────────────
-#  TEMPERATURE DATA LOADER 
+#  TEMPERATURE DATA LOADER (WITH ROW DELTA VARIANCE)
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_temperature_data():
@@ -192,13 +192,20 @@ def load_temperature_data():
     if not frames:
         return None
 
-    return (
+    combined = (
         pd.concat(frames, ignore_index=True)
         .dropna(subset=['Time'])
         .drop_duplicates(subset=['Time'])
         .sort_values('Time')
         .reset_index(drop=True)
     )
+
+    # Calculate row-by-row differences (Adjacent Row Delta Variance)
+    combined['consump. dough1'] = (combined['Dough Cooler1 Temp'] - combined['Dough Cooler1 Temp'].shift(1)).fillna(0)
+    combined['consump. dough2'] = (combined['Dough Cooler2 Temp'] - combined['Dough Cooler2 Temp'].shift(1)).fillna(0)
+    combined['consump. perishable'] = (combined['Perishable Cooler Temp'] - combined['Perishable Cooler Temp'].shift(1)).fillna(0)
+
+    return combined
 
 # ─────────────────────────────────────────────────────────────
 #  EXCEL SHEET LOADER
@@ -301,7 +308,7 @@ with st.sidebar:
     st.markdown("""
         <div style="position:fixed; bottom:18px; left:0; width:238px; text-align:center;
                     font-size:10px; color:#94A3B8; font-weight:600; padding:0 8px;">
-            JFL Internal Operations Tool &nbsp;·&nbsp; v3.3
+            JFL Internal Operations Tool &nbsp;·&nbsp; v3.4
         </div>
     """, unsafe_allow_html=True)
 
@@ -372,7 +379,6 @@ with tab_energy:
             st.markdown('<div class="sec-title">Calculated Process Zone Loads (Dunkin / CLC / BMC / Deep)</div>', unsafe_allow_html=True)
             st.bar_chart(e.set_index('Date')[eq_cols])
 
-        # ─── SYNCED INSPECTOR CONTAINER AT BOTTOM ───
         st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
         with st.expander("📂 View & Download Pre-Processed Active Energy File Data", expanded=False):
             st.dataframe(e, use_container_width=True, hide_index=True)
@@ -388,13 +394,14 @@ with tab_energy:
         st.markdown('<div class="alert-info"><strong>No processed energy report found inside repository.</strong></div>', unsafe_allow_html=True)
 
 # ==============================================================================
-#  TAB 2 — COLD STORAGE TEMPERATURES
+#  TAB 2 — COLD STORAGE TEMPERATURES (ROW DELTA VARIANCE APPLIED)
 # ==============================================================================
 with tab_temp:
     temp_df = load_temperature_data()
     if temp_df is not None and not temp_df.empty:
         latest  = temp_df.iloc[-1]
         sensors = ['Dough Cooler1 Temp', 'Dough Cooler2 Temp', 'Perishable Cooler Temp']
+        delta_cols = ['consump. dough1', 'consump. dough2', 'consump. perishable']
         THRESHOLD = 4.0
 
         c1, c2, c3, c4 = st.columns([1,1,1,1.2])
@@ -407,6 +414,10 @@ with tab_temp:
             compliance = (1 - total_exc / (total_logs * len(sensors))) * 100
             st.metric("Thermal Compliance Index", f"{compliance:.1f}%",
                       delta=f"{total_exc} critical violations", delta_color="inverse")
+
+        # Dynamic row difference charts matching the freon layout format
+        st.markdown('<div class="sec-title">Daily Temperature Delta Row Variances (Row-by-Row Differences)</div>', unsafe_allow_html=True)
+        st.line_chart(temp_df.set_index('Time')[delta_cols])
 
         st.markdown('<div class="sec-title">Real-Time Temperature Stream</div>', unsafe_allow_html=True)
         st.line_chart(temp_df.set_index('Time')[sensors], color=["#002D62","#0EA5E9","#E01934"])
@@ -448,7 +459,7 @@ with tab_temp:
 
         # ─── SYNCED INSPECTOR CONTAINER AT BOTTOM ───
         st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
-        with st.expander("📂 View & Download Compiled Temperature Log Raw File Data", expanded=False):
+        with st.expander("📂 View & Download Compiled Temperature Log File Data with Delta Metrics", expanded=False):
             st.dataframe(temp_df, use_container_width=True, hide_index=True)
             csv_data = temp_df.to_csv(index=False).encode('utf-8')
             st.download_button(
@@ -499,7 +510,6 @@ with tab_power:
                     st.markdown('<div class="sec-title">Daily Recovery Realized (₹)</div>', unsafe_allow_html=True)
                     st.bar_chart(p.set_index('Date')[savings_col], color="#16A34A")
 
-                # ─── SYNCED INSPECTOR CONTAINER AT BOTTOM ───
                 st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
                 with st.expander("📂 View & Download Energy & Cost Savings Raw Sheet Data", expanded=False):
                     st.dataframe(p, use_container_width=True, hide_index=True)
@@ -540,7 +550,6 @@ with tab_runtime:
             st.markdown('<div class="sec-title">Daily Asset Displacement Matrix</div>', unsafe_allow_html=True)
             st.bar_chart(r.set_index(fc)[kwh_cols[0]], color="#002D62")
 
-            # ─── SYNCED INSPECTOR CONTAINER AT BOTTOM ───
             st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
             with st.expander("📂 View & Download Asset Duty Cycle Raw Sheet Data", expanded=False):
                 st.dataframe(r, use_container_width=True, hide_index=True)
@@ -598,7 +607,6 @@ with tab_comp:
                 cm_df = pd.DataFrame(list(comp_metrics.items()), columns=["Component", "Cycle Count"]).sort_values("Cycle Count", ascending=False)
                 st.bar_chart(cm_df.set_index("Component")["Cycle Count"], color="#E01934")
 
-            # ─── SYNCED INSPECTOR CONTAINER AT BOTTOM ───
             st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
             with st.expander("📂 View & Download Compressor Optimization Raw Sheet Data", expanded=False):
                 st.dataframe(c, use_container_width=True, hide_index=True)
