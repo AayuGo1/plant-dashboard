@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
-import glob
-import os
+import requests
+import io
 import warnings
 
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -201,6 +201,31 @@ hr { border: none; border-top: 1px solid #E2E8F0; margin: 18px 0; }
 </style>
 """, unsafe_allow_html=True)
 
+# ─────────────────────────────────────────────────────────────
+#  GITHUB PIPELINE CONFIGURATION VIA SECRETS
+# ─────────────────────────────────────────────────────────────
+try:
+    GITHUB_USER = st.secrets["github"]["username"]
+    GITHUB_REPO = st.secrets["github"]["repo"]
+    GITHUB_BRANCH = st.secrets["github"]["branch"]
+    FOLDER_PATH = st.secrets["github"].get("folder_path", "").strip("/")
+    GITHUB_TOKEN = st.secrets["github"].get("token", "")
+except Exception:
+    st.sidebar.error("⚠️ GitHub Secrets missing configuration inside configuration profile.")
+    st.stop()
+
+# Helper to build raw content paths
+def get_raw_github_url(filename):
+    if FOLDER_PATH:
+        return f"https://raw.githubusercontent.com/{GITHUB_USER}/{GITHUB_REPO}/{GITHUB_BRANCH}/{FOLDER_PATH}/{filename}"
+    return f"https://raw.githubusercontent.com/{GITHUB_USER}/{GITHUB_REPO}/{GITHUB_BRANCH}/{filename}"
+
+# Create network request headers for authorization if private repo
+def get_github_headers():
+    headers = {}
+    if GITHUB_TOKEN:
+        headers["Authorization"] = f"token {GITHUB_TOKEN}"
+    return headers
 
 # ─────────────────────────────────────────────────────────────
 #  SIDEBAR MANAGEMENT CONTROL DECK
@@ -223,34 +248,113 @@ with st.sidebar:
     st.markdown("<hr style='border-color:#1E3A8A; margin:8px 0 16px;'>", unsafe_allow_html=True)
     st.markdown("""<div style="font-size:9px; font-weight:700; letter-spacing:1.2px;
                     color:#94A3B8; text-transform:uppercase; margin-bottom:10px;">
-                    Data Source</div>""", unsafe_allow_html=True)
-
-    user_name = st.text_input("Windows Username", value="aayush")
-    company_folder = st.text_input("OneDrive Folder", value="OneDrive")
-
-    ONEDRIVE_PATH = f"C:/Users/{user_name}/{company_folder}/PlantData/"
-    LOCAL_PATH = "./"
-
+                    Pipeline Stream</div>""", unsafe_allow_html=True)
+    
+    st.info(f"📍 Repository Group:\n`{GITHUB_USER}/{GITHUB_REPO}/{GITHUB_BRANCH}`")
     st.markdown("<hr style='border-color:#1E3A8A; margin:14px 0;'>", unsafe_allow_html=True)
 
-
 # ─────────────────────────────────────────────────────────────
-#  AUTOMATED PIPELINE FILE RESOLVER
+#  AUTOMATED PIPELINE LOADERS (REMOTE GITHUB FETCH)
 # ─────────────────────────────────────────────────────────────
-def resolve_file(filename, is_pattern=False):
-    if is_pattern:
-        nodes = glob.glob(os.path.join(ONEDRIVE_PATH, filename))
-        if nodes: return nodes, "OneDrive"
-        nodes = glob.glob(os.path.join(LOCAL_PATH, filename))
-        return nodes, ("Local Node" if nodes else None)
-    cloud = os.path.join(ONEDRIVE_PATH, filename)
-    if os.path.exists(cloud): return cloud, "OneDrive"
-    return os.path.join(LOCAL_PATH, filename), "Local Node"
+def fast_parse_dates(series):
+    return pd.to_datetime(
+        series.astype(str).str.strip().str.split(' ').str[0],
+        errors='coerce', dayfirst=True
+    )
 
+@st.cache_data(ttl=300) # Dashboard will automatically fetch fresh GitHub commits every 5 minutes
+def load_temperature_data_from_github():
+    # Fetch list of files using GitHub API
+    api_url = f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}/contents/{FOLDER_PATH}"
+    headers = get_github_headers()
+    
+    try:
+        res = requests.get(api_url, headers=headers)
+        if res.status_code != 200:
+            return None
+        
+        file_nodes = res.json()
+        target_urls = [node["download_url"] for node in file_nodes if "DataLog_" in node["name"] and node["name"].endswith(".csv")]
+        
+        if not target_urls:
+            return None
+            
+        cols = ['Time', 'Dough Cooler2 Temp', 'Dough Cooler1 Temp', 'Perishable Cooler Temp']
+        frames = []
+        
+        for url in sorted(target_urls):
+            csv_res = requests.get(url, headers=headers)
+            if csv_res.status_code == 200:
+                df = pd.read_csv(io.StringIO(csv_res.text))
+                df.columns = df.columns.str.strip()
+                if all(c in df.columns for c in cols):
+                    sub = df[cols].copy()
+                    for c in cols[1:]:
+                        if sub[c].dtype == object:
+                            sub[c] = sub[c].astype(str).str.replace(r'.*NOP.*', '0', regex=True)
+                        sub[c] = pd.to_numeric(sub[c], errors='coerce').ffill().bfill()
+                    sub['Time'] = pd.to_datetime(sub['Time'], dayfirst=True, errors='coerce')
+                    frames.append(sub)
+                    
+        if not frames: return None
+        return (pd.concat(frames, ignore_index=True)
+                  .drop_duplicates(subset=['Time'])
+                  .sort_values('Time')
+                  .reset_index(drop=True))
+    except Exception:
+        return None
 
-csv_files, csv_src = resolve_file("DataLog_*.csv", is_pattern=True)
-xlsx_path, xlsx_src = resolve_file("Power consumption freon.xlsx")
-xlsx_ok = os.path.exists(xlsx_path)
+@st.cache_data(ttl=300)
+def load_excel_sheet_from_github(sheet_name, fallback_header_row):
+    raw_url = get_raw_github_url("Power consumption freon.xlsx")
+    headers = get_github_headers()
+    
+    try:
+        res = requests.get(raw_url, headers=headers)
+        if res.status_code != 200:
+            return None
+            
+        excel_bytes = io.BytesIO(res.content)
+        preview = pd.read_excel(excel_bytes, sheet_name=sheet_name, header=None, engine='openpyxl')
+        
+        hdr = fallback_header_row
+        for i in range(min(10, len(preview))):
+            row = [str(x).lower() for x in preview.iloc[i].dropna()]
+            if any('date' in x or 'stop time' in x for x in row):
+                hdr = i; break
+                
+        df = pd.read_excel(excel_bytes, sheet_name=sheet_name, header=hdr, engine='openpyxl')
+        df = df.dropna(axis=1, how='all')
+        
+        if sheet_name == 'Sheet3' and len(df.columns) >= 12:
+            df.columns.values[11] = 'Saving in hrs'
+        elif sheet_name == 'Sheet3':
+            last = df.columns[-1]
+            if 'unnamed' in str(last).lower():
+                df = df.rename(columns={last: 'Saving in hrs'})
+                
+        if not df.empty:
+            fc = df.columns[0]
+            df = df[df[fc].astype(str).str.strip().str.lower() != 'total']
+        return df
+    except Exception:
+        return None
+
+# Trigger Data Retrieval Pipelines
+temp_df = load_temperature_data_from_github()
+power_raw = load_excel_sheet_from_github('Sheet1', fallback_header_row=1)
+runtime_raw = load_excel_sheet_from_github('Sheet2', fallback_header_row=2)
+comp_raw = load_excel_sheet_from_github('Sheet3', fallback_header_row=3)
+
+# Calculate dynamic dates across loaded frames for the global corporate header
+min_reporting_date = "01 Jun 2026"
+max_reporting_date = "06 Jun 2026"
+
+if power_raw is not None and not power_raw.empty and 'Date' in power_raw.columns:
+    parsed_dates = fast_parse_dates(power_raw['Date']).dropna()
+    if not parsed_dates.empty:
+        min_reporting_date = parsed_dates.min().strftime('%d %b %Y')
+        max_reporting_date = parsed_dates.max().strftime('%d %b %Y')
 
 with st.sidebar:
     st.markdown("""<div style="font-size:9px; font-weight:700; letter-spacing:1.2px;
@@ -259,13 +363,13 @@ with st.sidebar:
 
     st.markdown(f"""
         <div style="margin-bottom:8px;">
-            <span class="status-pill status-{'ok' if csv_files else 'err'}">
-                {'●' if csv_files else '○'}&nbsp; Temp Logs · {csv_src if csv_files else 'Not Found'}
+            <span class="status-pill status-{'ok' if temp_df is not None else 'err'}">
+                {'●' if temp_df is not None else '○'}&nbsp; Temp Logs · Remote Repo
             </span>
         </div>
         <div>
-            <span class="status-pill status-{'ok' if xlsx_ok else 'err'}">
-                {'●' if xlsx_ok else '○'}&nbsp; Energy Workbook · {xlsx_src if xlsx_ok else 'Not Found'}
+            <span class="status-pill status-{'ok' if power_raw is not None else 'err'}">
+                {'●' if power_raw is not None else '○'}&nbsp; Energy Workbook · Remote Repo
             </span>
         </div>
     """, unsafe_allow_html=True)
@@ -274,74 +378,14 @@ with st.sidebar:
         <div style="position:fixed; bottom:18px; left:0; width:238px;
                     text-align:center; font-size:10px; color:#94A3B8;
                     font-weight:600; letter-spacing:0.3px; padding:0 8px;">
-            JFL Internal Operations Tool &nbsp;·&nbsp; v2.5
+            JFL Internal Operations Tool &nbsp;·&nbsp; v2.6
         </div>
     """, unsafe_allow_html=True)
 
-
 # ─────────────────────────────────────────────────────────────
-#  HIGH-SPEED CACHED DATA PIPELINE LOADERS
+#  DYNAMIC EXECUTIVE HEADER SECTION
 # ─────────────────────────────────────────────────────────────
-def fast_parse_dates(series):
-    return pd.to_datetime(
-        series.astype(str).str.strip().str.split(' ').str[0],
-        errors='coerce', dayfirst=True
-    )
-
-@st.cache_data
-def load_temperature_data():
-    files, _ = resolve_file("DataLog_*.csv", is_pattern=True)
-    if not files: return None
-    cols = ['Time', 'Dough Cooler2 Temp', 'Dough Cooler1 Temp', 'Perishable Cooler Temp']
-    frames = []
-    for f in sorted(files):
-        df = pd.read_csv(f)
-        df.columns = df.columns.str.strip()
-        if all(c in df.columns for c in cols):
-            sub = df[cols].copy()
-            for c in cols[1:]:
-                if sub[c].dtype == object:
-                    sub[c] = sub[c].astype(str).str.replace(r'.*NOP.*', '0', regex=True)
-                sub[c] = pd.to_numeric(sub[c], errors='coerce').ffill().bfill()
-            sub['Time'] = pd.to_datetime(sub['Time'], dayfirst=True, errors='coerce')
-            frames.append(sub)
-    if not frames: return None
-    return (pd.concat(frames, ignore_index=True)
-              .drop_duplicates(subset=['Time'])
-              .sort_values('Time')
-              .reset_index(drop=True))
-
-@st.cache_data
-def load_excel_sheet(sheet_name, fallback_header_row):
-    path, _ = resolve_file('Power consumption freon.xlsx')
-    if not os.path.exists(path): return None
-    try:
-        preview = pd.read_excel(path, sheet_name=sheet_name, header=None, engine='openpyxl')
-        hdr = fallback_header_row
-        for i in range(min(10, len(preview))):
-            row = [str(x).lower() for x in preview.iloc[i].dropna()]
-            if any('date' in x or 'stop time' in x for x in row):
-                hdr = i; break
-        df = pd.read_excel(path, sheet_name=sheet_name, header=hdr, engine='openpyxl')
-        df = df.dropna(axis=1, how='all')
-        if sheet_name == 'Sheet3' and len(df.columns) >= 12:
-            df.columns.values[11] = 'Saving in hrs'
-        elif sheet_name == 'Sheet3':
-            last = df.columns[-1]
-            if 'unnamed' in str(last).lower():
-                df = df.rename(columns={last: 'Saving in hrs'})
-        if not df.empty:
-            fc = df.columns[0]
-            df = df[df[fc].astype(str).str.strip().str.lower() != 'total']
-        return df
-    except Exception:
-        return None
-
-
-# ─────────────────────────────────────────────────────────────
-#  REDESIGNED JUBILANT EXECUTIVE HEADER SECTION
-# ─────────────────────────────────────────────────────────────
-st.markdown("""
+st.markdown(f"""
 <div class="jfl-header-container">
     <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px;">
         <div style="flex: 1; min-width: 280px;">
@@ -350,8 +394,8 @@ st.markdown("""
         </div>
         <div style="display: flex; gap: 12px; flex-wrap: wrap; min-width: 240px;">
             <div class="jfl-header-meta-box" style="flex: 1;">
-                <div class="jfl-meta-label">Reporting Window</div>
-                <div class="jfl-meta-value">01 Jun – 06 Jun 2026</div>
+                <div class="jfl-meta-label">Dynamic Reporting Window</div>
+                <div class="jfl-meta-value">{min_reporting_date} – {max_reporting_date}</div>
             </div>
             <div class="jfl-header-meta-box" style="flex: 1; border-top: 1px solid #E2E8F0;">
                 <div class="jfl-meta-label">Corporate Entity</div>
@@ -362,7 +406,6 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-
 # --- NAVIGATION DECK ---
 tab_temp, tab_power, tab_runtime, tab_comp = st.tabs([
     "🌡️  Cold Storage Temperatures",
@@ -371,19 +414,15 @@ tab_temp, tab_power, tab_runtime, tab_comp = st.tabs([
     "📉  Compressor Optimisation",
 ])
 
-
 # ==============================================================================
 #  TAB 1 — COLD STORAGE TEMPERATURES
 # ==============================================================================
 with tab_temp:
-    temp_df = load_temperature_data()
-
     if temp_df is not None and not temp_df.empty:
         latest = temp_df.iloc[-1]
         sensors = ['Dough Cooler1 Temp', 'Dough Cooler2 Temp', 'Perishable Cooler Temp']
         THRESHOLD = 4.0  # °C
 
-        # ── Summary KPIs ──
         c1, c2, c3, c4 = st.columns([1,1,1,1.2])
         with c1: st.metric("Dough Cooler 1", f"{latest['Dough Cooler1 Temp']:.2f} °C")
         with c2: st.metric("Dough Cooler 2", f"{latest['Dough Cooler2 Temp']:.2f} °C")
@@ -395,7 +434,6 @@ with tab_temp:
             st.metric("Fleet Compliance", f"{fleet_compliance:.1f}%",
                       delta=f"{total_exc} spikes >4.0°C", delta_color="inverse")
 
-        # ── Ingestion Charts ──
         st.markdown('<div class="sec-title">Temperature Trends — Ingestion Stream Logs</div>', unsafe_allow_html=True)
         st.line_chart(temp_df.set_index('Time')[sensors], color=["#002D62", "#0EA5E9", "#E01934"])
 
@@ -405,9 +443,7 @@ with tab_temp:
         daily_avg.index = daily_avg.index.astype(str)
         st.bar_chart(daily_avg, color=["#002D62", "#0EA5E9", "#E01934"])
 
-        # ── Compliance Table Summary ──
         st.markdown('<div class="sec-title">Cold-Chain Thermodynamic Stability Audits</div>', unsafe_allow_html=True)
-
         labels = {
             'Dough Cooler1 Temp': 'Dough Cooler 1',
             'Dough Cooler2 Temp': 'Dough Cooler 2',
@@ -430,10 +466,8 @@ with tab_temp:
                 "Compliance Index": comp,
             })
 
-        audit_df = pd.DataFrame(rows)
-        
         st.dataframe(
-            audit_df,
+            pd.DataFrame(rows),
             use_container_width=True,
             hide_index=True,
             column_config={
@@ -447,7 +481,6 @@ with tab_temp:
             }
         )
 
-        # ── Zone Alerts ──
         st.markdown('<div class="sec-title">Zone Alert Flags</div>', unsafe_allow_html=True)
         for col in sensors:
             exc = int((temp_df[col] > THRESHOLD).sum())
@@ -461,19 +494,15 @@ with tab_temp:
         st.markdown("<br>", unsafe_allow_html=True)
         with st.expander("Expand Tab Source Records — Telemetry Ingestion History"):
             st.dataframe(temp_df.drop(columns=['Date']), use_container_width=True, hide_index=True)
-
     else:
-        st.markdown('<div class="alert-info"><strong>No telemetries loaded.</strong> Drop source DataLog files into directory to populate analytics.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="alert-info"><strong>No telemetries loaded.</strong> Commit file streams into GitHub to populate analytics.</div>', unsafe_allow_html=True)
 
-
-# ==========================================================
-#  TAB 2 — ENERGY & COST SAVINGS
-# ==========================================================
+# ==============================================================================
+#  TAB 2 — ENERGY & COST SAVINGS (REWORKED)
+# ==============================================================================
 with tab_power:
-    power_df = load_excel_sheet('Sheet1', fallback_header_row=1)
-
-    if power_df is not None and not power_df.empty:
-        p = power_df.copy()
+    if power_raw is not None and not power_raw.empty:
+        p = power_raw.copy()
         p['Date'] = fast_parse_dates(p['Date'])
         p = p.dropna(subset=['Date']).sort_values('Date')
         p['Dunkin Blast'] = pd.to_numeric(p['Dunkin Blast'], errors='coerce').fillna(0)
@@ -484,58 +513,44 @@ with tab_power:
         p = p[p['Dunkin Blast'] < 500_000].copy()
 
         if not p.empty:
-            dunkin_tot = p['Dunkin Blast'].sum()
-            clc_tot = p['CLC Blast'].sum()
-            sav_tot = p[savings_title].sum()
+            # INTERACTIVE FILTERS: Prevent hardcoded stats by filtering date scope dynamically
+            st.markdown('### 🎛️ Filter Scope')
+            min_d, max_d = p['Date'].min().date(), p['Date'].max().date()
+            sel_dates = st.slider("Target Timeline Range Window", min_value=min_d, max_value=max_d, value=(min_d, max_d))
+            
+            p_filtered = p[(p['Date'].dt.date >= sel_dates[0]) & (p['Date'].dt.date <= sel_dates[1])]
+
+            # Recalculate based on specific window metrics
+            dunkin_tot = p_filtered['Dunkin Blast'].sum()
+            clc_tot = p_filtered['CLC Blast'].sum()
+            sav_tot = p_filtered[savings_title].sum()
+            avg_daily_cost_recovery = p_filtered[savings_title].mean()
 
             c1, c2, c3, c4 = st.columns(4)
-            with c1: st.metric("Dunkin' Blast Total", f"{dunkin_tot:,.0f} kWh")
-            with c2: st.metric("CLC Blast Total", f"{clc_tot:,.0f} kWh")
-            with c3: st.metric("Combined Load Demand", f"{dunkin_tot+clc_tot:,.0f} kWh")
-            with c4: st.metric("Net Cost Optimization", f"₹ {sav_tot:,.2f}", delta="Audit Positive", delta_color="inverse")
+            with c1: st.metric("Dunkin' Blast Volume", f"{dunkin_tot:,.0f} kWh")
+            with c2: st.metric("CLC Blast Volume", f"{clc_tot:,.0f} kWh")
+            with c3: st.metric("Combined Grid Demand", f"{dunkin_tot+clc_tot:,.0f} kWh")
+            with c4: st.metric("Net Financial Recovery", f"₹ {sav_tot:,.2f}", 
+                               delta=f"₹{avg_daily_cost_recovery:,.2f}/day Avg", delta_color="normal")
 
-            st.markdown('<div class="sec-title">Daily Power Consumption Performance (kWh)</div>', unsafe_allow_html=True)
-            st.area_chart(p.set_index('Date')[['Dunkin Blast', 'CLC Blast']], color=["#002D62", "#FF9F1C"])
+            st.markdown('<div class="sec-title">Operational Load Profiling Trends (kWh Stacked Area)</div>', unsafe_allow_html=True)
+            st.area_chart(p_filtered.set_index('Date')[['Dunkin Blast', 'CLC Blast']], color=["#002D62", "#FF9F1C"])
 
-            st.markdown('<div class="sec-title">Daily Financial Efficiency Recovery Curves (₹)</div>', unsafe_allow_html=True)
-            st.bar_chart(p.set_index('Date')[savings_title], color="#16A34A")
-
-            st.markdown('<div class="sec-title">Infrastructure Utility Summary Analysis Statistics</div>', unsafe_allow_html=True)
-            stat_cols = ['Dunkin Blast', 'CLC Blast', savings_title]
-            stats = p[stat_cols].describe().loc[['count','mean','min','max','std']].T.round(2)
-            stats.insert(0, 'Total Sum', p[stat_cols].sum().round(2))
-            
-            st.dataframe(
-                stats,
-                use_container_width=True,
-                column_config={
-                    "Total Sum": st.column_config.NumberColumn(format="%.1f kWh"),
-                    "count": st.column_config.NumberColumn(format="%d Days"),
-                    "mean": st.column_config.NumberColumn(format="%.2f Mean"),
-                    "min": st.column_config.NumberColumn(format="%.2f Min"),
-                    "max": st.column_config.NumberColumn(format="%.2f Max"),
-                    "std": st.column_config.NumberColumn(format="%.2f σ")
-                }
-            )
-
-            if os.path.exists(ONEDRIVE_PATH):
-                p.to_csv(os.path.join(ONEDRIVE_PATH, "Clean_Daily_Power_Metrics.csv"), index=False)
+            st.markdown('<div class="sec-title">Daily Scaled Cost Recovery Outlays (₹)</div>', unsafe_allow_html=True)
+            st.bar_chart(p_filtered.set_index('Date')[savings_title], color="#16A34A")
 
             st.markdown("<br>", unsafe_allow_html=True)
-            with st.expander("Expand Tab Source Records — Daily Power Audits Master Ledger"):
-                st.dataframe(p, use_container_width=True, hide_index=True)
+            with st.expander("Expand Filtered Range Records"):
+                st.dataframe(p_filtered, use_container_width=True, hide_index=True)
     else:
-        st.markdown('<div class="alert-info">Infrastructure grid workbook source unmapped or empty.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="alert-info">Infrastructure grid workbook source unmapped or empty in GitHub.</div>', unsafe_allow_html=True)
 
-
-# ==========================================================
-#  TAB 3 — ASSET DUTY CYCLES
-# ==========================================================
+# ==============================================================================
+#  TAB 3 — ASSET DUTY CYCLES (REWORKED)
+# ==============================================================================
 with tab_runtime:
-    runtime_df = load_excel_sheet('Sheet2', fallback_header_row=2)
-
-    if runtime_df is not None and not runtime_df.empty:
-        r = runtime_df.copy()
+    if runtime_raw is not None and not runtime_raw.empty:
+        r = runtime_raw.copy()
         fc = r.columns[0]
         r = r[~r[fc].astype(str).str.contains('Date|From|Total|Running', case=False, na=False)]
         r[fc] = fast_parse_dates(r[fc])
@@ -546,46 +561,43 @@ with tab_runtime:
             r[col] = pd.to_numeric(r[col], errors='coerce').fillna(0)
 
         if kwh_cols and not r.empty:
-            c1, c2, c3 = st.columns(3)
-            with c1: st.metric("Consolidated Draw Volume", f"{r[kwh_cols[0]].sum():,.0f} kWh")
-            with c2: st.metric("Peak Load Threshold", f"{r[kwh_cols[0]].max():,.0f} kWh")
-            with c3: st.metric("Mean Daily Operational Load", f"{r[kwh_cols[0]].mean():,.0f} kWh")
-
-            st.markdown(f'<div class="sec-title">Daily Measured Capacity Displacement Tracker — {kwh_cols[0]}</div>', unsafe_allow_html=True)
-            st.bar_chart(r.set_index(fc)[kwh_cols[0]], color="#002D62")
-
-            st.markdown('<div class="sec-title">Plant Component Duty Cycle Displacement Statistics</div>', unsafe_allow_html=True)
-            stats_r = r[kwh_cols].describe().loc[['count','mean','min','max','std']].T.round(2)
-            stats_r.insert(0, 'Aggregate Volume', r[kwh_cols].sum().round(2))
+            st.markdown('### ⚙️ Plant Capacity & Loading Factor Status')
             
-            st.dataframe(
-                stats_r,
-                use_container_width=True,
-                column_config={
-                    "Aggregate Volume": st.column_config.NumberColumn(format="%.1f kWh"),
-                    "count": st.column_config.NumberColumn(format="%d Logs"),
-                    "mean": st.column_config.NumberColumn(format="%.2f kWh Avg"),
-                    "min": st.column_config.NumberColumn(format="%.2f kWh Min"),
-                    "max": st.column_config.NumberColumn(format="%.2f kWh Max"),
-                    "std": st.column_config.NumberColumn(format="%.2f σ")
-                }
-            )
+            # Derived KPI Calculations instead of generic describe listings
+            primary_col = kwh_cols[0]
+            total_load_drawn = r[primary_col].sum()
+            peak_single_day_load = r[primary_col].max()
+            mean_operating_load = r[primary_col].mean()
 
-        st.markdown("<br>", unsafe_allow_html=True)
-        with st.expander("Expand Tab Source Records — Component Operational Duty Logs"):
-            st.dataframe(r, use_container_width=True, hide_index=True)
+            c1, c2, c3 = st.columns(3)
+            with c1: st.metric("Aggregated Fleet Consumption", f"{total_load_drawn:,.0f} kWh")
+            with c2: st.metric("Peak Stress Loading Point", f"{peak_single_day_load:,.0f} kWh")
+            with c3: st.metric("Mean Continuous Daily Load", f"{mean_operating_load:,.0f} kWh")
+
+            # VISUAL REWORK: Asset load factor profiles via responsive progress scales
+            st.markdown('<div class="sec-title">Asset Loading Factor Indexes (% of Peak Capacity Recorded)</div>', unsafe_allow_html=True)
+            for idx, col in enumerate(kwh_cols[:5]): # Limits layout bounds to top 5 assets
+                col_max = r[col].max()
+                col_avg = r[col].mean()
+                load_factor = (col_avg / col_max) if col_max > 0 else 0.0
+                
+                col1, col2 = st.columns([1, 3])
+                with col1:
+                    st.markdown(f"**{col}**  \n`Avg: {col_avg:.1f} kWh / Max: {col_max:.1f} kWh`")
+                with col2:
+                    st.progress(min(float(load_factor), 1.0), text=f"Calculated Core Load Utilization Factor: {load_factor*100:.1f}%")
+
+            st.markdown(f'<div class="sec-title">Continuous Capacity Displacement Analytics — Overview Profile ({primary_col})</div>', unsafe_allow_html=True)
+            st.bar_chart(r.set_index(fc)[primary_col], color="#002D62")
     else:
-        st.markdown('<div class="alert-info">Asset duty-cycle log workbook source unmapped or empty.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="alert-info">Asset duty-cycle log workbook source unmapped or empty in GitHub.</div>', unsafe_allow_html=True)
 
-
-# ==========================================================
-#  TAB 4 — COMPRESSOR OPTIMISATION
-# ==========================================================
+# ==============================================================================
+#  TAB 4 — COMPRESSOR OPTIMISATION (REWORKED)
+# ==============================================================================
 with tab_comp:
-    comp_df = load_excel_sheet('Sheet3', fallback_header_row=3)
-
-    if comp_df is not None and not comp_df.empty:
-        c = comp_df.copy()
+    if comp_raw is not None and not comp_raw.empty:
+        c = comp_raw.copy()
         c = c[~c.iloc[:, 0].astype(str).str.strip().str.lower().str.fullmatch(r'date|total|from|sr\.?\s*no\.?|stop|start', na=False)]
         c.iloc[:, 0] = fast_parse_dates(c.iloc[:, 0])
         c = c.dropna(subset=[c.columns[0]]).sort_values(c.columns[0])
@@ -601,54 +613,35 @@ with tab_comp:
             max_hrs = c[sav_col].max()
 
             k1, k2, k3, k4 = st.columns(4)
-            with k1: st.metric("Total Hours Saved", f"{tot_hrs:,.1f} hrs")
-            with k2: st.metric("Mean Daily Relief", f"{avg_hrs:.1f} hrs")
-            with k3: st.metric("Peak Rest Interval", f"{max_hrs:.1f} hrs")
-            with k4: st.metric("Audited Days Record", f"{len(c)}")
+            with k1: st.metric("Optimized Interlock Rest Hours", f"{tot_hrs:,.1f} hrs")
+            with k2: st.metric("Mean Relief Window", f"{avg_hrs:.1f} hrs/day")
+            with k3: st.metric("Peak Machine Rest Segment", f"{max_hrs:.1f} hrs")
+            with k4: st.metric("Total Automated Audited Cycles", f"{len(c)}")
 
             date_col = c.columns[0]
 
+            # VISUAL REWORK: Side-by-side comparative fleet timeline analytics
             gc1, gc2 = st.columns(2)
             with gc1:
-                st.markdown('<div class="sec-title">Daily Maintenance Rest Window Gaps (Hours)</div>', unsafe_allow_html=True)
+                st.markdown('<div class="sec-title">Daily Gaps & Cycle Interruptions (Hours)</div>', unsafe_allow_html=True)
                 st.line_chart(c.set_index(date_col)[sav_col], color="#002D62")
             with gc2:
-                st.markdown('<div class="sec-title">Progressive Total Machinery Rest Accumulation (Running Sum)</div>', unsafe_allow_html=True)
+                st.markdown('<div class="sec-title">Cumulative Mechanical Fleet Stress Reduction (Rest Hours Sum)</div>', unsafe_allow_html=True)
                 st.area_chart(c.set_index(date_col)['Progressive Running Accumulation'], color="#FF9F1C")
 
+            # REWORK: Operational Degradation Risk Ranking
             st.markdown('<div class="sec-title">Asset Operational Degradation Risk Ranking (Cycle Counts)</div>', unsafe_allow_html=True)
             comp_metrics = {}
-            for idx in range(1, 6):
+            max_possible_loops = min(5, len(c.columns) // 2)
+            
+            for idx in range(1, max_possible_loops + 1):
                 stop_key = c.columns[2 * idx - 1]
                 active_events = c[c[stop_key].notna() & (c[stop_key].astype(str).str.strip() != '')]
                 comp_metrics[f"Compressor Unit {idx}"] = len(active_events)
             
-            comp_chart_df = pd.DataFrame(list(comp_metrics.items()), columns=["Asset Component Node", "Trigger Cycle Volume"])
-            comp_chart_df = comp_chart_df.sort_values(by="Trigger Cycle Volume", ascending=False)
-            st.bar_chart(comp_chart_df.set_index("Asset Component Node")["Trigger Cycle Volume"], color="#E01934")
-
-            st.markdown('<div class="sec-title">Compressor Fleet Rest Optimization Efficiency Statistics</div>', unsafe_allow_html=True)
-            stats_c = c[[sav_col]].describe().loc[['count','mean','min','max','std']].T.round(2)
-            stats_c.insert(0, 'Total Optimized Rest', round(tot_hrs, 2))
-            
-            st.dataframe(
-                stats_c,
-                use_container_width=True,
-                column_config={
-                    "Total Optimized Rest": st.column_config.NumberColumn(format="%.1f hours"),
-                    "count": st.column_config.NumberColumn(format="%d Observation Days"),
-                    "mean": st.column_config.NumberColumn(format="%.2f hrs/day Avg"),
-                    "min": st.column_config.NumberColumn(format="%.2f hrs Min"),
-                    "max": st.column_config.NumberColumn(format="%.2f hrs Max"),
-                    "std": st.column_config.NumberColumn(format="%.2f σ")
-                }
-            )
-
-        else:
-            st.markdown('<div class="alert-warn">Optimization index column layout altered in Sheet 3 source tracker.</div>', unsafe_allow_html=True)
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        with st.expander("Expand Tab Source Records — Compressor Group Lifecycle Log History"):
-            st.dataframe(c, use_container_width=True, hide_index=True)
+            if comp_metrics:
+                comp_chart_df = pd.DataFrame(list(comp_metrics.items()), columns=["Asset Component Node", "Trigger Cycle Volume"])
+                comp_chart_df = comp_chart_df.sort_values(by="Trigger Cycle Volume", ascending=False)
+                st.bar_chart(comp_chart_df.set_index("Asset Component Node")["Trigger Cycle Volume"], color="#E01934")
     else:
-        st.markdown('<div class="alert-info">Compressor optimization workbook source unmapped or empty.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="alert-info">Compressor optimization workbook source unmapped or empty in GitHub.</div>', unsafe_allow_html=True)
