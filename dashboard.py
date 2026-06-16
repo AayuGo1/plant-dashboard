@@ -200,7 +200,7 @@ def load_temperature_data():
         .reset_index(drop=True)
     )
 
-    # Calculate row-by-row differences (Adjacent Row Delta Variance)
+    # Calculate row-by-row differences sequential tracking format
     combined['consump. dough1'] = (combined['Dough Cooler1 Temp'] - combined['Dough Cooler1 Temp'].shift(1)).fillna(0)
     combined['consump. dough2'] = (combined['Dough Cooler2 Temp'] - combined['Dough Cooler2 Temp'].shift(1)).fillna(0)
     combined['consump. perishable'] = (combined['Perishable Cooler Temp'] - combined['Perishable Cooler Temp'].shift(1)).fillna(0)
@@ -308,7 +308,7 @@ with st.sidebar:
     st.markdown("""
         <div style="position:fixed; bottom:18px; left:0; width:238px; text-align:center;
                     font-size:10px; color:#94A3B8; font-weight:600; padding:0 8px;">
-            JFL Internal Operations Tool &nbsp;·&nbsp; v3.4
+            JFL Internal Operations Tool &nbsp;·&nbsp; v3.5
         </div>
     """, unsafe_allow_html=True)
 
@@ -394,7 +394,7 @@ with tab_energy:
         st.markdown('<div class="alert-info"><strong>No processed energy report found inside repository.</strong></div>', unsafe_allow_html=True)
 
 # ==============================================================================
-#  TAB 2 — COLD STORAGE TEMPERATURES (ROW DELTA VARIANCE APPLIED)
+#  TAB 2 — COLD STORAGE TEMPERATURES (NORMAL DATA FIRST, DIFFERENCED LATER)
 # ==============================================================================
 with tab_temp:
     temp_df = load_temperature_data()
@@ -415,11 +415,8 @@ with tab_temp:
             st.metric("Thermal Compliance Index", f"{compliance:.1f}%",
                       delta=f"{total_exc} critical violations", delta_color="inverse")
 
-        # Dynamic row difference charts matching the freon layout format
-        st.markdown('<div class="sec-title">Daily Temperature Delta Row Variances (Row-by-Row Differences)</div>', unsafe_allow_html=True)
-        st.line_chart(temp_df.set_index('Time')[delta_cols])
-
-        st.markdown('<div class="sec-title">Real-Time Temperature Stream</div>', unsafe_allow_html=True)
+        # ─── PART A: NORMAL REAL-TIME DATA (FIRST) ───
+        st.markdown('<div class="sec-title">Real-Time Temperature Stream (Normal Data)</div>', unsafe_allow_html=True)
         st.line_chart(temp_df.set_index('Time')[sensors], color=["#002D62","#0EA5E9","#E01934"])
 
         st.markdown('<div class="sec-title">Daily Mean Thermal Signature</div>', unsafe_allow_html=True)
@@ -427,6 +424,10 @@ with tab_temp:
         daily_avg = temp_df.groupby('Date')[sensors].mean().round(2)
         daily_avg.index = daily_avg.index.astype(str)
         st.bar_chart(daily_avg, color=["#002D62","#0EA5E9","#E01934"])
+
+        # ─── PART B: DIFFERENCED ADJACENT ROW DATA (LATER) ───
+        st.markdown('<div class="sec-title">Daily Temperature Delta Row Variances (Differenced Data)</div>', unsafe_allow_html=True)
+        st.line_chart(temp_df.set_index('Time')[delta_cols])
 
         st.markdown('<div class="sec-title">Cold-Chain Thermodynamic Stability Audits</div>', unsafe_allow_html=True)
         labels = {'Dough Cooler1 Temp':'Dough Cooler 1','Dough Cooler2 Temp':'Dough Cooler 2','Perishable Cooler Temp':'Perishable Storage'}
