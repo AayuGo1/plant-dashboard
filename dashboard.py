@@ -655,7 +655,7 @@ with tab_energy:
             diff_energy[col_label] = diff_series.values
             diff_cols.append(col_label)
         
-                                    st.markdown('<div class="sec-title">📉 Day-over-Day Consumption Change (Δ vs Previous Day)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec-title">📉 Day-over-Day Consumption Change (Δ vs Previous Day)</div>', unsafe_allow_html=True)
         
         # Filter out rows with zero or invalid consumption data
         valid_data_mask = (e_df[eq_cols].sum(axis=1) > 0)
