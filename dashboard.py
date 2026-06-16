@@ -195,3 +195,54 @@ def load_temperature_data():
     combined = (
         pd.concat(frames, ignore_index=True)
         .dropna(subset=['Time'])
+    )
+
+    return combined
+
+# ─────────────────────────────────────────────────────────────
+#  APP DASHBOARD RENDERING ENGINE
+# ─────────────────────────────────────────────────────────────
+
+# Render Custom Beautiful Header CSS Layout
+st.markdown("""
+<div class="jfl-header-container">
+    <div class="jfl-header-title">🏭 JFL – Plant Operations Dashboard</div>
+    <div class="jfl-header-subtitle">Real-time Telemetry & Resource Monitoring Engine</div>
+</div>
+""", unsafe_allow_html=True)
+
+# Fetch Data Pipelines
+energy_df = load_processed_energy_data()
+temp_df = load_temperature_data()
+
+# Metric Summary Row
+m1, m2, m3 = st.columns(3)
+with m1:
+    st.metric(label="Energy Connection Status", value="Connected" if energy_df is not None else "Disconnected")
+with m2:
+    st.metric(label="Temperature Modules", value=f"{len(temp_df['Time'].dt.date.unique())} Days Logged" if temp_df is not None else "No Logs Found")
+with m3:
+    st.metric(label="System Status", value="Online", delta="Operational")
+
+# Setup Navigation Container Tabs
+tab1, tab2 = st.tabs(["⚡ Active Energy Analytics", "🌡️ Temperature Analytics"])
+
+with tab1:
+    st.markdown('<div class="sec-title">Processed Plant Energy Profiles</div>', unsafe_allow_html=True)
+    if energy_df is not None and not energy_df.empty:
+        st.dataframe(energy_df, use_container_width=True)
+    else:
+        st.markdown('<div class="alert-info">No Active Energy Reports (xlsx/csv) found containing standard Date identifiers in your GitHub repository.</div>', unsafe_allow_html=True)
+
+with tab2:
+    st.markdown('<div class="sec-title">Industrial Chiller Telemetry Metrics</div>', unsafe_allow_html=True)
+    if temp_df is not None and not temp_df.empty:
+        # Render clean line trend charts
+        chart_data = temp_df.set_index('Time')
+        st.line_chart(chart_data)
+        
+        # Raw database viewer
+        with st.expander("Inspect Raw Combined Logs Table"):
+            st.dataframe(temp_df, use_container_width=True)
+    else:
+        st.markdown('<div class="alert-warn">No logs matching standard dataset layouts found inside the current directory stack.</div>', unsafe_allow_html=True)
