@@ -7,6 +7,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import numpy as np
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -123,7 +124,7 @@ def fast_parse_dates(series):
     return parsed_df
 
 # ─────────────────────────────────────────────────────────────
-#  PROCESSED ENERGY FILE LOADER
+#  PROCESSED ENERGY FILE LOADER - ENHANCED
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_processed_energy_data():
@@ -142,13 +143,16 @@ def load_processed_energy_data():
         else:
             df = read_excel_from_github(url)
             
+        # Clean column names
         df = df[~df.iloc[:, 0].astype(str).str.contains(r'source|v1|Date|consump', case=False, na=False)]
         df.columns = [str(c).strip() for c in df.columns]
         
+        # Identify date column
         date_col = next((c for c in df.columns if c.lower() in ['date', 'timestamp', 'time']), None)
         if not date_col:
             return None
             
+        # Parse dates carefully
         df[date_col] = df[date_col].astype(str).str.strip()
         df['DateIndex'] = pd.to_datetime(df[date_col], errors='coerce', format='%Y-%m-%d')
         
@@ -156,14 +160,13 @@ def load_processed_energy_data():
             df.loc[df['DateIndex'].isna(), 'DateIndex'] = pd.to_datetime(df.loc[df['DateIndex'].isna(), date_col], errors='coerce')
             
         df = df.dropna(subset=['DateIndex'])
-        df = df[(df['DateIndex'] >= '2026-06-01') & (df['DateIndex'] <= '2026-06-15')]
         
-        df = df.sort_values('DateIndex').reset_index(drop=True)
-        
+        # Convert numeric columns
         for col in df.columns:
             if col != 'DateIndex' and col != date_col:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
         
+        # Calculate consumption deltas for V1-V9 if not present
         for i in range(1, 10):
             consump_col = f"consump. v{i}"
             reg_col = f"V{i}"
@@ -175,6 +178,7 @@ def load_processed_energy_data():
                     axis=1
                 )
         
+        # Calculate aggregated consumption if not present
         dunkin_c = 'dunkin consmp.'
         clc_c = 'clc consump.'
         bmc_c = 'bmc consump.'
@@ -345,7 +349,14 @@ with st.sidebar:
 # ─────────────────────────────────────────────────────────────
 e_df = load_processed_energy_data()
 temp_df = load_temperature_data()
-date_range_str = "01 Jun 2026 – 15 Jun 2026" if e_df is not None and not e_df.empty else "No Data Loaded"
+
+# Get actual date range from loaded data
+if e_df is not None and not e_df.empty:
+    start_date = e_df['DateIndex'].min().strftime('%d %b %Y')
+    end_date = e_df['DateIndex'].max().strftime('%d %b %Y')
+    date_range_str = f"{start_date} – {end_date}"
+else:
+    date_range_str = "No Data Loaded"
 
 st.markdown(f"""
 <div class="jfl-header-container">
@@ -380,11 +391,32 @@ tab_energy, tab_temp, tab_power, tab_runtime, tab_comp = st.tabs([
 ])
 
 # ==============================================================================
-#  TAB 1 — ACTIVE ENERGY METERS (UPGRADED)
+#  TAB 1 — ACTIVE ENERGY METERS (ENHANCED WITH UPLOADED DATA)
 # ==============================================================================
 with tab_energy:
     if e_df is not None and not e_df.empty:
-        consump_cols = [c for c in e_df.columns if 'consump. v' in c.lower()]
+        # Data Quality Summary
+        st.markdown('<div class="sec-title">📊 Data Quality & Structure Summary</div>', unsafe_allow_html=True)
+        
+        date_col = 'DateIndex'
+        total_records = len(e_df)
+        start_date = e_df[date_col].min()
+        end_date = e_df[date_col].max()
+        total_days = (end_date - start_date).days + 1
+        
+        col_q1, col_q2, col_q3, col_q4 = st.columns(4)
+        with col_q1:
+            st.metric("Total Records", f"{total_records} days")
+        with col_q2:
+            st.metric("Date Range Start", start_date.strftime('%d %b %Y'))
+        with col_q3:
+            st.metric("Date Range End", end_date.strftime('%d %b %Y'))
+        with col_q4:
+            st.metric("Coverage", f"{total_days} days")
+        
+        # Identify all column types
+        consump_cols = [c for c in e_df.columns if 'consump. v' in c.lower() and c != 'consumption']
+        v_meter_cols = [c for c in e_df.columns if c.startswith('V') and c[1:].isdigit()]
         
         dunkin_col = next((c for c in e_df.columns if 'dunkin consmp.' in c.lower()), None)
         clc_col = next((c for c in e_df.columns if 'clc consump.' in c.lower()), None)
@@ -392,99 +424,193 @@ with tab_energy:
         deep_col = next((c for c in e_df.columns if 'deep consumption' in c.lower()), None)
         
         eq_cols = [c for c in [dunkin_col, clc_col, bmc_col, deep_col] if c is not None]
-
-        # Pre-calculate date labels for all charts to ensure consistency
-        x_dates = e_df['DateIndex'].dt.strftime('%d-%b').tolist()
-
-        # Helper function to safely sum columns and handle missing data
+        
+        # Check for data quality issues
+        missing_dates = pd.date_range(start=start_date, end=end_date).difference(e_df[date_col])
+        if len(missing_dates) > 0:
+            st.markdown(f'<div class="alert-warn">⚠️ <strong>Data Quality Alert:</strong> {len(missing_dates)} missing date(s) detected in the range.</div>', unsafe_allow_html=True)
+        else:
+            st.markdown('<div class="alert-ok">✓ <strong>Data Integrity:</strong> Complete date coverage with no gaps detected.</div>', unsafe_allow_html=True)
+        
+        st.markdown("")
+        
+        # KPI Metrics
+        st.markdown('<div class="sec-title">📈 Total Energy Consumption Summary (kWh)</div>', unsafe_allow_html=True)
+        
         def get_sum(col_name):
             if col_name and col_name in e_df.columns:
                 return pd.to_numeric(e_df[col_name], errors='coerce').sum()
             return 0.0
-
+        
+        def get_avg(col_name):
+            if col_name and col_name in e_df.columns:
+                return pd.to_numeric(e_df[col_name], errors='coerce').mean()
+            return 0.0
+        
+        def get_max(col_name):
+            if col_name and col_name in e_df.columns:
+                return pd.to_numeric(e_df[col_name], errors='coerce').max()
+            return 0.0
+        
         c1, c2, c3, c4, c5 = st.columns(5)
-        with c1: st.metric("Total Days Recorded", f"{len(e_df)}")
-        with c2: st.metric("Dunkin' Total Consump.", f"{get_sum(dunkin_col):,.1f} kWh")
-        with c3: st.metric("CLC Total Consump.",     f"{get_sum(clc_col):,.1f} kWh")
-        with c4: st.metric("BMC Total Consump.",     f"{get_sum(bmc_col):,.1f} kWh")
-        with c5: st.metric("Deep Freezer Consump.",  f"{get_sum(deep_col):,.1f} kWh")
-
+        with c1: 
+            st.metric("Dunkin' Total", f"{get_sum(dunkin_col):,.1f} kWh", 
+                     delta=f"Avg: {get_avg(dunkin_col):,.1f} kWh/day")
+        with c2: 
+            st.metric("CLC Total", f"{get_sum(clc_col):,.1f} kWh",
+                     delta=f"Avg: {get_avg(clc_col):,.1f} kWh/day")
+        with c3: 
+            st.metric("BMC Total", f"{get_sum(bmc_col):,.1f} kWh",
+                     delta=f"Avg: {get_avg(bmc_col):,.1f} kWh/day")
+        with c4: 
+            st.metric("Deep Freezer Total", f"{get_sum(deep_col):,.1f} kWh",
+                     delta=f"Avg: {get_avg(deep_col):,.1f} kWh/day")
+        with c5:
+            total_all = get_sum(dunkin_col) + get_sum(clc_col) + get_sum(bmc_col) + get_sum(deep_col)
+            st.metric("Grand Total", f"{total_all:,.1f} kWh",
+                     delta=f"{total_days} days")
+        
+        # V1-V9 Channel Analysis
         if consump_cols:
-            st.markdown('<div class="sec-title">Daily Meter Channel Consumption Profile (V1 to V9)</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sec-title">📊 Daily Consumption Profile — V1 to V9 Channels</div>', unsafe_allow_html=True)
+            st.markdown(f"*Analyzing {len(consump_cols)} meter channels across {total_days} days*")
             
             fig = go.Figure()
+            x_dates = e_df[date_col].dt.strftime('%d-%b').tolist()
+            
             colors = ['#002D62', '#E01934', '#FF9F1C', '#16A34A', '#0EA5E9', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981']
+            meter_names = {
+                'consump. v1': 'V1 - Dunkin Blast',
+                'consump. v2': 'V2 - BMC Blast',
+                'consump. v3': 'V3 - CLC Blast',
+                'consump. v4': 'V4 - Deep1 Blast',
+                'consump. v5': 'V5 - Deep2 Blast',
+                'consump. v6': 'V6 - Dunkin Rack',
+                'consump. v7': 'V7 - BMC Rack',
+                'consump. v8': 'V8 - CLC Rack',
+                'consump. v9': 'V9 - Deep Rack'
+            }
             
             for i, col in enumerate(consump_cols):
+                display_name = meter_names.get(col, col)
                 fig.add_trace(go.Scatter(
                     x=x_dates,
                     y=e_df[col].tolist(),
                     mode='lines+markers',
-                    name=col,
+                    name=display_name,
                     line=dict(width=2.5, color=colors[i % len(colors)]),
-                    marker=dict(size=5)
+                    marker=dict(size=6),
+                    hovertemplate=f'{display_name}<br>Date: %{{x}}<br>Consumption: %{{y:,.2f}} kWh<extra></extra>'
                 ))
                 
             fig.update_layout(
                 hovermode="x unified",
-                margin=dict(l=20, r=20, t=20, b=20),
-                height=420,
-                xaxis=dict(type='category', tickmode='array', tickvals=x_dates, fixedrange=True),
-                yaxis=dict(title="Energy (kWh)", fixedrange=True),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                margin=dict(l=60, r=20, t=40, b=60),
+                height=450,
+                xaxis=dict(
+                    title='Date',
+                    type='category',
+                    tickmode='array',
+                    tickvals=x_dates,
+                    tickangle=45,
+                    fixedrange=True
+                ),
+                yaxis=dict(
+                    title='Daily Consumption (kWh)',
+                    fixedrange=True,
+                    gridcolor='#E2E8F0'
+                ),
+                legend=dict(
+                    orientation="h", 
+                    yanchor="bottom", 
+                    y=1.02, 
+                    xanchor="right", 
+                    x=1,
+                    bgcolor='rgba(255,255,255,0.8)'
+                ),
                 plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)'
+                paper_bgcolor='rgba(0,0,0,0)',
+                showlegend=True
             )
             st.plotly_chart(fig, use_container_width=True)
-
+        
+        # Process Zone Loads - Stacked Bar Chart
         if eq_cols:
-            st.markdown('<div class="sec-title">Process Zone Daily Energy Consumption</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sec-title">🏭 Process Zone Daily Energy Distribution</div>', unsafe_allow_html=True)
             
             fig_zone = go.Figure()
-            zone_colors = {'dunkin': '#002D62', 'clc': '#FF9F1C', 'bmc': '#16A34A', 'deep': '#E01934'}
+            zone_colors = {
+                'dunkin': '#002D62',
+                'clc': '#FF9F1C',
+                'bmc': '#16A34A',
+                'deep': '#E01934'
+            }
             
             for col in eq_cols:
                 col_lower = col.lower()
                 color = '#64748B'
+                display_name = col
                 for key, hex_color in zone_colors.items():
                     if key in col_lower:
                         color = hex_color
+                        display_name = col.replace(' consump.', '').replace(' consmp.', '').replace(' consumption', '').title()
                         break
                 
                 fig_zone.add_trace(go.Bar(
                     x=x_dates,
                     y=e_df[col].tolist(),
-                    name=col,
-                    marker_color=color
+                    name=display_name,
+                    marker_color=color,
+                    hovertemplate=f'{display_name}<br>Date: %{{x}}<br>Energy: %{{y:,.2f}} kWh<extra></extra>'
                 ))
             
             fig_zone.update_layout(
                 barmode='stack',
                 hovermode="x unified",
-                margin=dict(l=20, r=20, t=20, b=20),
-                height=400,
-                xaxis=dict(type='category', tickmode='array', tickvals=x_dates, fixedrange=True),
-                yaxis=dict(title="Energy (kWh)", fixedrange=True),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                margin=dict(l=60, r=20, t=40, b=60),
+                height=450,
+                xaxis=dict(
+                    title='Date',
+                    type='category',
+                    tickmode='array',
+                    tickvals=x_dates,
+                    tickangle=45,
+                    fixedrange=True
+                ),
+                yaxis=dict(
+                    title='Total Energy (kWh)',
+                    fixedrange=True,
+                    gridcolor='#E2E8F0'
+                ),
+                legend=dict(
+                    orientation="h", 
+                    yanchor="bottom", 
+                    y=1.02, 
+                    xanchor="right", 
+                    x=1,
+                    bgcolor='rgba(255,255,255,0.8)'
+                ),
                 plot_bgcolor='rgba(0,0,0,0)',
                 paper_bgcolor='rgba(0,0,0,0)'
             )
             st.plotly_chart(fig_zone, use_container_width=True)
-
-        st.markdown('<div class="sec-title">Day-over-Day Consumption Change (Δ vs Previous Day)</div>', unsafe_allow_html=True)
+        
+        # Daily Delta Analysis
+        st.markdown('<div class="sec-title">📉 Day-over-Day Consumption Change (Δ vs Previous Day)</div>', unsafe_allow_html=True)
         
         diff_energy = pd.DataFrame()
         diff_energy['ChartDate'] = x_dates
+        diff_energy['DateObj'] = e_df[date_col]
         diff_cols = []
         
         for col in eq_cols:
             col_label = f"{col} Δ"
-            # Simplified and robust delta calculation
             diff_series = pd.to_numeric(e_df[col], errors='coerce').diff().fillna(0)
             diff_energy[col_label] = diff_series.values
             diff_cols.append(col_label)
         
         if not diff_energy.empty:
+            # Latest day metrics
             target_energy_row = diff_energy.iloc[-1]
             
             ec1, ec2, ec3, ec4 = st.columns(4)
@@ -493,65 +619,146 @@ with tab_energy:
                 if col_name and f"{col_name} Δ" in diff_energy.columns:
                     val = target_energy_row[f"{col_name} Δ"]
                     delta_str = f"{val:+,.1f} kWh"
-                    container.markdown(f"""
-                    <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid {color};">
-                        <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">{label} Daily Δ</div>
-                        <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{delta_str}</div>
-                    </div>
-                    """, unsafe_allow_html=True)
+                    delta_color = "normal" if val >= 0 else "inverse"
+                    container.metric(f"{label} Daily Δ", delta_str, delta_color=delta_color)
                 else:
-                    container.markdown(f"""
-                    <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #CBD5E0;">
-                        <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">{label} Daily Δ</div>
-                        <div style="font-size:16px; font-weight:800; color:#94A3B8; margin-top:2px;">No Data</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-
+                    container.metric(f"{label} Daily Δ", "No Data")
+            
             with ec1: render_delta_metric(ec1, dunkin_col, "#002D62", "Dunkin'")
             with ec2: render_delta_metric(ec2, clc_col, "#FF9F1C", "CLC")
             with ec3: render_delta_metric(ec3, bmc_col, "#16A34A", "BMC")
             with ec4: render_delta_metric(ec4, deep_col, "#E01934", "Deep Freezer")
-
+            
             st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
             
+            # Delta visualization
             fig_delta = go.Figure()
             delta_colors = ['#002D62', '#FF9F1C', '#16A34A', '#E01934']
+            
             for i, col in enumerate(diff_cols):
                 fig_delta.add_trace(go.Bar(
                     x=x_dates,
                     y=diff_energy[col].tolist(),
-                    name=col,
+                    name=col.replace(' Δ', ''),
                     marker_color=delta_colors[i % len(delta_colors)],
-                    opacity=0.8
+                    opacity=0.8,
+                    hovertemplate=f'{col}<br>Date: %{{x}}<br>Δ: %{{y:+,.2f}} kWh<extra></extra>'
                 ))
             
             fig_delta.update_layout(
                 barmode='group',
                 hovermode="x unified",
-                margin=dict(l=20, r=20, t=20, b=20),
-                height=350,
-                xaxis=dict(type='category', tickmode='array', tickvals=x_dates, fixedrange=True),
-                yaxis=dict(title="Δ Energy (kWh)", fixedrange=True),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                margin=dict(l=60, r=20, t=40, b=60),
+                height=400,
+                xaxis=dict(
+                    title='Date',
+                    type='category',
+                    tickmode='array',
+                    tickvals=x_dates,
+                    tickangle=45,
+                    fixedrange=True
+                ),
+                yaxis=dict(
+                    title='Daily Change (kWh)',
+                    fixedrange=True,
+                    gridcolor='#E2E8F0'
+                ),
+                legend=dict(
+                    orientation="h", 
+                    yanchor="bottom", 
+                    y=1.02, 
+                    xanchor="right", 
+                    x=1
+                ),
                 plot_bgcolor='rgba(0,0,0,0)',
-                paper_bgcolor='rgba(0,0,0,0)'
+                paper_bgcolor='rgba(0,0,0,0)',
+                shapes=[dict(type='line', xref='paper', yref='y', x0=0, y0=0, x1=1, y1=0, line=dict(color='red', width=2, dash='dash'))]
             )
             st.plotly_chart(fig_delta, use_container_width=True)
-
+        
+        # Statistical Summary Table
+        st.markdown('<div class="sec-title">📋 Statistical Summary by Zone</div>', unsafe_allow_html=True)
+        
+        summary_data = []
+        zone_labels = {
+            dunkin_col: "Dunkin'",
+            clc_col: "CLC",
+            bmc_col: "BMC",
+            deep_col: "Deep Freezer"
+        }
+        
+        for col in eq_cols:
+            if col:
+                series = pd.to_numeric(e_df[col], errors='coerce')
+                summary_data.append({
+                    "Zone": zone_labels.get(col, col),
+                    "Total (kWh)": f"{series.sum():,.2f}",
+                    "Mean (kWh/day)": f"{series.mean():,.2f}",
+                    "Min (kWh)": f"{series.min():,.2f}",
+                    "Max (kWh)": f"{series.max():,.2f}",
+                    "Std Dev": f"{series.std():,.2f}",
+                    "CV (%)": f"{(series.std()/series.mean()*100) if series.mean() != 0 else 0:.1f}"
+                })
+        
+        summary_df = pd.DataFrame(summary_data)
+        st.dataframe(summary_df, use_container_width=True, hide_index=True)
+        
+        # Anomaly Detection
+        st.markdown('<div class="sec-title">🚨 Anomaly Detection & Alerts</div>', unsafe_allow_html=True)
+        
+        for col in eq_cols:
+            if col:
+                series = pd.to_numeric(e_df[col], errors='coerce')
+                mean_val = series.mean()
+                std_val = series.std()
+                threshold_upper = mean_val + 2 * std_val
+                threshold_lower = mean_val - 2 * std_val
+                
+                anomalies = e_df[(series > threshold_upper) | (series < threshold_lower)]
+                
+                if len(anomalies) > 0:
+                    st.markdown(f'<div class="alert-warn"><strong>{zone_labels.get(col, col)}:</strong> {len(anomalies)} anomaly day(s) detected (outside ±2σ)</div>', unsafe_allow_html=True)
+                    for idx, row in anomalies.iterrows():
+                        date_str = row[date_col].strftime('%d %b %Y')
+                        val = row[col]
+                        st.markdown(f"  - {date_str}: {val:,.2f} kWh (Mean: {mean_val:,.2f}, Threshold: {threshold_upper:,.2f})")
+                else:
+                    st.markdown(f'<div class="alert-ok"><strong>{zone_labels.get(col, col)}:</strong> No anomalies detected - stable consumption pattern</div>', unsafe_allow_html=True)
+        
+        # Raw Data Export
         st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
         with st.expander("📂 View Pre-Processed Active Energy File Data Table", expanded=False):
-            st.dataframe(e_df.set_index('DateIndex'), use_container_width=True)
-            # Added download button for consistency with other tabs
+            st.dataframe(e_df.set_index(date_col), use_container_width=True)
+            
             csv_data = e_df.to_csv(index=False).encode('utf-8')
             st.download_button(
-                label="Download Active Energy Data as CSV",
+                label="📥 Download Active Energy Data as CSV",
                 data=csv_data,
-                file_name="processed_active_energy_data.csv",
+                file_name=f"active_energy_{start_date.strftime('%Y%m%d')}_to_{end_date.strftime('%Y%m%d')}.csv",
                 mime="text/csv",
                 key="btn_download_energy"
             )
+            
+            excel_buffer = io.BytesIO()
+            with pd.ExcelWriter(excel_buffer, engine='xlsxwriter') as writer:
+                e_df.set_index(date_col).to_excel(writer, sheet_name='Energy Data')
+            st.download_button(
+                label="📥 Download Active Energy Data as Excel",
+                data=excel_buffer.getvalue(),
+                file_name=f"active_energy_{start_date.strftime('%Y%m%d')}_to_{end_date.strftime('%Y%m%d')}.xlsx",
+                mime="application/vnd.ms-excel",
+                key="btn_download_energy_excel"
+            )
+    
     else:
-        st.markdown('<div class="alert-info"><strong>No active energy data captured matching the current file window constraints.</strong></div>', unsafe_allow_html=True)
+        st.markdown('<div class="alert-info"><strong>⚠️ No active energy data captured matching the current file window constraints.</strong></div>', unsafe_allow_html=True)
+        st.markdown("""
+        **Troubleshooting Steps:**
+        1. Verify that PROCESSED_DAILY_VARS_Active_Energy_Report files exist in the GitHub repository
+        2. Check that the date range in the files matches the expected window
+        3. Ensure the file format is either .xlsx or .csv
+        4. Click '🔄 Refresh Data Now' in the sidebar to reload data
+        """)
 
 # ==============================================================================
 #  TAB 2 — COLD STORAGE TEMPERATURES
