@@ -655,7 +655,26 @@ with tab_energy:
             diff_energy[col_label] = diff_series.values
             diff_cols.append(col_label)
         
-                              if not diff_energy.empty:
+                                st.markdown('<div class="sec-title">📉 Day-over-Day Consumption Change (Δ vs Previous Day)</div>', unsafe_allow_html=True)
+        
+        # Filter out rows with zero or invalid consumption data
+        valid_data_mask = (e_df[eq_cols].sum(axis=1) > 0)
+        e_df_valid = e_df[valid_data_mask].copy()
+        
+        diff_energy = pd.DataFrame()
+        diff_energy['ChartDate'] = e_df_valid[date_col].dt.strftime('%d-%b').tolist()
+        diff_energy['DateObj'] = e_df_valid[date_col]
+        diff_cols = []
+        
+        for col in eq_cols:
+            col_label = f"{col} Δ"
+            diff_series = e_df_valid[col].diff().fillna(0)
+            # Ensure no negative values
+            diff_series = diff_series.clip(lower=0)
+            diff_energy[col_label] = diff_series.values
+            diff_cols.append(col_label)
+        
+        if not diff_energy.empty:
             target_energy_row = diff_energy.iloc[-1]
             
             ec1, ec2, ec3, ec4 = st.columns(4)
@@ -718,6 +737,8 @@ with tab_energy:
                 shapes=[dict(type='line', xref='paper', yref='y', x0=0, y0=0, x1=1, y1=0, line=dict(color='red', width=2, dash='dash'))]
             )
             st.plotly_chart(fig_delta, use_container_width=True)
+        
+        st.markdown('<div class="sec-title">📋 Statistical Summary by Zone</div>', unsafe_allow_html=True)
             
             st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
             
