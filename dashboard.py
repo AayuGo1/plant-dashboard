@@ -654,10 +654,9 @@ with tab_energy:
             diff_series = diff_series.clip(lower=0)
             diff_energy[col_label] = diff_series.values
             diff_cols.append(col_label)
-        
         st.markdown('<div class="sec-title">📉 Day-over-Day Consumption Change (Δ vs Previous Day)</div>', unsafe_allow_html=True)
         
-        # Filter out rows with zero or invalid consumption data
+        # Filter out rows with zero consumption (like June 15)
         valid_data_mask = (e_df[eq_cols].sum(axis=1) > 0)
         e_df_valid = e_df[valid_data_mask].copy()
         
@@ -749,7 +748,6 @@ with tab_energy:
                 shapes=[dict(type='line', xref='paper', yref='y', x0=0, y0=0, x1=1, y1=0, line=dict(color='red', width=2, dash='dash'))]
             )
             st.plotly_chart(fig_delta, use_container_width=True)
-        
         
         st.markdown('<div class="sec-title">📋 Statistical Summary by Zone</div>', unsafe_allow_html=True)
             
