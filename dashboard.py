@@ -149,7 +149,6 @@ def load_processed_energy_data():
             if col != 'DateIndex' and col != date_col:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
         
-        # Backfill raw delta calculations
         for i in range(1, 10):
             consump_col = f"consump. v{i}"
             reg_col = f"V{i}"
@@ -235,10 +234,92 @@ e_df = load_processed_energy_data()
 temp_df = load_temperature_data()
 comp_df = load_excel_sheet('Sheet3', fallback_header_row=3)
 
+# ─────────────────────────────────────────────────────────────
+# SIDEBAR STATUS SYSTEM INTEGRATION
+# ─────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("""
+        <div style="padding:16px 0 20px;">
+            <div style="font-size:9px; font-weight:700; letter-spacing:1.8px; color:#94A3B8; text-transform:uppercase; margin-bottom:6px;">
+                JUBILANT FOODWORKS LIMITED
+            </div>
+            <div style="font-size:17px; font-weight:800; color:#FFFFFF; line-height:1.25;">
+                Plant Operations<br>Dashboard
+            </div>
+            <div style="margin-top:10px; width:36px; height:3px; background:#E01934; border-radius:2px;"></div>
+        </div>
+    """, unsafe_allow_html=True)
+
+    if st.button("🔄 Refresh Data Now"):
+        st.cache_data.clear()
+        st.rerun()
+
+    all_files = list_github_files()
+    processed_energy_files = [n for n, _ in all_files if "PROCESSED_DAILY_VARS_Active_Energy_Report" in n]
+    csv_files    = [n for n, _ in all_files if n.startswith("DataLog_") and n.endswith(".csv")]
+    has_freon    = any("freon" in n.lower() for n, _ in all_files)
+
+    st.markdown("<hr style='border-color:#1E3A8A; margin:14px 0;'>", unsafe_allow_html=True)
+    st.markdown("""<div style="font-size:9px; font-weight:700; letter-spacing:1.2px; color:#94A3B8; text-transform:uppercase; margin-bottom:10px;">GitHub Source Status</div>""", unsafe_allow_html=True)
+
+    st.markdown(f"""
+        <div style="margin-bottom:8px;">
+            <span class="status-pill status-{'ok' if processed_energy_files else 'err'}">
+                {'●' if processed_energy_files else '○'}&nbsp; Processed Energy · {'Active' if processed_energy_files else 'Missing'}
+            </span>
+        </div>
+        <div style="margin-bottom:8px;">
+            <span class="status-pill status-{'ok' if csv_files else 'err'}">
+                {'●' if csv_files else '○'}&nbsp; Temp Logs · {len(csv_files)} file(s)
+            </span>
+        </div>
+        <div>
+            <span class="status-pill status-{'ok' if has_freon else 'err'}">
+                {'●' if has_freon else '○'}&nbsp; Freon Workbook · {'Found' if has_freon else 'Not Found'}
+            </span>
+        </div>
+    """, unsafe_allow_html=True)
+
+# ─────────────────────────────────────────────────────────────
+# HEADER CARD SYSTEM
+# ─────────────────────────────────────────────────────────────
+date_range_str = "01 Jun 2026 – 15 Jun 2026" if e_df is not None and not e_df.empty else "No Data Loaded"
+
+st.markdown(f"""
+<div class="jfl-header-container">
+    <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px;">
+        <div style="flex: 1; min-width: 280px;">
+            <div class="jfl-header-subtitle">Supply Chain & Manufacturing · Noida Plant Group</div>
+            <div class="jfl-header-title">Plant Operational Intelligence Hub</div>
+        </div>
+        <div style="display: flex; gap: 12px; flex-wrap: wrap; min-width: 240px;">
+            <div class="jfl-header-meta-box" style="flex: 1;">
+                <div class="jfl-meta-label">Reporting Window</div>
+                <div class="jfl-meta-value">{date_range_str}</div>
+            </div>
+            <div class="jfl-header-meta-box" style="flex: 1;">
+                <div class="jfl-meta-label">Corporate Entity</div>
+                <div class="jfl-meta-value" style="color: #E01934;">Jubilant FoodWorks</div>
+            </div>
+        </div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
+
+# ─────────────────────────────────────────────────────────────
+# TABS ARCHITECTURE DEFINITION (FIXES INITIALIZATION ERROR)
+# ─────────────────────────────────────────────────────────────
+tab_energy, tab_temp, tab_power, tab_runtime, tab_comp = st.tabs([
+    "⚡  Active Energy Meters",
+    "🌡️  Cold Storage Temperatures",
+    "💡  Energy & Cost Savings",
+    "⚙️  Asset Duty Cycles",
+    "📉  Compressor Diagnostics Engine",
+])
+
 # ==============================================================================
-# VIEW SYSTEM METRIC PRESENTATION LAYER
+# TAB 1 — ACTIVE ENERGY METERS
 # ==============================================================================
-# ACTIVE ENERGY METERS TAB
 with tab_energy:
     if e_df is not None and not e_df.empty:
         consump_cols = [c for c in e_df.columns if 'consump. v' in c.lower()]
@@ -260,7 +341,9 @@ with tab_energy:
     else:
         st.markdown('<div class="alert-info">Insufficient evidence from dataset to generate Active Energy profiles.</div>', unsafe_allow_html=True)
 
-# COLD STORAGE TEMPERATURES TAB
+# ==============================================================================
+# TAB 2 — COLD STORAGE TEMPERATURES
+# ==============================================================================
 with tab_temp:
     if temp_df is not None and not temp_df.empty:
         sensors = ['Dough Cooler1 Temp', 'Dough Cooler2 Temp', 'Perishable Cooler Temp']
@@ -279,7 +362,9 @@ with tab_temp:
     else:
         st.markdown('<div class="alert-info">Insufficient evidence from dataset to compile real-time environment logs.</div>', unsafe_allow_html=True)
 
-# ENERGY & COST SAVINGS TAB
+# ==============================================================================
+# TAB 3 — ENERGY & COST SAVINGS
+# ==============================================================================
 with tab_power:
     power_df = load_excel_sheet('Sheet1', fallback_header_row=1)
     if power_df is not None and not power_df.empty:
@@ -306,7 +391,9 @@ with tab_power:
     else:
         st.markdown('<div class="alert-info">Insufficient evidence from dataset to process Worksheet 1 Grid Recovery records.</div>', unsafe_allow_html=True)
 
-# ASSET DUTY CYCLES TAB
+# ==============================================================================
+# TAB 4 — ASSET DUTY CYCLES
+# ==============================================================================
 with tab_runtime:
     runtime_df = load_excel_sheet('Sheet2', fallback_header_row=2)
     if runtime_df is not None and not runtime_df.empty:
@@ -324,7 +411,9 @@ with tab_runtime:
     else:
         st.markdown('<div class="alert-info">Insufficient evidence from dataset to extract primary asset indicators.</div>', unsafe_allow_html=True)
 
-# ADVANCED COMPRESSOR DIAGNOSTICS TAB
+# ==============================================================================
+# TAB 5 — COMPRESSOR DIAGNOSTICS ENGINE
+# ==============================================================================
 with tab_comp:
     if comp_df is not None and not comp_df.empty and temp_df is not None and not temp_df.empty:
         st.markdown('<div class="sec-title">🛠️ Advanced Cross-Tab System Diagnostic Engine</div>', unsafe_allow_html=True)
