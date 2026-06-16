@@ -158,6 +158,16 @@ def load_and_process_energy_files():
                 df['Parsed_Date'] = pd.to_datetime(df[date_candidate], errors='coerce').dt.date
                 df = df.dropna(subset=['Parsed_Date'])
                 df = df.rename(columns={'Parsed_Date': 'Date'})
+                
+                # Robust column renaming for spacing variations
+                rename_dict = {}
+                for col in df.columns:
+                    col_clean = str(col).upper().replace(" ", "").replace("-", "")
+                    for k, v in METER_COLS.items():
+                        if col_clean.startswith(k):
+                            rename_dict[col] = v
+                            break
+                df = df.rename(columns=rename_dict)
                 frames.append(df)
             except Exception as e:
                 st.warning(f"Skipped parsing energy report file {name}: {e}")
@@ -217,7 +227,7 @@ def load_and_process_energy_files():
     return combined
 
 # ─────────────────────────────────────────────────────────────
-#  TEMPERATURE DATA LOADER (FIXED NOISE & OUTLIER FILTERING)
+#  TEMPERATURE DATA LOADER (ADAPTIVE HEADER FIX)
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_temperature_data():
@@ -226,22 +236,32 @@ def load_temperature_data():
     if not csv_files:
         return None
 
-    cols = ['Time', 'Dough Cooler2 Temp', 'Dough Cooler1 Temp', 'Perishable Cooler Temp']
     frames = []
     for name, url in sorted(csv_files):
         try:
             df = read_csv_from_github(url)
-            df.columns = df.columns.str.strip()
-            if not all(c in df.columns for c in cols):
+            df.columns = [str(c).strip() for c in df.columns]
+            
+            # Robust substring matcher that replaces spaces and handles typos like 'Cooler1Temp'
+            time_col = next((c for c in df.columns if 'time' in c.lower()), None)
+            c1_col = next((c for c in df.columns if 'cooler1' in c.lower().replace(" ", "")), None)
+            c2_col = next((c for c in df.columns if 'cooler2' in c.lower().replace(" ", "")), None)
+            p_col = next((c for c in df.columns if 'perishable' in c.lower()), None)
+            
+            if not all([time_col, c1_col, c2_col, p_col]):
                 continue
                 
-            sub = df[cols].copy()
-            for c in cols[1:]:
-                # Force clean text fields and drop whitespace safely
+            sub = df[[time_col, c1_col, c2_col, p_col]].copy()
+            sub = sub.rename(columns={
+                time_col: 'Time',
+                c1_col: 'Dough Cooler1 Temp',
+                c2_col: 'Dough Cooler2 Temp',
+                p_col: 'Perishable Cooler Temp'
+            })
+            
+            for c in ['Dough Cooler1 Temp', 'Dough Cooler2 Temp', 'Perishable Cooler Temp']:
                 sub[c] = sub[c].astype(str).str.strip()
-                # Push any dropout flag ('NOP') or strings to true NaN objects instead of forced 0 values
                 sub[c] = pd.to_numeric(sub[c], errors='coerce')
-                # Forward-fill gaps dynamically from previous metrics streams
                 sub[c] = sub[c].ffill().bfill()
                 
             sub['Time'] = pd.to_datetime(sub['Time'], dayfirst=True, errors='coerce')
