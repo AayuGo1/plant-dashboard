@@ -143,16 +143,13 @@ def load_processed_energy_data():
         else:
             df = read_excel_from_github(url)
             
-        # Clean column names
         df = df[~df.iloc[:, 0].astype(str).str.contains(r'source|v1|Date|consump', case=False, na=False)]
         df.columns = [str(c).strip() for c in df.columns]
         
-        # Identify date column
         date_col = next((c for c in df.columns if c.lower() in ['date', 'timestamp', 'time']), None)
         if not date_col:
             return None
             
-        # Parse dates carefully
         df[date_col] = df[date_col].astype(str).str.strip()
         df['DateIndex'] = pd.to_datetime(df[date_col], errors='coerce', format='%Y-%m-%d')
         
@@ -161,12 +158,10 @@ def load_processed_energy_data():
             
         df = df.dropna(subset=['DateIndex'])
         
-        # Convert numeric columns
         for col in df.columns:
             if col != 'DateIndex' and col != date_col:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
         
-        # Calculate consumption deltas for V1-V9 if not present
         for i in range(1, 10):
             consump_col = f"consump. v{i}"
             reg_col = f"V{i}"
@@ -178,7 +173,6 @@ def load_processed_energy_data():
                     axis=1
                 )
         
-        # Calculate aggregated consumption if not present
         dunkin_c = 'dunkin consmp.'
         clc_c = 'clc consump.'
         bmc_c = 'bmc consump.'
@@ -350,7 +344,6 @@ with st.sidebar:
 e_df = load_processed_energy_data()
 temp_df = load_temperature_data()
 
-# Get actual date range from loaded data
 if e_df is not None and not e_df.empty:
     start_date = e_df['DateIndex'].min().strftime('%d %b %Y')
     end_date = e_df['DateIndex'].max().strftime('%d %b %Y')
@@ -391,11 +384,10 @@ tab_energy, tab_temp, tab_power, tab_runtime, tab_comp = st.tabs([
 ])
 
 # ==============================================================================
-#  TAB 1 — ACTIVE ENERGY METERS (ENHANCED WITH UPLOADED DATA)
+#  TAB 1 — ACTIVE ENERGY METERS
 # ==============================================================================
 with tab_energy:
     if e_df is not None and not e_df.empty:
-        # Data Quality Summary
         st.markdown('<div class="sec-title">📊 Data Quality & Structure Summary</div>', unsafe_allow_html=True)
         
         date_col = 'DateIndex'
@@ -414,7 +406,6 @@ with tab_energy:
         with col_q4:
             st.metric("Coverage", f"{total_days} days")
         
-        # Identify all column types
         consump_cols = [c for c in e_df.columns if 'consump. v' in c.lower() and c != 'consumption']
         v_meter_cols = [c for c in e_df.columns if c.startswith('V') and c[1:].isdigit()]
         
@@ -425,7 +416,6 @@ with tab_energy:
         
         eq_cols = [c for c in [dunkin_col, clc_col, bmc_col, deep_col] if c is not None]
         
-        # Check for data quality issues
         missing_dates = pd.date_range(start=start_date, end=end_date).difference(e_df[date_col])
         if len(missing_dates) > 0:
             st.markdown(f'<div class="alert-warn">⚠️ <strong>Data Quality Alert:</strong> {len(missing_dates)} missing date(s) detected in the range.</div>', unsafe_allow_html=True)
@@ -434,7 +424,6 @@ with tab_energy:
         
         st.markdown("")
         
-        # KPI Metrics
         st.markdown('<div class="sec-title">📈 Total Energy Consumption Summary (kWh)</div>', unsafe_allow_html=True)
         
         def get_sum(col_name):
@@ -470,7 +459,6 @@ with tab_energy:
             st.metric("Grand Total", f"{total_all:,.1f} kWh",
                      delta=f"{total_days} days")
         
-        # V1-V9 Channel Analysis
         if consump_cols:
             st.markdown('<div class="sec-title">📊 Daily Consumption Profile — V1 to V9 Channels</div>', unsafe_allow_html=True)
             st.markdown(f"*Analyzing {len(consump_cols)} meter channels across {total_days} days*")
@@ -534,7 +522,6 @@ with tab_energy:
             )
             st.plotly_chart(fig, use_container_width=True)
         
-        # Process Zone Loads - Stacked Bar Chart
         if eq_cols:
             st.markdown('<div class="sec-title">🏭 Process Zone Daily Energy Distribution</div>', unsafe_allow_html=True)
             
@@ -595,7 +582,6 @@ with tab_energy:
             )
             st.plotly_chart(fig_zone, use_container_width=True)
         
-        # Daily Delta Analysis
         st.markdown('<div class="sec-title">📉 Day-over-Day Consumption Change (Δ vs Previous Day)</div>', unsafe_allow_html=True)
         
         diff_energy = pd.DataFrame()
@@ -610,7 +596,6 @@ with tab_energy:
             diff_cols.append(col_label)
         
         if not diff_energy.empty:
-            # Latest day metrics
             target_energy_row = diff_energy.iloc[-1]
             
             ec1, ec2, ec3, ec4 = st.columns(4)
@@ -631,7 +616,6 @@ with tab_energy:
             
             st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
             
-            # Delta visualization
             fig_delta = go.Figure()
             delta_colors = ['#002D62', '#FF9F1C', '#16A34A', '#E01934']
             
@@ -676,7 +660,6 @@ with tab_energy:
             )
             st.plotly_chart(fig_delta, use_container_width=True)
         
-        # Statistical Summary Table
         st.markdown('<div class="sec-title">📋 Statistical Summary by Zone</div>', unsafe_allow_html=True)
         
         summary_data = []
@@ -703,7 +686,6 @@ with tab_energy:
         summary_df = pd.DataFrame(summary_data)
         st.dataframe(summary_df, use_container_width=True, hide_index=True)
         
-        # Anomaly Detection
         st.markdown('<div class="sec-title">🚨 Anomaly Detection & Alerts</div>', unsafe_allow_html=True)
         
         for col in eq_cols:
@@ -725,7 +707,6 @@ with tab_energy:
                 else:
                     st.markdown(f'<div class="alert-ok"><strong>{zone_labels.get(col, col)}:</strong> No anomalies detected - stable consumption pattern</div>', unsafe_allow_html=True)
         
-        # Raw Data Export
         st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
         with st.expander("📂 View Pre-Processed Active Energy File Data Table", expanded=False):
             st.dataframe(e_df.set_index(date_col), use_container_width=True)
@@ -738,18 +719,6 @@ with tab_energy:
                 mime="text/csv",
                 key="btn_download_energy"
             )
-            
-            excel_buffer = io.BytesIO()
-with pd.ExcelWriter(excel_buffer, engine='openpyxl') as writer:
-    e_df.set_index(date_col).to_excel(writer, sheet_name='Energy Data')
-st.download_button(
-    label="📥 Download Active Energy Data as Excel",
-    data=excel_buffer.getvalue(),
-    file_name=f"active_energy_{start_date.strftime('%Y%m%d')}_to_{end_date.strftime('%Y%m%d')}.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    key="btn_download_energy_excel"
-)
-    
     else:
         st.markdown('<div class="alert-info"><strong>⚠️ No active energy data captured matching the current file window constraints.</strong></div>', unsafe_allow_html=True)
         st.markdown("""
@@ -1004,7 +973,7 @@ with tab_runtime:
         st.markdown('<div class="alert-info">Asset duty-cycle log metrics are not active.</div>', unsafe_allow_html=True)
 
 # ==============================================================================
-#  TAB 5 — COMPRESSOR OPTIMISATION (STABILIZED CROSS-ANALYSIS)
+#  TAB 5 — COMPRESSOR OPTIMISATION
 # ==============================================================================
 with tab_comp:
     comp_df = load_excel_sheet('Sheet3', fallback_header_row=3)
@@ -1034,7 +1003,6 @@ with tab_comp:
                 st.markdown('<div class="sec-title">Cumulative Rest Curve Metrics</div>', unsafe_allow_html=True)
                 st.area_chart(c.set_index(date_col)['Cumulative Savings'], color="#FF9F1C")
 
-            # Dynamic Cross-Reference Layer (Safe from KeyErrors)
             if temp_df is not None and not temp_df.empty:
                 st.markdown('<div class="sec-title">Thermodynamic Drift vs. System Optimization Rest Cycles</div>', unsafe_allow_html=True)
                 
@@ -1045,7 +1013,6 @@ with tab_comp:
                 t_clean = temp_df.copy()
                 t_clean['Date_Key'] = pd.to_datetime(t_clean['Time']).dt.date
                 
-                # Dynamic matching to prevent KeyError on temperature streams
                 dough1_col = next((col for col in t_clean.columns if 'cooler1' in col.lower().replace(" ", "")), None)
                 
                 if dough1_col:
