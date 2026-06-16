@@ -747,17 +747,9 @@ with tab_energy:
                 paper_bgcolor='rgba(0,0,0,0)',
                 shapes=[dict(type='line', xref='paper', yref='y', x0=0, y0=0, x1=1, y1=0, line=dict(color='red', width=2, dash='dash'))]
             )
-            st.plotly_chart(fig_delta, use_container_width=True)
+        st.plotly_chart(fig_delta, use_container_width=True)
         
         st.markdown('<div class="sec-title">📋 Statistical Summary by Zone</div>', unsafe_allow_html=True)
-            
-         st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
-            
-            # Keep your existing chart code below this point...
-            fig_delta = go.Figure()
-        
-        st.markdown('<div class="sec-title">📋 Statistical Summary by Zone</div>', unsafe_allow_html=True)
-        
         summary_data = []
         zone_labels = {
             dunkin_col: "Dunkin'",
