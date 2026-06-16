@@ -317,11 +317,12 @@ def load_temperature_data():
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_excel_sheet(sheet_name, fallback_header_row):
-    all_files = list_github_files()  # ← THIS LINE MUST BE HERE
+    all_files = list_github_files()  # ← ADD THIS LINE (currently missing)
     match = next((u for n, _ in all_files if "freon" in n.lower() and n.endswith(".xlsx")), None)
     
     if not match:
         return None
+    # ... rest stays the same
     # ... rest of the function
     try:
         preview = read_excel_from_github(match, sheet_name=sheet_name, header=None, engine='openpyxl')
