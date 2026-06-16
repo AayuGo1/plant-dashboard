@@ -112,152 +112,47 @@ def read_csv_from_github(url: str, **kwargs):
     return pd.read_csv(io.BytesIO(fetch_file_bytes(url)), **kwargs)
 
 # ─────────────────────────────────────────────────────────────
-#  METER COLUMNS DEFINITION
-# ─────────────────────────────────────────────────────────────
-METER_COLS = {
-    'V1': 'V1 - DUNKIN BLAST',
-    'V2': 'V2 - BMC BLAST',
-    'V3': 'V3 - CLC BLAST',
-    'V4': 'V4 - DEEP1 BLAST',
-    'V5': 'V5 - DEEP2 BLAST',
-    'V6': 'V6 - DUNKIN RACK',
-    'V7': 'V7 - BMC RACK',
-    'V8': 'V8 - CLC RACK',
-    'V9': 'V9 - DEEP RACK',
-}
-
-# ─────────────────────────────────────────────────────────────
-#  ACTIVE ENERGY PROCESSOR
+#  PROCESSED ENERGY FILE LOADER
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
-def load_and_process_energy_files():
+def load_processed_energy_data():
     all_files = list_github_files()
     
-    # 1. Look for pre-processed final energy files first
-    processed_files = [
+    # Target only pre-processed active energy metrics files
+    target_files = [
         (name, url) for name, url in all_files
-        if (name.startswith("PROCESSED_DAILY_VARS_Active_Energy_Report") or "PROCESSED" in name.upper())
-        and (name.endswith(".xlsx") or name.endswith(".csv"))
+        if name.startswith("PROCESSED_DAILY_VARS_Active_Energy_Report") and (name.endswith(".xlsx") or name.endswith(".csv"))
     ]
     
-    if processed_files:
-        name, url = sorted(processed_files)[-1]
-        try:
-            if name.endswith(".csv"):
-                df = read_csv_from_github(url)
-            else:
-                df = read_excel_from_github(url)
-                
-            df.columns = [str(c).strip() for c in df.columns]
-            date_col = next((c for c in df.columns if c.lower() in ['date', 'timestamp', 'time']), None)
-            
-            if date_col:
-                df['Date'] = pd.to_datetime(df[date_col], errors='coerce').dt.date
-                df = df.dropna(subset=['Date']).sort_values('Date').reset_index(drop=True)
-                
-                # Coerce data columns to numeric format
-                for col in df.columns:
-                    if col != 'Date':
-                        df[col] = pd.to_numeric(df[col], errors='coerce')
-                return df
-        except Exception as e:
-            st.sidebar.warning(f"Error reading processed file {name}, falling back to raw: {e}")
-
-    # 2. Fallback execution: Load and compute raw individual files if no pre-processed data exists
-    energy_files = [
-        (name, url) for name, url in all_files
-        if name.startswith("Active_Energy_Report") and (name.endswith(".xlsx") or name.endswith(".csv"))
-        and not name.startswith("PROCESSED_")
-    ]
-
-    frames = []
-
-    if energy_files:
-        for name, url in sorted(energy_files):
-            try:
-                if name.endswith(".csv"):
-                    df = read_csv_from_github(url)
-                else:
-                    df = read_excel_from_github(url)
-                    
-                df.columns = [str(c).strip() for c in df.columns]
-
-                date_candidate = next((c for c in df.columns if c in ['Timestamp', 'Date', 'time', 'date']), None)
-                if not date_candidate:
-                    continue
-
-                df['Parsed_Date'] = pd.to_datetime(df[date_candidate], errors='coerce').dt.date
-                df = df.dropna(subset=['Parsed_Date'])
-                df = df.rename(columns={'Parsed_Date': 'Date'})
-                
-                rename_dict = {}
-                for col in df.columns:
-                    col_clean = str(col).upper().replace(" ", "").replace("-", "")
-                    for k, v in METER_COLS.items():
-                        if col_clean.startswith(k):
-                            rename_dict[col] = v
-                            break
-                df = df.rename(columns=rename_dict)
-                frames.append(df)
-            except Exception as e:
-                st.warning(f"Skipped parsing energy report file {name}: {e}")
-    else:
-        freon_url = next((u for n, u in all_files if n == "Power consumption freon.xlsx"), None)
-        if freon_url:
-            try:
-                xl = pd.ExcelFile(io.BytesIO(fetch_file_bytes(freon_url)), engine='openpyxl')
-                for sheet in xl.sheet_names:
-                    df = xl.parse(sheet)
-                    df.columns = [str(c).strip() for c in df.columns]
-                    
-                    has_date = any(c in df.columns for c in ['Timestamp', 'Date', 'time', 'date'])
-                    has_meters = any(col in df.columns for col in METER_COLS.values())
-                    
-                    if has_date or has_meters:
-                        date_col = next((c for c in df.columns if c in ['Timestamp', 'Date', 'time', 'date']), df.columns[0])
-                        df['Date'] = pd.to_datetime(df[date_col], errors='coerce').dt.date
-                        df = df.dropna(subset=['Date'])
-                        frames.append(df)
-                        break
-            except Exception as e:
-                st.sidebar.error(f"Failed handling workbook layout mapping logic: {e}")
-
-    if not frames:
+    if not target_files:
         return None
-
-    combined_raw = pd.concat(frames, ignore_index=True)
-
-    for col in METER_COLS.values():
-        if col not in combined_raw.columns:
-            combined_raw[col] = float('nan')
+        
+    name, url = sorted(target_files)[-1]
+    try:
+        if name.endswith(".csv"):
+            df = read_csv_from_github(url)
         else:
-            combined_raw[col] = pd.to_numeric(combined_raw[col], errors='coerce')
-
-    combined = (
-        combined_raw.groupby('Date')[list(METER_COLS.values())]
-        .mean()
-        .reset_index()
-        .sort_values('Date')
-        .reset_index(drop=True)
-    )
-
-    if combined.empty:
+            df = read_excel_from_github(url)
+            
+        df.columns = [str(c).strip() for c in df.columns]
+        date_col = next((c for c in df.columns if c.lower() in ['date', 'timestamp', 'time']), None)
+        
+        if not date_col:
+            return None
+            
+        df['Date'] = pd.to_datetime(df[date_col], errors='coerce').dt.date
+        df = df.dropna(subset=['Date']).sort_values('Date').reset_index(drop=True)
+        
+        for col in df.columns:
+            if col != 'Date':
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        return df
+    except Exception as e:
+        st.sidebar.error(f"Failed parsing processed energy file {name}: {e}")
         return None
-
-    for i in range(1, 10):
-        col = METER_COLS[f'V{i}']
-        combined[f'consump. v{i}'] = (combined[col] - combined[col].shift(1)).fillna(0)
-
-    v = lambda n: combined[f'consump. v{n}']
-    combined['dunkin consmp.']   = 1250 - (v(1) + v(6))
-    combined['clc consump.']     = 1450 - (v(3) + v(8))
-    combined['bmc consump.']     = 1250 - (v(2) + v(7))
-    combined['deep consumption'] = 2200 - (v(4) + v(5) + v(9))
-
-    return combined
 
 # ─────────────────────────────────────────────────────────────
-#  TEMPERATURE DATA LOADER (ADAPTIVE HEADER FIX)
+#  TEMPERATURE DATA LOADER 
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_temperature_data():
@@ -380,8 +275,7 @@ with st.sidebar:
                     text-transform:uppercase; margin:12px 0 6px;">Auto-refresh every 5 min</div>""", unsafe_allow_html=True)
 
     all_files = list_github_files()
-    energy_files = [n for n, _ in all_files if n.startswith("Active_Energy_Report")]
-    processed_energy_files = [n for n, _ in all_files if n.startswith("PROCESSED_DAILY_VARS_Active_Energy_Report") or "PROCESSED" in n.upper()]
+    processed_energy_files = [n for n, _ in all_files if n.startswith("PROCESSED_DAILY_VARS_Active_Energy_Report")]
     csv_files    = [n for n, _ in all_files if n.startswith("DataLog_") and n.endswith(".csv")]
     has_freon    = any(n == "Power consumption freon.xlsx" for n, _ in all_files)
 
@@ -390,13 +284,10 @@ with st.sidebar:
                     color:#94A3B8; text-transform:uppercase; margin-bottom:10px;">
                     GitHub Source Status</div>""", unsafe_allow_html=True)
 
-    # Dynamic status pill to indicate raw or pre-processed pipeline status
-    status_color = "ok" if (energy_files or processed_energy_files) else "err"
-    status_label = "Processed File" if processed_energy_files else f"Raw Stream · {len(energy_files)} file(s)"
     st.markdown(f"""
         <div style="margin-bottom:8px;">
-            <span class="status-pill status-{status_color}">
-                {'●' if (energy_files or processed_energy_files) else '○'}&nbsp; Energy Storage · {status_label}
+            <span class="status-pill status-{'ok' if processed_energy_files else 'err'}">
+                {'●' if processed_energy_files else '○'}&nbsp; Processed Energy · {'Active' if processed_energy_files else 'Missing'}
             </span>
         </div>
         <div style="margin-bottom:8px;">
@@ -414,15 +305,15 @@ with st.sidebar:
     st.markdown("""
         <div style="position:fixed; bottom:18px; left:0; width:238px; text-align:center;
                     font-size:10px; color:#94A3B8; font-weight:600; padding:0 8px;">
-            JFL Internal Operations Tool &nbsp;·&nbsp; v3.1
+            JFL Internal Operations Tool &nbsp;·&nbsp; v3.2
         </div>
     """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────
 #  HEADER SYSTEM
 # ─────────────────────────────────────────────────────────────
-energy_df = load_and_process_energy_files()
-date_range_str = "No data available"
+energy_df = load_processed_energy_data()
+date_range_str = "No processed data found"
 if energy_df is not None and not energy_df.empty:
     d_min = pd.to_datetime(energy_df['Date'].min()).strftime("%d %b %Y")
     d_max = pd.to_datetime(energy_df['Date'].max()).strftime("%d %b %Y")
@@ -468,7 +359,8 @@ with tab_energy:
         e = energy_df.copy()
         e['Date'] = pd.to_datetime(e['Date'])
 
-        consump_cols = [f'consump. v{i}' for i in range(1, 10) if f'consump. v{i}' in e.columns]
+        # Maps directly to clean columns inside the PROCESSED daily variance file
+        consump_cols = [c for c in e.columns if 'consump. v' in c.lower()]
         eq_cols = [c for c in ['dunkin consmp.', 'clc consump.', 'bmc consump.', 'deep consumption'] if c in e.columns]
 
         c1, c2, c3, c4 = st.columns(4)
@@ -489,23 +381,22 @@ with tab_energy:
             with st.expander("🔎 View Calculated Process Zone Loads Dataset", expanded=False):
                 st.dataframe(e[['Date'] + eq_cols], use_container_width=True, hide_index=True)
 
-        st.markdown('<div class="sec-title">Full Daily Aggregated Execution Sheet</div>', unsafe_allow_html=True)
-        display_cols = ['Date'] + [col for col in METER_COLS.values() if col in e.columns] + consump_cols + eq_cols
-        st.dataframe(e[display_cols], use_container_width=True, hide_index=True)
+        st.markdown('<div class="sec-title">Full Processed Aggregated Execution Sheet</div>', unsafe_allow_html=True)
+        st.dataframe(e, use_container_width=True, hide_index=True)
 
         # ─── SECTION BOTTOM: RAW DATA INSPECTOR & EXPORT ───
         st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
-        with st.expander("📂 View & Download Compiled Active Energy Raw File Data", expanded=False):
+        with st.expander("📂 View & Download Pre-Processed Active Energy File Data", expanded=False):
             st.dataframe(e, use_container_width=True)
             csv_data = e.to_csv(index=False).encode('utf-8')
             st.download_button(
-                label="Download Compiled Energy Data as CSV",
+                label="Download Processed Energy Data as CSV",
                 data=csv_data,
-                file_name="compiled_active_energy_meters.csv",
+                file_name="processed_active_energy_meters.csv",
                 mime="text/csv"
             )
     else:
-        st.markdown('<div class="alert-info"><strong>No Active Energy data metrics compiled.</strong> Check file stream synchronization properties.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="alert-info"><strong>No processed energy report matching "PROCESSED_DAILY_VARS_Active_Energy_Report" was found inside your GitHub repository root.</strong></div>', unsafe_allow_html=True)
 
 # ==============================================================================
 #  TAB 2 — COLD STORAGE TEMPERATURES
