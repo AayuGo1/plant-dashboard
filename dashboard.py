@@ -5,7 +5,8 @@ import requests
 import io
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go  # Added for exact chronological axis control
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -122,7 +123,7 @@ def fast_parse_dates(series):
     return parsed_df
 
 # ─────────────────────────────────────────────────────────────
-#  PROCESSED ENERGY FILE LOADER (FORCED ABSOLUTE TIMELINE)
+#  PROCESSED ENERGY FILE LOADER
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_processed_energy_data():
@@ -156,15 +157,12 @@ def load_processed_energy_data():
             
         df = df.dropna(subset=['DateIndex'])
         df = df[(df['DateIndex'] >= '2026-06-01') & (df['DateIndex'] <= '2026-06-15')]
-        
-        # Explicit chronological alignment process route
         df = df.sort_values('DateIndex').reset_index(drop=True)
         
         for col in df.columns:
             if col != 'DateIndex' and col != date_col:
                 df[col] = pd.to_numeric(df[col], errors='coerce')
         
-        # Auto-recalculate trailing or unpopulated consumption logs
         for i in range(1, 10):
             consump_col = f"consump. v{i}"
             reg_col = f"V{i}"
@@ -294,7 +292,7 @@ def load_excel_sheet(sheet_name, fallback_header_row):
         return None
 
 # ─────────────────────────────────────────────────────────────
-#  SIDEBAR
+#  SIDEBAR STATUS INTEGRATION
 # ─────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("""
@@ -319,9 +317,7 @@ with st.sidebar:
     has_freon    = any("freon" in n.lower() for n, _ in all_files)
 
     st.markdown("<hr style='border-color:#1E3A8A; margin:14px 0;'>", unsafe_allow_html=True)
-    st.markdown("""<div style="font-size:9px; font-weight:700; letter-spacing:1.2px;
-                    color:#94A3B8; text-transform:uppercase; margin-bottom:10px;">
-                    GitHub Source Status</div>""", unsafe_allow_html=True)
+    st.markdown("""<div style="font-size:9px; font-weight:700; letter-spacing:1.2px; color:#94A3B8; text-transform:uppercase; margin-bottom:10px;">GitHub Source Status</div>""", unsafe_allow_html=True)
 
     st.markdown(f"""
         <div style="margin-bottom:8px;">
@@ -342,9 +338,12 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────
-#  HEADER SYSTEM
+#  GLOBAL RUNTIME INGESTION PIPELINE
 # ─────────────────────────────────────────────────────────────
 e_df = load_processed_energy_data()
+temp_df = load_temperature_data()
+comp_df = load_excel_sheet('Sheet3', fallback_header_row=3)
+
 date_range_str = "01 Jun 2026 – 15 Jun 2026" if e_df is not None and not e_df.empty else "No Data Loaded"
 
 st.markdown(f"""
@@ -376,7 +375,7 @@ tab_energy, tab_temp, tab_power, tab_runtime, tab_comp = st.tabs([
     "🌡️  Cold Storage Temperatures",
     "💡  Energy & Cost Savings",
     "⚙️  Asset Duty Cycles",
-    "📉  Compressor Optimisation",
+    "📉  Compressor Diagnostics Engine",
 ])
 
 # ==============================================================================
@@ -388,23 +387,21 @@ with tab_energy:
         
         dunkin_col = next((c for c in e_df.columns if 'dunkin consmp.' in c.lower()), None)
         clc_col = next((c for c in e_df.columns if 'clc consump.' in c.lower()), None)
-        bmc_col = next((c for c in e_df.columns if 'bmc consump.' in c.lower()), None)
+        line_bmc_col = next((c for c in e_df.columns if 'bmc consump.' in c.lower()), None)
         deep_col = next((c for c in e_df.columns if 'deep consumption' in c.lower()), None)
         
-        eq_cols = [c for c in [dunkin_col, clc_col, bmc_col, deep_col] if c is not None]
+        eq_cols = [c for c in [dunkin_col, clc_col, line_bmc_col, deep_col] if c is not None]
 
         c1, c2, c3, c4, c5 = st.columns(5)
         with c1: st.metric("Total Days Recorded", f"{len(e_df)}")
         with c2: st.metric("Dunkin Net Variance", f"{e_df[dunkin_col].sum() if dunkin_col else 0:,.1f}")
         with c3: st.metric("CLC Net Variance",    f"{e_df[clc_col].sum() if clc_col else 0:,.1f}")
-        with c4: st.metric("BMC Net Variance",    f"{e_df[bmc_col].sum() if bmc_col else 0:,.1f}")
+        with c4: st.metric("BMC Net Variance",    f"{e_df[line_bmc_col].sum() if line_bmc_col else 0:,.1f}")
         with c5: st.metric("Deep Net Variance",   f"{e_df[deep_col].sum() if deep_col else 0:,.1f}")
 
-        # REWRITTEN HIGH-PRECISION GRAPH INTERFACE (FIXES THE COMPRESSION DROP TO 4)
         if consump_cols:
             st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9 Channels (Strict 01 Jun - 15 Jun Window)</div>', unsafe_allow_html=True)
             
-            # Setup layout tracing vectors explicitly
             fig = go.Figure()
             x_dates = e_df['DateIndex'].dt.strftime('%d-%b').tolist()
             
@@ -422,12 +419,7 @@ with tab_energy:
                 hovermode="x unified",
                 margin=dict(l=20, r=20, t=20, b=20),
                 height=420,
-                xaxis=dict(
-                    type='category',
-                    tickmode='array',
-                    tickvals=x_dates,
-                    fixedrange=True
-                ),
+                xaxis=dict(type='category', tickmode='array', tickvals=x_dates, fixedrange=True),
                 yaxis=dict(fixedrange=True),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
             )
@@ -454,36 +446,16 @@ with tab_energy:
         ec1, ec2, ec3, ec4 = st.columns(4)
         with ec1:
             val = target_energy_row.get(f"{dunkin_col} Delta", 0) if (target_energy_row is not None and dunkin_col) else 0
-            st.markdown(f"""
-            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #002D62;">
-                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Dunkin Consumption Delta</div>
-                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f'<div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #002D62;"><div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Dunkin Consumption Delta</div><div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div></div>', unsafe_allow_html=True)
         with ec2:
             val = target_energy_row.get(f"{clc_col} Delta", 0) if (target_energy_row is not None and clc_col) else 0
-            st.markdown(f"""
-            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #FF9F1C;">
-                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">CLC Consumption Delta</div>
-                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f'<div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #FF9F1C;"><div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">CLC Consumption Delta</div><div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div></div>', unsafe_allow_html=True)
         with ec3:
-            val = target_energy_row.get(f"{bmc_col} Delta", 0) if (target_energy_row is not None and bmc_col) else 0
-            st.markdown(f"""
-            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #16A34A;">
-                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">BMC Consumption Delta</div>
-                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
-            </div>
-            """, unsafe_allow_html=True)
+            val = target_energy_row.get(f"{line_bmc_col} Delta", 0) if (target_energy_row is not None and line_bmc_col) else 0
+            st.markdown(f'<div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #16A34A;"><div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">BMC Consumption Delta</div><div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div></div>', unsafe_allow_html=True)
         with ec4:
             val = target_energy_row.get(f"{deep_col} Delta", 0) if (target_energy_row is not None and deep_col) else 0
-            st.markdown(f"""
-            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #E01934;">
-                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Deep Consumption Delta</div>
-                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f'<div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #E01934;"><div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Deep Consumption Delta</div><div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div></div>', unsafe_allow_html=True)
 
         if diff_cols:
             st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
@@ -499,7 +471,6 @@ with tab_energy:
 #  TAB 2 — COLD STORAGE TEMPERATURES
 # ==============================================================================
 with tab_temp:
-    temp_df = load_temperature_data()
     if temp_df is not None and not temp_df.empty:
         latest  = temp_df.iloc[-1]
         sensors = ['Dough Cooler1 Temp', 'Dough Cooler2 Temp', 'Perishable Cooler Temp']
@@ -514,8 +485,7 @@ with tab_temp:
             total_logs = len(temp_df)
             total_exc  = sum((temp_df[s] > THRESHOLD).sum() for s in sensors)
             compliance = (1 - total_exc / (total_logs * len(sensors))) * 100
-            st.metric("Thermal Compliance Index", f"{compliance:.1f}%",
-                      delta=f"{total_exc} critical violations", delta_color="inverse")
+            st.metric("Thermal Compliance Index", f"{compliance:.1f}%", delta=f"{total_exc} critical violations", delta_color="inverse")
 
         st.markdown('<div class="sec-title">Real-Time Temperature Stream</div>', unsafe_allow_html=True)
         st.line_chart(temp_df.set_index('Time')[sensors], color=["#002D62","#0EA5E9","#E01934"])
@@ -534,26 +504,11 @@ with tab_temp:
         
         sc1, sc2, sc3 = st.columns(3)
         with sc1:
-            st.markdown(f"""
-            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #002D62;">
-                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Dough 1 Delta Variance Sum</div>
-                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{d1_sum:,.2f} °C</div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f'<div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #002D62;"><div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Dough 1 Delta Variance Sum</div><div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{d1_sum:,.2f} °C</div></div>', unsafe_allow_html=True)
         with sc2:
-            st.markdown(f"""
-            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #0EA5E9;">
-                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Dough 2 Delta Variance Sum</div>
-                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{d2_sum:,.2f} °C</div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f'<div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #0EA5E9;"><div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Dough 2 Delta Variance Sum</div><div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{d2_sum:,.2f} °C</div></div>', unsafe_allow_html=True)
         with sc3:
-            st.markdown(f"""
-            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #E01934;">
-                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Perishable Delta Variance Sum</div>
-                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{p_sum:,.2f} °C</div>
-            </div>
-            """, unsafe_allow_html=True)
+            st.markdown(f'<div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #E01934;"><div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Perishable Delta Variance Sum</div><div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{p_sum:,.2f} °C</div></div>', unsafe_allow_html=True)
         
         st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
         st.line_chart(temp_df.set_index('Time')[delta_cols])
@@ -591,13 +546,7 @@ with tab_temp:
         with st.expander("📂 View & Download Compiled Temperature Log File Data with Delta Metrics", expanded=False):
             st.dataframe(temp_df, use_container_width=True, hide_index=True)
             csv_data = temp_df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="Download Compiled Temperature Data as CSV",
-                data=csv_data,
-                file_name="compiled_temperature_logs.csv",
-                mime="text/csv",
-                key="btn_download_temp"
-            )
+            st.download_button(label="Download Compiled Temperature Data as CSV", data=csv_data, file_name="compiled_temperature_logs.csv", mime="text/csv", key="btn_download_temp")
     else:
         st.markdown('<div class="alert-info">No environment logs could be successfully loaded.</div>', unsafe_allow_html=True)
 
@@ -643,13 +592,7 @@ with tab_power:
                 with st.expander("📂 View & Download Energy & Cost Savings Raw Sheet Data", expanded=False):
                     st.dataframe(p, use_container_width=True, hide_index=True)
                     csv_data = p.to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="Download Sheet1 Cost Data as CSV",
-                        data=csv_data,
-                        file_name="freon_sheet1_energy_savings.csv",
-                        mime="text/csv",
-                        key="btn_download_power"
-                    )
+                    st.download_button(label="Download Sheet1 Cost Data as CSV", data=csv_data, file_name="freon_sheet1_energy_savings.csv", mime="text/csv", key="btn_download_power")
         else:
             st.error("Expected Blast column labels could not be parsed from Sheet1.")
     else:
@@ -696,102 +639,13 @@ with tab_runtime:
             rc1, rc2, rc3 = st.columns(3)
             with rc1:
                 val = target_day['Energy Drew (kWh)'] if target_day is not None else 0
-                st.markdown(f"""
-                <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #002D62;">
-                    <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Energy Drew</div>
-                    <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown(f'<div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #002D62;"><div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Energy Drew</div><div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div></div>', unsafe_allow_html=True)
             with rc2:
                 val = target_day['Peak System Load Vector (kWh)'] if target_day is not None else 0
-                st.markdown(f"""
-                <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #FF9F1C;">
-                    <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Peak System Load Vector</div>
-                    <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown(f'<div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #FF9F1C;"><div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Peak System Load Vector</div><div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div></div>', unsafe_allow_html=True)
             with rc3:
                 val = target_day['Mean Load Vector (kWh)'] if target_day is not None else 0
-                st.markdown(f"""
-                <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #E01934;">
-                    <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Mean Load Vector</div>
-                    <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
-                </div>
-                """, unsafe_allow_html=True)
+                st.markdown(f'<div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #E01934;"><div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Mean Load Vector</div><div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div></div>', unsafe_allow_html=True)
 
             st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
-            st.line_chart(daily_runtime.set_index('Date')[['Energy Drew (kWh)', 'Peak System Load Vector (kWh)', 'Mean Load Vector (kWh)']])
-
-            st.markdown('<div class="sec-title">Date-Wise Asset Duty Performance Log Metrics</div>', unsafe_allow_html=True)
-            st.dataframe(daily_runtime, use_container_width=True, hide_index=True)
-
-            st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
-            with st.expander("📂 View & Download Asset Duty Cycle Raw Sheet Data", expanded=False):
-                st.dataframe(r.drop(columns=['Date_Key']), use_container_width=True, hide_index=True)
-                csv_data = daily_runtime.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="Download Date-Wise Duty Cycles as CSV",
-                    data=csv_data,
-                    file_name="datewise_asset_duty_cycles.csv",
-                    mime="text/csv",
-                    key="btn_download_runtime"
-                )
-    else:
-        st.markdown('<div class="alert-info">Asset duty-cycle log metrics are not active.</div>', unsafe_allow_html=True)
-
-# ==============================================================================
-#  TAB 5 — COMPRESSOR OPTIMISATION
-# ==============================================================================
-with tab_comp:
-    comp_df = load_excel_sheet('Sheet3', fallback_header_row=3)
-    if comp_df is not None and not comp_df.empty:
-        c  = comp_df.copy()
-        c  = c[~c.iloc[:,0].astype(str).str.strip().str.lower().str.fullmatch(r'date|total|from|sr\.?\s*no\.?|stop|start', na=False)]
-        c.iloc[:,0] = fast_parse_dates(c.iloc[:,0])
-        c  = c.dropna(subset=[c.columns[0]]).sort_values(c.columns[0])
-        sav_col = next((col for col in c.columns if 'saving' in str(col).lower()), None)
-
-        if sav_col:
-            c[sav_col] = pd.to_numeric(c[sav_col], errors='coerce').fillna(0)
-            c['Cumulative Savings'] = c[sav_col].cumsum()
-            date_col = c.columns[0]
-
-            k1, k2, k3, k4 = st.columns(4)
-            with k1: st.metric("Relief Window Saved", f"{c[sav_col].sum():,.1f} hrs")
-            with k2: st.metric("Mean Daily Dampening", f"{c[sav_col].mean():.1f} hrs")
-            with k3: st.metric("Peak Single Window Stop", f"{c[sav_col].max():.1f} hrs")
-            with k4: st.metric("Audited Shift Blocks",     f"{len(c)}")
-
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown('<div class="sec-title">Daily Rest Allocations (hrs)</div>', unsafe_allow_html=True)
-                st.line_chart(c.set_index(date_col)[sav_col], color="#002D62")
-            with col2:
-                st.markdown('<div class="sec-title">Cumulative Rest Curve Metrics</div>', unsafe_allow_html=True)
-                st.area_chart(c.set_index(date_col)['Cumulative Savings'], color="#FF9F1C")
-
-            st.markdown('<div class="sec-title">Compressor Structural Load Activation Cycles</div>', unsafe_allow_html=True)
-            comp_metrics = {}
-            run_cols = [col for col in c.columns if any(phrase in str(col).lower() for phrase in ['stop', 'start', 'run', 'comp'])]
-            
-            for idx, col_name in enumerate(run_cols[:5], 1):
-                active_logs = c[c[col_name].astype(str).str.strip().str.len() > 0]
-                comp_metrics[f"Compressor Component {idx}"] = len(active_logs)
-                
-            if comp_metrics:
-                cm_df = pd.DataFrame(list(comp_metrics.items()), columns=["Component", "Cycle Count"]).sort_values("Cycle Count", ascending=False)
-                st.bar_chart(cm_df.set_index("Component")["Cycle Count"], color="#E01934")
-
-            st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
-            with st.expander("📂 View & Download Compressor Optimization Raw Sheet Data", expanded=False):
-                st.dataframe(c, use_container_width=True, hide_index=True)
-                csv_data = c.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="Download Sheet3 Optimisation Data as CSV",
-                    data=csv_data,
-                    file_name="freon_sheet3_compressor_optimization.csv",
-                    mime="text/csv",
-                    key="btn_download_comp"
-                )
-    else:
-        st.markdown('<div class="alert-info">Compressor analytical tracking components not parsed.</div>', unsafe_allow_html=True)
+            st.line_chart(daily_runtime.set_index('Date')
