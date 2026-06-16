@@ -1153,7 +1153,3 @@ with tab_comp:
                 )
     else:
         st.markdown('<div class="alert-info">Compressor analytical tracking components not parsed.</div>', unsafe_allow_html=True)
-
-
-
-error still same 
