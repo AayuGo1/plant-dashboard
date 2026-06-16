@@ -115,7 +115,7 @@ def read_csv_from_github(url: str, **kwargs):
 #  DATE PARSER ASSISTANT
 # ─────────────────────────────────────────────────────────────
 def fast_parse_dates(series):
-    """Robust string-splitting date parser with automatic standard fallback."""
+    """Robust string-splitting date parser with automatic fallback."""
     cleansed = series.astype(str).str.strip().str.split(' ').str[0]
     parsed_df = pd.to_datetime(cleansed, errors='coerce', dayfirst=True)
     if parsed_df.isna().all() and not cleansed.isna().all():
@@ -123,7 +123,7 @@ def fast_parse_dates(series):
     return parsed_df
 
 # ─────────────────────────────────────────────────────────────
-#  PROCESSED ENERGY FILE LOADER
+#  PROCESSED ENERGY FILE LOADER (FILTERED: JUNE 1 TO JUNE 10)
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_processed_energy_data():
@@ -147,8 +147,18 @@ def load_processed_energy_data():
         if not date_col:
             return None
             
-        df['Date'] = fast_parse_dates(df[date_col]).dt.date
-        df = df.dropna(subset=['Date']).sort_values('Date').reset_index(drop=True)
+        # Parse Dates carefully
+        df['ParsedDate'] = pd.to_datetime(fast_parse_dates(df[date_col]))
+        df = df.dropna(subset=['ParsedDate'])
+        
+        # FIXED: Explicit date filtering constraint to render 1st June to 10th June 2026 strictly
+        start_bound = pd.to_datetime("2026-06-01")
+        end_bound = pd.to_datetime("2026-06-10")
+        df = df[(df['ParsedDate'] >= start_bound) & (df['ParsedDate'] <= end_bound)]
+        
+        df = df.sort_values('ParsedDate').reset_index(drop=True)
+        df['Date'] = df['ParsedDate'].dt.date
+        df = df.drop(columns=['ParsedDate'])
         
         for col in df.columns:
             if col != 'Date':
@@ -309,13 +319,6 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
 
-    st.markdown("""
-        <div style="position:fixed; bottom:18px; left:0; width:238px; text-align:center;
-                    font-size:10px; color:#94A3B8; font-weight:600; padding:0 8px;">
-            JFL Internal Operations Tool &nbsp;·&nbsp; v3.9
-        </div>
-    """, unsafe_allow_html=True)
-
 # ─────────────────────────────────────────────────────────────
 #  HEADER SYSTEM
 # ─────────────────────────────────────────────────────────────
@@ -369,7 +372,6 @@ with tab_energy:
         # Robust case-insensitive substring matching for dynamic columns (e.g. V1 - DUNKIN BLAST)
         consump_cols = [c for c in e.columns if 'consump. v' in c.lower()]
         
-        # Exact fallback helper mappings to bind raw metric boxes safely
         dunkin_col = next((c for c in e.columns if 'dunkin' in c.lower() and 'consum' in c.lower()), None)
         clc_col = next((c for c in e.columns if 'clc' in c.lower() and 'consum' in c.lower()), None)
         bmc_col = next((c for c in e.columns if 'bmc' in c.lower() and 'consum' in c.lower()), None)
@@ -385,11 +387,11 @@ with tab_energy:
         with c5: st.metric("Deep Net Variance",   f"{e[deep_col].sum() if deep_col else 0:,.1f}")
 
         if consump_cols:
-            st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9 (June 1 - June 10)</div>', unsafe_allow_html=True)
             st.line_chart(e.set_index('Date')[consump_cols])
 
         if eq_cols:
-            st.markdown('<div class="sec-title">Calculated Process Zone Loads (Dunkin / CLC / BMC / Deep)</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sec-title">Calculated Process Zone Loads (June 1 - June 10)</div>', unsafe_allow_html=True)
             st.bar_chart(e.set_index('Date')[eq_cols])
 
         st.markdown('<div class="sec-title">Daily Process Zone Net Energy Consumed (Adjacent Day Differences)</div>', unsafe_allow_html=True)
@@ -442,7 +444,7 @@ with tab_energy:
             st.line_chart(diff_energy.set_index('Date')[diff_cols])
 
         st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
-        with st.expander("📂 View & Download Pre-Processed Active Energy File Data", expanded=False):
+        with st.expander("📂 View & Download Pre-Processed Active Energy File Data (June 1 - June 10)", expanded=False):
             st.dataframe(e, use_container_width=True, hide_index=True)
             csv_data = e.to_csv(index=False).encode('utf-8')
             st.download_button(
@@ -453,7 +455,7 @@ with tab_energy:
                 key="btn_download_energy"
             )
     else:
-        st.markdown('<div class="alert-info"><strong>No processed energy report found inside repository.</strong></div>', unsafe_allow_html=True)
+        st.markdown('<div class="alert-info"><strong>No processed energy report found inside repository matching the reporting window.</strong></div>', unsafe_allow_html=True)
 
 # ==============================================================================
 #  TAB 2 — COLD STORAGE TEMPERATURES
