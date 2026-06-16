@@ -317,10 +317,12 @@ def load_temperature_data():
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_excel_sheet(sheet_name, fallback_header_row):
-    all_files = list_github_files()
+    all_files = list_github_files()  # Fetch files first
     match = next((u for n, _ in all_files if "freon" in n.lower() and n.endswith(".xlsx")), None)
-    if not match:
+    
+    if not match:  # <--- PROPERLY UNCOMMENTED IF STATEMENT
         return None
+        
     try:
         preview = read_excel_from_github(match, sheet_name=sheet_name, header=None, engine='openpyxl')
         hdr = fallback_header_row
@@ -653,26 +655,46 @@ with tab_energy:
             diff_energy[col_label] = diff_series.values
             diff_cols.append(col_label)
         
-        if not diff_energy.empty:
+                if not diff_energy.empty:
+            # Get the last VALID date (June 14), ignoring the zero-data June 15
+            last_valid_date_str = e_df_valid[date_col].iloc[-1].strftime('%d-%b')
             target_energy_row = diff_energy.iloc[-1]
             
             ec1, ec2, ec3, ec4 = st.columns(4)
             
-            def render_delta_metric(container, col_name, color, label):
-                if f"{col_name} Δ" in diff_energy.columns:
-                    val = target_energy_row[f"{col_name} Δ"]
-                    delta_str = f"{val:+,.1f} kWh"
-                    container.metric(f"{label} Daily Δ", delta_str)
+            def render_meaningful_daily(container, col_name, color, label):
+                """Displays actual daily kWh + delta vs previous day"""
+                if col_name in e_df_valid.columns:
+                    # 1. Actual Consumption for the last valid day
+                    actual_kwh = e_df_valid[col_name].iloc[-1]
+                    
+                    # 2. Delta vs Previous Day
+                    delta_key = f"{col_name} Δ"
+                    if delta_key in diff_energy.columns:
+                        delta_val = target_energy_row[delta_key]
+                        delta_text = f"Δ {delta_val:+,.1f} kWh vs prev"
+                    else:
+                        delta_text = "No prior data"
+                        
+                    container.markdown(f"""
+                    <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:8px; padding:16px; border-left:4px solid {color};">
+                        <div style="font-size:10px; font-weight:700; color:#64748B; text-transform:uppercase; letter-spacing:0.5px;">{label} ({last_valid_date_str})</div>
+                        <div style="font-size:26px; font-weight:800; color:{color}; margin-top:4px;">{actual_kwh:,.1f} kWh</div>
+                        <div style="font-size:11px; font-weight:600; color:#64748B; margin-top:6px;">{delta_text}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
                 else:
-                    container.metric(f"{label} Daily Δ", "No Data")
+                    container.metric(label, "N/A")
             
-            with ec1: render_delta_metric(ec1, dunkin_col, "#002D62", "Dunkin'")
-            with ec2: render_delta_metric(ec2, clc_col, "#FF9F1C", "CLC")
-            with ec3: render_delta_metric(ec3, bmc_col, "#16A34A", "BMC")
-            with ec4: render_delta_metric(ec4, deep_col, "#E01934", "Deep Freezer")
+            # Render Cards with ACTUAL meaningful numbers
+            with ec1: render_meaningful_daily(ec1, dunkin_col, "#002D62", "Dunkin' Daily")
+            with ec2: render_meaningful_daily(ec2, clc_col, "#FF9F1C", "CLC Daily")
+            with ec3: render_meaningful_daily(ec3, bmc_col, "#16A34A", "BMC Daily")
+            with ec4: render_meaningful_daily(ec4, deep_col, "#E01934", "Deep Daily")
             
             st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
             
+            # Keep your existing chart code below this point...
             fig_delta = go.Figure()
             delta_colors = ['#002D62', '#FF9F1C', '#16A34A', '#E01934']
             
