@@ -127,13 +127,12 @@ METER_COLS = {
 }
 
 # ─────────────────────────────────────────────────────────────
-#  ACTIVE ENERGY PROCESSOR (FIXED FOR EXTENSION PARSING)
+#  ACTIVE ENERGY PROCESSOR
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_and_process_energy_files():
     all_files = list_github_files()
     
-    # Matches files starting with Active_Energy_Report that are either .csv or .xlsx
     energy_files = [
         (name, url) for name, url in all_files
         if name.startswith("Active_Energy_Report") and (name.endswith(".xlsx") or name.endswith(".csv"))
@@ -145,7 +144,6 @@ def load_and_process_energy_files():
     if energy_files:
         for name, url in sorted(energy_files):
             try:
-                # Handle CSV or Excel dynamically based on true extension pattern
                 if name.endswith(".csv"):
                     df = read_csv_from_github(url)
                 else:
@@ -153,7 +151,6 @@ def load_and_process_energy_files():
                     
                 df.columns = [str(c).strip() for c in df.columns]
 
-                # Match possible timestamp identifiers
                 date_candidate = next((c for c in df.columns if c in ['Timestamp', 'Date', 'time', 'date']), None)
                 if not date_candidate:
                     continue
@@ -165,7 +162,6 @@ def load_and_process_energy_files():
             except Exception as e:
                 st.warning(f"Skipped parsing energy report file {name}: {e}")
     else:
-        # Fallback to workbook matching logic if explicit files are missing
         freon_url = next((u for n, u in all_files if n == "Power consumption freon.xlsx"), None)
         if freon_url:
             try:
@@ -208,7 +204,6 @@ def load_and_process_energy_files():
     if combined.empty:
         return None
 
-    # Consumption Vector Math Calculations via index offsets
     for i in range(1, 10):
         col = METER_COLS[f'V{i}']
         combined[f'consump. v{i}'] = (combined[col] - combined[col].shift(1)).fillna(0)
@@ -222,7 +217,7 @@ def load_and_process_energy_files():
     return combined
 
 # ─────────────────────────────────────────────────────────────
-#  TEMPERATURE DATA LOADER
+#  TEMPERATURE DATA LOADER (FIXED NOISE & OUTLIER FILTERING)
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_temperature_data():
@@ -239,14 +234,20 @@ def load_temperature_data():
             df.columns = df.columns.str.strip()
             if not all(c in df.columns for c in cols):
                 continue
+                
             sub = df[cols].copy()
             for c in cols[1:]:
-                sub[c] = sub[c].astype(str).str.replace(r'.*NOP.*', '0', regex=True)
-                sub[c] = pd.to_numeric(sub[c], errors='coerce').ffill().bfill()
+                # Force clean text fields and drop whitespace safely
+                sub[c] = sub[c].astype(str).str.strip()
+                # Push any dropout flag ('NOP') or strings to true NaN objects instead of forced 0 values
+                sub[c] = pd.to_numeric(sub[c], errors='coerce')
+                # Forward-fill gaps dynamically from previous metrics streams
+                sub[c] = sub[c].ffill().bfill()
+                
             sub['Time'] = pd.to_datetime(sub['Time'], dayfirst=True, errors='coerce')
             frames.append(sub)
         except Exception as e:
-            st.warning(f"Skipped {name}: {e}")
+            st.warning(f"Skipped template anomalies on {name}: {e}")
 
     if not frames:
         return None
