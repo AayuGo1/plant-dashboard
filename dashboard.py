@@ -352,43 +352,106 @@ with tab_energy:
         with c4: st.metric("BMC Net Variance",    f"{e_df[bmc_col].sum() if bmc_col else 0:,.1f}")
         with c5: st.metric("Deep Net Variance",   f"{e_df[deep_col].sum() if deep_col else 0:,.1f}")
 
-        if consump_cols:
-            st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9 Channels (Strict 01 Jun - 15 Jun Timeline)</div>', unsafe_allow_html=True)
-            
-            # RE-ALIGNED TRACING WINDOW STRATEGY (CATEGORICAL STRING AXIS INJECTION)
-            fig = go.Figure()
-            x_categories = ["01-Jun", "02-Jun", "03-Jun", "04-Jun", "05-Jun", "06-Jun", "07-Jun", 
-                            "08-Jun", "09-Jun", "10-Jun", "11-Jun", "12-Jun", "13-Jun", "14-Jun", "15-Jun"]
-            
-            temp_plot_df = e_df.copy()
-            temp_plot_df['ChartLabel'] = temp_plot_df['DateIndex'].dt.strftime('%d-%b')
-            temp_plot_df = temp_plot_df.set_index('ChartLabel').reindex(x_categories).fillna(0.0)
-            
-            for col in consump_cols:
-                fig.add_trace(go.Scatter(
-                    x=x_categories,
-                    y=temp_plot_df[col].tolist(),
-                    mode='lines+markers',
-                    name=col,
-                    line=dict(width=2.5),
-                    marker=dict(size=6)
-                ))
-                
-            fig.update_layout(
-                hovermode="x unified",
-                margin=dict(l=40, r=20, t=15, b=30),
-                height=450,
-                xaxis=dict(
-                    type='category',
-                    categoryarray=x_categories,
-                    gridcolor="#E2E8F0",
-                    fixedrange=True
-                ),
-                yaxis=dict(fixedrange=True, gridcolor="#E2E8F0"),
-                plot_bgcolor="#FFFFFF",
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+     if eq_cols:
+
+    st.markdown(
+        '<div class="sec-title">Daily Energy Consumption by Process Area</div>',
+        unsafe_allow_html=True
+    )
+
+    energy_chart = e_df.copy()
+    energy_chart["Date"] = energy_chart["DateIndex"].dt.strftime("%d-%b")
+
+    fig = go.Figure()
+
+    if dunkin_col:
+        fig.add_trace(
+            go.Bar(
+                name="Dunkin",
+                x=energy_chart["Date"],
+                y=energy_chart[dunkin_col]
             )
-            st.plotly_chart(fig, use_container_width=True)
+        )
+
+    if clc_col:
+        fig.add_trace(
+            go.Bar(
+                name="CLC",
+                x=energy_chart["Date"],
+                y=energy_chart[clc_col]
+            )
+        )
+
+    if bmc_col:
+        fig.add_trace(
+            go.Bar(
+                name="BMC",
+                x=energy_chart["Date"],
+                y=energy_chart[bmc_col]
+            )
+        )
+
+    if deep_col:
+        fig.add_trace(
+            go.Bar(
+                name="Deep Freeze",
+                x=energy_chart["Date"],
+                y=energy_chart[deep_col]
+            )
+        )
+
+    fig.update_layout(
+        barmode="stack",
+        height=500,
+        xaxis_title="Date",
+        yaxis_title="Energy Consumption (kWh)",
+        hovermode="x unified",
+        legend_title="Plant Area",
+        margin=dict(l=40, r=20, t=20, b=40)
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown(
+        '<div class="sec-title">Consumption Share by Process Area</div>',
+        unsafe_allow_html=True
+    )
+
+    pie_labels = []
+    pie_values = []
+
+    if dunkin_col:
+        pie_labels.append("Dunkin")
+        pie_values.append(e_df[dunkin_col].sum())
+
+    if clc_col:
+        pie_labels.append("CLC")
+        pie_values.append(e_df[clc_col].sum())
+
+    if bmc_col:
+        pie_labels.append("BMC")
+        pie_values.append(e_df[bmc_col].sum())
+
+    if deep_col:
+        pie_labels.append("Deep Freeze")
+        pie_values.append(e_df[deep_col].sum())
+
+    pie_fig = go.Figure(
+        data=[
+            go.Pie(
+                labels=pie_labels,
+                values=pie_values,
+                hole=0.45
+            )
+        ]
+    )
+
+    pie_fig.update_layout(
+        height=450,
+        margin=dict(l=20, r=20, t=20, b=20)
+    )
+
+    st.plotly_chart(pie_fig, use_container_width=True)
 
         if eq_cols:
             st.markdown('<div class="sec-title">Calculated Process Zone Loads (Cumulative Distribution)</div>', unsafe_allow_html=True)
