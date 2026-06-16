@@ -364,11 +364,13 @@ with tab_energy:
         consump_cols = [c for c in e.columns if 'consump. v' in c.lower()]
         eq_cols = [c for c in ['dunkin consmp.', 'clc consump.', 'bmc consump.', 'deep consumption'] if c in e.columns]
 
-        c1, c2, c3, c4 = st.columns(4)
+        # Metric alignment featuring total recorded days alongside zone loads
+        c1, c2, c3, c4, c5 = st.columns(5)
         with c1: st.metric("Total Days Recorded", f"{len(e)}")
         with c2: st.metric("Dunkin Net Variance", f"{e['dunkin consmp.'].sum() if 'dunkin consmp.' in e else 0:,.1f}")
         with c3: st.metric("CLC Net Variance",    f"{e['clc consump.'].sum() if 'clc consump.' in e else 0:,.1f}")
-        with c4: st.metric("Deep Net Variance",   f"{e['deep consumption'].sum() if 'deep consumption' in e else 0:,.1f}")
+        with c4: st.metric("BMC Net Variance",    f"{e['bmc consump.'].sum() if 'bmc consump.' in e else 0:,.1f}")
+        with c5: st.metric("Deep Net Variance",   f"{e['deep consumption'].sum() if 'deep consumption' in e else 0:,.1f}")
 
         if consump_cols:
             st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9</div>', unsafe_allow_html=True)
@@ -393,7 +395,7 @@ with tab_energy:
         st.markdown('<div class="alert-info"><strong>No processed energy report found inside repository.</strong></div>', unsafe_allow_html=True)
 
 # ==============================================================================
-#  TAB 2 — COLD STORAGE TEMPERATURES (ADJACENT SUMMARY ADDED ABOVE CHART)
+#  TAB 2 — COLD STORAGE TEMPERATURES
 # ==============================================================================
 with tab_temp:
     temp_df = load_temperature_data()
@@ -427,12 +429,10 @@ with tab_temp:
         # ─── PART B: DIFFERENCED ADJACENT ROW DATA WITH SUMMARY HEADERS ABOVE THE CHART ───
         st.markdown('<div class="sec-title">Daily Temperature Delta Row Variances (Differenced Data)</div>', unsafe_allow_html=True)
         
-        # Calculate totals for the adjacent row delta summaries
         d1_sum = temp_df['consump. dough1'].sum()
         d2_sum = temp_df['consump. dough2'].sum()
         p_sum  = temp_df['consump. perishable'].sum()
         
-        # Create a clean metadata layout directly above the daily line chart
         sc1, sc2, sc3 = st.columns(3)
         with sc1:
             st.markdown(f"""
@@ -581,7 +581,7 @@ with tab_runtime:
             st.markdown('<div class="sec-title">Daily Asset Displacement Matrix (Normal Data Logs)</div>', unsafe_allow_html=True)
             st.bar_chart(r.set_index(fc)[kwh_cols[0]], color="#002D62")
 
-            # ─── PART B: DIFFERENCED DATE-WISE BREAKDOWN WITH METRIC HEADERS DIRECTLY ABOVE CHART ───
+            # ─── PART B: DIFFERENCED DATE-WISE BREAKDOWN ───
             r['Date_Key'] = r[fc].dt.date
             daily_runtime = r.groupby('Date_Key')[kwh_cols[0]].agg(['sum', 'max', 'mean']).reset_index()
             daily_runtime = daily_runtime.rename(columns={
@@ -594,28 +594,29 @@ with tab_runtime:
 
             st.markdown('<div class="sec-title">Date-Wise Energy Ingestion Profiles (Differenced Daily Breakdown)</div>', unsafe_allow_html=True)
             
-            # Extract final row values to show the clean metric data boxes right above the chart
-            latest_day = daily_runtime.iloc[-1]
+            # Extract secondary loop row value (Second-Last day index) for target summaries
+            target_day = daily_runtime.iloc[-2] if len(daily_runtime) >= 2 else daily_runtime.iloc[-1]
+            
             rc1, rc2, rc3 = st.columns(3)
             with rc1:
                 st.markdown(f"""
                 <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #002D62;">
-                    <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Latest Energy Drew</div>
-                    <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{latest_day['Energy Drew (kWh)']:,.1f} kWh</div>
+                    <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Energy Drew</div>
+                    <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{target_day['Energy Drew (kWh)']:,.1f} kWh</div>
                 </div>
                 """, unsafe_allow_html=True)
             with rc2:
                 st.markdown(f"""
                 <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #FF9F1C;">
-                    <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Latest Peak System Load</div>
-                    <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{latest_day['Peak System Load Vector (kWh)']:,.1f} kWh</div>
+                    <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Peak System Load Vector</div>
+                    <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{target_day['Peak System Load Vector (kWh)']:,.1f} kWh</div>
                 </div>
                 """, unsafe_allow_html=True)
             with rc3:
                 st.markdown(f"""
                 <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #E01934;">
-                    <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Latest Mean Load Vector</div>
-                    <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{latest_day['Mean Load Vector (kWh)']:,.1f} kWh</div>
+                    <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Mean Load Vector</div>
+                    <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{target_day['Mean Load Vector (kWh)']:,.1f} kWh</div>
                 </div>
                 """, unsafe_allow_html=True)
 
@@ -672,7 +673,7 @@ with tab_comp:
 
             st.markdown('<div class="sec-title">Compressor Structural Load Activation Cycles</div>', unsafe_allow_html=True)
             comp_metrics = {}
-            run_cols = [col for col in c.columns if any(phrase in str(col).lower() for phrase in ['stop', 'start', 'run', 'comp'])]
+            run_cols = [col for c in c.columns if any(phrase in str(col).lower() for phrase in ['stop', 'start', 'run', 'comp'])]
             
             for idx, col_name in enumerate(run_cols[:5], 1):
                 active_logs = c[c[col_name].astype(str).str.strip().str.len() > 0]
