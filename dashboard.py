@@ -115,10 +115,9 @@ def read_csv_from_github(url: str, **kwargs):
 #  DATE PARSER ASSISTANT
 # ─────────────────────────────────────────────────────────────
 def fast_parse_dates(series):
-    """Robust fallback string-splitting parser to neutralize timestamp layout inconsistencies."""
+    """Robust string-splitting date parser with automatic standard fallback."""
     cleansed = series.astype(str).str.strip().str.split(' ').str[0]
     parsed_df = pd.to_datetime(cleansed, errors='coerce', dayfirst=True)
-    # Fallback to iso format order matching if dayfirst flags failed layout interpretation
     if parsed_df.isna().all() and not cleansed.isna().all():
         parsed_df = pd.to_datetime(cleansed, errors='coerce')
     return parsed_df
@@ -378,7 +377,7 @@ with tab_energy:
         with c5: st.metric("Deep Net Variance",   f"{e['deep consumption'].sum() if 'deep consumption' in e else 0:,.1f}")
 
         if consump_cols:
-            st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9 (Normal Data)</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9</div>', unsafe_allow_html=True)
             st.line_chart(e.set_index('Date')[consump_cols])
 
         if eq_cols:
