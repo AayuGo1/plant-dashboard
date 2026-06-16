@@ -121,7 +121,7 @@ def fast_parse_dates(series):
     return parsed_df
 
 # ─────────────────────────────────────────────────────────────
-#  PROCESSED ENERGY FILE LOADER (UPDATED AND FIXED)
+#  PROCESSED ENERGY FILE LOADER (WITH ADVANCED AUTO-RECALCULATION)
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_processed_energy_data():
@@ -140,26 +140,58 @@ def load_processed_energy_data():
         else:
             df = read_excel_from_github(url)
             
-        # Strip string patterns matching the structural descriptive definitions cleanly
-        df = df[~df.iloc[:, 0].astype(str).str.contains(r'source|v1|Date|consump', case=False, na=False)]
-        
+        # Strip descriptive header row artifacts reliably
+        df = df[~df.iloc[:, 0].astype(str).str.contains(r'source|v1|Date', case=False, na=False)]
         df.columns = [str(c).strip() for c in df.columns]
+        
         date_col = next((c for c in df.columns if c.lower() in ['date', 'timestamp', 'time']), None)
         if not date_col:
             return None
             
-        # Parse cleanly using a resilient fallback parsing route strategy
         df[date_col] = df[date_col].astype(str).str.strip()
         df['DateIndex'] = pd.to_datetime(df[date_col], errors='coerce')
         df = df.dropna(subset=['DateIndex'])
         
-        # Intercept full targeted sequence window correctly matching your raw data matrix 
+        # Enforce strict 1 to 15 June data window constraints
         df = df[(df['DateIndex'] >= '2026-06-01') & (df['DateIndex'] <= '2026-06-15')]
-        df = df.sort_values('DateIndex').set_index('DateIndex')
+        df = df.sort_values('DateIndex')
         
+        # Convert numeric columns securely
         for col in df.columns:
-            df[col] = pd.to_numeric(df[col], errors='coerce')
+            if col != 'DateIndex':
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+        
+        # DYNAMIC FIX FOR TRAILING DROPS TO ZERO (e.g. June 15th anomalies)
+        # Re-derive daily consumption using absolute meter registers if the raw file reports 0
+        for i in range(1, 10):
+            consump_col = f"consump. v{i}"
+            reg_col = f"V{i}"
             
+            if consump_col in df.columns and reg_col in df.columns:
+                # Identify indexes where the file hardcoded 0 but the register actually increased
+                computed_diff = df[reg_col].diff()
+                # Use register diff where file input is 0 or NaN, except for the first entry
+                df[consump_col] = df.apply(
+                    lambda row: computed_diff.loc[row.name] if (pd.isna(row[consump_col]) or row[consump_col] == 0) and pd.notna(computed_diff.loc[row.name]) and computed_diff.loc[row.name] > 0 else row[consump_col],
+                    axis=1
+                )
+        
+        # Recalculate brand total aggregations if they dropped out on the last day
+        dunkin_c = 'dunkin consmp.'
+        clc_c = 'clc consump.'
+        bmc_c = 'bmc consump.'
+        deep_c = 'deep consumption'
+        
+        if dunkin_c in df.columns:
+            df[dunkin_c] = df.apply(lambda r: (r['consump. v1'] if pd.notna(r['consump. v1']) else 0) + (r['consump. v6'] if pd.notna(r['consump. v6']) else 0) if r[dunkin_c] == 0 else r[dunkin_c], axis=1)
+        if clc_c in df.columns:
+            df[clc_c] = df.apply(lambda r: (r['consump. v3'] if pd.notna(r['consump. v3']) else 0) + (r['consump. v8'] if pd.notna(r['consump. v8']) else 0) if r[clc_c] == 0 else r[clc_c], axis=1)
+        if bmc_c in df.columns:
+            df[bmc_c] = df.apply(lambda r: (r['consump. v2'] if pd.notna(r['consump. v2']) else 0) + (r['consump. v7'] if pd.notna(r['consump. v7']) else 0) if r[bmc_c] == 0 else r[bmc_c], axis=1)
+        if deep_c in df.columns:
+            df[deep_c] = df.apply(lambda r: (r['consump. v4'] if pd.notna(r['consump. v4']) else 0) + (r['consump. v5'] if pd.notna(r['consump. v5']) else 0) + (r['consump. v9'] if pd.notna(r['consump. v9']) else 0) if r[deep_c] == 0 else r[deep_c], axis=1)
+
+        df = df.set_index('DateIndex')
         return df
     except Exception as e:
         st.sidebar.error(f"Failed parsing processed energy file {name}: {e}")
@@ -371,7 +403,7 @@ with tab_energy:
         with c5: st.metric("Deep Net Variance",   f"{e_df[deep_col].sum() if deep_col else 0:,.1f}")
 
         if consump_cols:
-            st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9 Channels</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9 Channels (1-15 June)</div>', unsafe_allow_html=True)
             st.line_chart(e_df[consump_cols])
 
         if eq_cols:
@@ -384,7 +416,6 @@ with tab_energy:
         diff_cols = []
         for col in eq_cols:
             col_label = f"{col} Delta"
-            # Fixed math calculation shift direction to track actual growth differences chronologically
             diff_energy[col_label] = (e_df[col] - e_df[col].shift(1)).fillna(0)
             diff_cols.append(col_label)
         
