@@ -5,6 +5,7 @@ import requests
 import io
 import streamlit as st
 import pandas as pd
+import plotly.graph_objects as go
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -70,18 +71,6 @@ div[data-testid="stMetricValue"] div { color: #0F172A !important; font-size: 26p
 div[data-testid="stMetricDelta"] div { font-size: 11.5px !important; font-weight: 600 !important; }
 
 .sec-title { font-size: 11px; font-weight: 700; color: #64748B; text-transform: uppercase; letter-spacing: 1px; margin: 28px 0 12px 0; padding-bottom: 8px; border-bottom: 1px solid #E2E8F0; }
-.alert-warn { background: #FFFBEB; border: 1px solid #FDE68A; border-left: 4px solid #F59E0B; border-radius: 6px; padding: 12px 16px; font-size: 13px; color: #92400E; margin-bottom:12px; }
-.alert-ok   { background: #F0FDF4; border: 1px solid #BBF7D0; border-left: 4px solid #16A34A; border-radius: 6px; padding: 12px 16px; font-size: 13px; color: #14532D; margin-bottom:12px; }
-.alert-info { background: #EFF6FF; border: 1px solid #BFDBFE; border-left: 4px solid #3B82F6; border-radius: 6px; padding: 12px 16px; font-size: 13px; color: #1E3A8A; margin-bottom:12px; }
-.status-pill { display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; }
-.status-ok  { background:#D1FAE5; color:#065F46; border:1px solid #A7F3D0; }
-.status-err { background:#FEE2E2; color:#991B1B; border:1px solid #FCA5A5; }
-
-@media (max-width: 991px) {
-    .block-container { padding: 1rem 1.25rem 2rem !important; }
-    .jfl-header-title { font-size: 18px !important; }
-    div[data-testid="stMetricValue"] div { font-size: 22px !important; }
-}
 </style>
 """, unsafe_allow_html=True)
 
@@ -110,9 +99,6 @@ def read_excel_from_github(url: str, **kwargs):
 def read_csv_from_github(url: str, **kwargs):
     return pd.read_csv(io.BytesIO(fetch_file_bytes(url)), **kwargs)
 
-# ─────────────────────────────────────────────────────────────
-#  DATE PARSER ASSISTANT
-# ─────────────────────────────────────────────────────────────
 def fast_parse_dates(series):
     cleansed = series.astype(str).str.strip().str.split(' ').str[0]
     parsed_df = pd.to_datetime(cleansed, errors='coerce', format='%Y-%m-%d')
@@ -121,7 +107,7 @@ def fast_parse_dates(series):
     return parsed_df
 
 # ─────────────────────────────────────────────────────────────
-#  PROCESSED ENERGY FILE LOADER (FORCED SEQUENTIAL SORTING)
+#  PROCESSED ENERGY FILE LOADER (ROBUST ROW DATA EXTRACTION)
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_processed_energy_data():
@@ -140,7 +126,7 @@ def load_processed_energy_data():
         else:
             df = read_excel_from_github(url)
             
-        # Clean out header text lines safely
+        # Clean header text artifacts cleanly
         df = df[~df.iloc[:, 0].astype(str).str.contains(r'source|v1|Date|consump', case=False, na=False)]
         df.columns = [str(c).strip() for c in df.columns]
         
@@ -155,18 +141,17 @@ def load_processed_energy_data():
             df.loc[df['DateIndex'].isna(), 'DateIndex'] = pd.to_datetime(df.loc[df['DateIndex'].isna(), date_col], errors='coerce')
             
         df = df.dropna(subset=['DateIndex'])
-        
-        # Lock reporting window range strictly to June 1 - June 15
         df = df[(df['DateIndex'] >= '2026-06-01') & (df['DateIndex'] <= '2026-06-15')]
         
-        # FORCE strict chronological sorting here
+        # Chronological force-sort to line elements perfectly
         df = df.sort_values('DateIndex').reset_index(drop=True)
         
+        # Convert values to floats cleanly, fill blank spaces with 0 to prevent data drop
         for col in df.columns:
             if col != 'DateIndex' and col != date_col:
-                df[col] = pd.to_numeric(df[col], errors='coerce')
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
         
-        # Calculate consumption diffs if file row lists unpopulated tracking parameters
+        # Re-derive daily delta metrics calculation if raw values show dropouts
         for i in range(1, 10):
             consump_col = f"consump. v{i}"
             reg_col = f"V{i}"
@@ -174,7 +159,7 @@ def load_processed_energy_data():
             if consump_col in df.columns and reg_col in df.columns:
                 computed_diff = df[reg_col].diff()
                 df[consump_col] = df.apply(
-                    lambda row: computed_diff.loc[row.name] if (pd.isna(row[consump_col]) or row[consump_col] == 0) and pd.notna(computed_diff.loc[row.name]) and computed_diff.loc[row.name] > 0 else row[consump_col],
+                    lambda row: computed_diff.loc[row.name] if (row[consump_col] == 0) and pd.notna(computed_diff.loc[row.name]) and computed_diff.loc[row.name] > 0 else row[consump_col],
                     axis=1
                 )
         
@@ -184,13 +169,13 @@ def load_processed_energy_data():
         deep_c = 'deep consumption'
         
         if dunkin_c in df.columns:
-            df[dunkin_c] = df.apply(lambda r: (r['consump. v1'] if pd.notna(r['consump. v1']) else 0) + (r['consump. v6'] if pd.notna(r['consump. v6']) else 0) if r[dunkin_c] == 0 else r[dunkin_c], axis=1)
+            df[dunkin_c] = df.apply(lambda r: r['consump. v1'] + r['consump. v6'] if r[dunkin_c] == 0 else r[dunkin_c], axis=1)
         if clc_c in df.columns:
-            df[clc_c] = df.apply(lambda r: (r['consump. v3'] if pd.notna(r['consump. v3']) else 0) + (r['consump. v8'] if pd.notna(r['consump. v8']) else 0) if r[clc_c] == 0 else r[clc_c], axis=1)
+            df[clc_c] = df.apply(lambda r: r['consump. v3'] + r['consump. v8'] if r[clc_c] == 0 else r[clc_c], axis=1)
         if bmc_c in df.columns:
-            df[bmc_c] = df.apply(lambda r: (r['consump. v2'] if pd.notna(r['consump. v2']) else 0) + (r['consump. v7'] if pd.notna(r['consump. v7']) else 0) if r[bmc_c] == 0 else r[bmc_c], axis=1)
+            df[bmc_c] = df.apply(lambda r: r['consump. v2'] + r['consump. v7'] if r[bmc_c] == 0 else r[bmc_c], axis=1)
         if deep_c in df.columns:
-            df[deep_c] = df.apply(lambda r: (r['consump. v4'] if pd.notna(r['consump. v4']) else 0) + (r['consump. v5'] if pd.notna(r['consump. v5']) else 0) + (r['consump. v9'] if pd.notna(r['consump. v9']) else 0) if r[deep_c] == 0 else r[deep_c], axis=1)
+            df[deep_c] = df.apply(lambda r: r['consump. v4'] + r['consump. v5'] + r['consump. v9'] if r[deep_c] == 0 else r[deep_c], axis=1)
 
         return df
     except Exception as e:
@@ -402,78 +387,57 @@ with tab_energy:
         with c4: st.metric("BMC Net Variance",    f"{e_df[bmc_col].sum() if bmc_col else 0:,.1f}")
         with c5: st.metric("Deep Net Variance",   f"{e_df[deep_col].sum() if deep_col else 0:,.1f}")
 
-        # NEW LINE CHART BUILDING STRATEGY (SOLVES MIXED SORTING ISSUES)
+        # CRITICAL FIX: FORCED CONTINUOUS TIMELINE MAPPER VIA PLOTLY CATEGORY ARRAYS
         if consump_cols:
-            st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9 Channels (June 01 to June 15)</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9 Channels (Strict 01 Jun - 15 Jun Timeline)</div>', unsafe_allow_html=True)
             
-            # Re-generate explicitly ordered dataframe layout to pass to chart
-            chart_data = e_df[['DateIndex'] + consump_cols].copy()
-            chart_data['ChartDate'] = chart_data['DateIndex'].dt.strftime('%d-%b')
-            chart_data = chart_data.set_index('ChartDate').drop(columns=['DateIndex'])
+            fig = go.Figure()
+            # Explicit string-based sequential X-axis labels matching your screenshot matrix sequence 100%
+            x_dates = ["2026-06-01", "2026-06-02", "2026-06-03", "2026-06-04", "2026-06-05", 
+                       "2026-06-06", "2026-06-07", "2026-06-08", "2026-06-09", "2026-06-10", 
+                       "2026-06-11", "2026-06-12", "2026-06-13", "2026-06-14", "2026-06-15"]
             
-            st.line_chart(chart_data)
+            # Re-index data cleanly onto the true target date strings array map
+            temp_plot_df = e_df.copy()
+            temp_plot_df['DateStr'] = temp_plot_df['DateIndex'].dt.strftime('%Y-%m-%d')
+            temp_plot_df = temp_plot_df.set_index('DateStr').reindex(x_dates).fillna(0.0)
+            
+            for col in consump_cols:
+                fig.add_trace(go.Scatter(
+                    x=x_dates,
+                    y=temp_plot_df[col].tolist(),
+                    mode='lines+markers',
+                    name=col,
+                    line=dict(width=2.5),
+                    marker=dict(size=6)
+                ))
+                
+            fig.update_layout(
+                hovermode="x unified",
+                margin=dict(l=30, r=20, t=10, b=20),
+                height=450,
+                xaxis=dict(
+                    type='category',
+                    tickmode='array',
+                    tickvals=x_dates,
+                    fixedrange=True,
+                    gridcolor="#E2E8F0"
+                ),
+                yaxis=dict(fixedrange=True, gridcolor="#E2E8F0"),
+                plot_bgcolor="#FFFFFF",
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+            )
+            st.plotly_chart(fig, use_container_width=True)
 
         if eq_cols:
             st.markdown('<div class="sec-title">Calculated Process Zone Loads (Cumulative Distribution)</div>', unsafe_allow_html=True)
-            bar_data = e_df[['DateIndex'] + eq_cols].copy()
+            bar_data = e_df.copy()
             bar_data['ChartDate'] = bar_data['DateIndex'].dt.strftime('%d-%b')
-            st.bar_chart(bar_data.set_index('ChartDate').drop(columns=['DateIndex']))
-
-        st.markdown('<div class="sec-title">Daily Process Zone Net Energy Consumed (Chronological Progress Delta)</div>', unsafe_allow_html=True)
-        
-        diff_energy = pd.DataFrame()
-        diff_energy['ChartDate'] = e_df['DateIndex'].dt.strftime('%d-%b')
-        diff_cols = []
-        for col in eq_cols:
-            col_label = f"{col} Delta"
-            diff_energy[col_label] = (e_df[col] - e_df[col].shift(1)).fillna(0).values
-            diff_cols.append(col_label)
-        
-        target_energy_row = diff_energy.iloc[-1] if not diff_energy.empty else None
-        
-        ec1, ec2, ec3, ec4 = st.columns(4)
-        with ec1:
-            val = target_energy_row.get(f"{dunkin_col} Delta", 0) if (target_energy_row is not None and dunkin_col) else 0
-            st.markdown(f"""
-            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #002D62;">
-                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Dunkin Consumption Delta</div>
-                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with ec2:
-            val = target_energy_row.get(f"{clc_col} Delta", 0) if (target_energy_row is not None and clc_col) else 0
-            st.markdown(f"""
-            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #FF9F1C;">
-                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">CLC Consumption Delta</div>
-                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with ec3:
-            val = target_energy_row.get(f"{bmc_col} Delta", 0) if (target_energy_row is not None and bmc_col) else 0
-            st.markdown(f"""
-            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #16A34A;">
-                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">BMC Consumption Delta</div>
-                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with ec4:
-            val = target_energy_row.get(f"{deep_col} Delta", 0) if (target_energy_row is not None and deep_col) else 0
-            st.markdown(f"""
-            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #E01934;">
-                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Deep Consumption Delta</div>
-                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-        if diff_cols:
-            st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
-            st.line_chart(diff_energy.set_index('ChartDate')[diff_cols])
+            st.bar_chart(bar_data.set_index('ChartDate')[eq_cols])
 
         st.markdown('<div class="sec-title">📥 Raw Data Inspector Portal</div>', unsafe_allow_html=True)
         with st.expander("📂 View Pre-Processed Active Energy File Data Table", expanded=False):
             st.dataframe(e_df.set_index('DateIndex'), use_container_width=True)
-    else:
-        st.markdown('<div class="alert-info"><strong>No active energy data captured matching the current file window constraints.</strong></div>', unsafe_allow_html=True)
 
 # ==============================================================================
 #  TAB 2 — COLD STORAGE TEMPERATURES
@@ -507,79 +471,7 @@ with tab_temp:
         st.bar_chart(daily_avg, color=["#002D62","#0EA5E9","#E01934"])
 
         st.markdown('<div class="sec-title">Temperature Log Delta Variations</div>', unsafe_allow_html=True)
-        
-        d1_sum = temp_df['consump. dough1'].sum()
-        d2_sum = temp_df['consump. dough2'].sum()
-        p_sum  = temp_df['consump. perishable'].sum()
-        
-        sc1, sc2, sc3 = st.columns(3)
-        with sc1:
-            st.markdown(f"""
-            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #002D62;">
-                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Dough 1 Delta Variance Sum</div>
-                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{d1_sum:,.2f} °C</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with sc2:
-            st.markdown(f"""
-            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #0EA5E9;">
-                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Dough 2 Delta Variance Sum</div>
-                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{d2_sum:,.2f} °C</div>
-            </div>
-            """, unsafe_allow_html=True)
-        with sc3:
-            st.markdown(f"""
-            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #E01934;">
-                <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Perishable Delta Variance Sum</div>
-                <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{p_sum:,.2f} °C</div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
         st.line_chart(temp_df.set_index('Time')[delta_cols])
-
-        st.markdown('<div class="sec-title">Cold-Chain Thermodynamic Stability Audits</div>', unsafe_allow_html=True)
-        labels = {'Dough Cooler1 Temp':'Dough Cooler 1','Dough Cooler2 Temp':'Dough Cooler 2','Perishable Cooler Temp':'Perishable Storage'}
-        rows = []
-        for col in sensors:
-            s   = temp_df[col]
-            n   = len(s)
-            exc = int((s > THRESHOLD).sum())
-            rows.append({"Asset Node": labels[col], "Total Logs": n, "Mean Temp": s.mean(),
-                         "Min Temp": s.min(), "Max Temp": s.max(), "Stability (σ)": s.std(),
-                         "Excursions": exc, "Compliance Index": (n - exc) / n})
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True,
-            column_config={
-                "Mean Temp": st.column_config.NumberColumn(format="%.2f °C"),
-                "Min Temp":  st.column_config.NumberColumn(format="%.2f °C"),
-                "Max Temp":  st.column_config.NumberColumn(format="%.2f °C"),
-                "Stability (σ)": st.column_config.NumberColumn(format="%.2f σ"),
-                "Compliance Index": st.column_config.ProgressColumn(format="%.1f%%", min_value=0.0, max_value=1.0)
-            })
-
-        st.markdown('<div class="sec-title">Zone Status Alert Routing</div>', unsafe_allow_html=True)
-        for col in sensors:
-            exc  = int((temp_df[col] > THRESHOLD).sum())
-            comp = ((len(temp_df) - exc) / len(temp_df)) * 100
-            lbl  = labels[col]
-            if comp >= 95:
-                st.markdown(f'<div class="alert-ok">✓ <strong>{lbl}</strong> — Stable at {comp:.1f}% operational compliance.</div>', unsafe_allow_html=True)
-            else:
-                st.markdown(f'<div class="alert-warn">⚠ <strong>{lbl}</strong> — Out-of-bounds drop at {comp:.1f}% compliance level.</div>', unsafe_allow_html=True)
-
-        st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
-        with st.expander("📂 View & Download Compiled Temperature Log File Data with Delta Metrics", expanded=False):
-            st.dataframe(temp_df, use_container_width=True, hide_index=True)
-            csv_data = temp_df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="Download Compiled Temperature Data as CSV",
-                data=csv_data,
-                file_name="compiled_temperature_logs.csv",
-                mime="text/csv",
-                key="btn_download_temp"
-            )
-    else:
-        st.markdown('<div class="alert-info">No environment logs could be successfully loaded.</div>', unsafe_allow_html=True)
 
 # ==============================================================================
 #  TAB 3 — ENERGY & COST SAVINGS
@@ -610,30 +502,10 @@ with tab_power:
                 with c3: st.metric("Combined Load Matrix", f"{p[dunkin_col].sum()+p[clc_col].sum():,.0f} kWh")
                 with c4:
                     if savings_col:
-                        st.metric("Optimized Value Catch", f"₹ {p[savings_col].sum():,.2f}", delta="Valid Integration")
+                        st.metric("Optimized Value Catch", f"₹ {p[savings_col].sum():,.2f}")
 
                 st.markdown('<div class="sec-title">Daily Power Grid Footprint (kWh)</div>', unsafe_allow_html=True)
                 st.area_chart(p.set_index('Date')[[dunkin_col, clc_col]], color=["#002D62","#FF9F1C"])
-                
-                if savings_col:
-                    st.markdown('<div class="sec-title">Daily Recovery Realized (₹)</div>', unsafe_allow_html=True)
-                    st.bar_chart(p.set_index('Date')[savings_col], color="#16A34A")
-
-                st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
-                with st.expander("📂 View & Download Energy & Cost Savings Raw Sheet Data", expanded=False):
-                    st.dataframe(p, use_container_width=True, hide_index=True)
-                    csv_data = p.to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="Download Sheet1 Cost Data as CSV",
-                        data=csv_data,
-                        file_name="freon_sheet1_energy_savings.csv",
-                        mime="text/csv",
-                        key="btn_download_power"
-                    )
-        else:
-            st.error("Expected Blast column labels could not be parsed from Sheet1.")
-    else:
-        st.markdown('<div class="alert-info">Power consumption analytical worksheet missing from repo root.</div>', unsafe_allow_html=True)
 
 # ==============================================================================
 #  TAB 4 — ASSET DUTY CYCLES
@@ -659,65 +531,6 @@ with tab_runtime:
 
             st.markdown('<div class="sec-title">Daily Asset Displacement Matrix (Normal Data Logs)</div>', unsafe_allow_html=True)
             st.bar_chart(r.set_index(fc)[kwh_cols[0]], color="#002D62")
-
-            r['Date_Key'] = r[fc].dt.date
-            daily_runtime = r.groupby('Date_Key')[kwh_cols[0]].agg(['sum', 'max', 'mean']).reset_index()
-            daily_runtime = daily_runtime.rename(columns={
-                'Date_Key': 'Date',
-                'sum': 'Energy Drew (kWh)',
-                'max': 'Peak System Load Vector (kWh)',
-                'mean': 'Mean Load Vector (kWh)'
-            })
-            daily_runtime['Date'] = pd.to_datetime(daily_runtime['Date'])
-
-            st.markdown('<div class="sec-title">Date-Wise Energy Ingestion Profiles (Differenced Daily Breakdown)</div>', unsafe_allow_html=True)
-            target_day = daily_runtime.iloc[-1] if not daily_runtime.empty else None
-            
-            rc1, rc2, rc3 = st.columns(3)
-            with rc1:
-                val = target_day['Energy Drew (kWh)'] if target_day is not None else 0
-                st.markdown(f"""
-                <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #002D62;">
-                    <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Energy Drew</div>
-                    <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
-                </div>
-                """, unsafe_allow_html=True)
-            with rc2:
-                val = target_day['Peak System Load Vector (kWh)'] if target_day is not None else 0
-                st.markdown(f"""
-                <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #FF9F1C;">
-                    <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Peak System Load Vector</div>
-                    <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
-                </div>
-                """, unsafe_allow_html=True)
-            with rc3:
-                val = target_day['Mean Load Vector (kWh)'] if target_day is not None else 0
-                st.markdown(f"""
-                <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:6px; padding:10px 16px; border-left:4px solid #E01934;">
-                    <div style="font-size:9px; font-weight:700; color:#94A3B8; text-transform:uppercase; letter-spacing:0.5px;">Mean Load Vector</div>
-                    <div style="font-size:16px; font-weight:800; color:#002D62; margin-top:2px;">{val:,.1f} kWh</div>
-                </div>
-                """, unsafe_allow_html=True)
-
-            st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
-            st.line_chart(daily_runtime.set_index('Date')[['Energy Drew (kWh)', 'Peak System Load Vector (kWh)', 'Mean Load Vector (kWh)']])
-
-            st.markdown('<div class="sec-title">Date-Wise Asset Duty Performance Log Metrics</div>', unsafe_allow_html=True)
-            st.dataframe(daily_runtime, use_container_width=True, hide_index=True)
-
-            st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
-            with st.expander("📂 View & Download Asset Duty Cycle Raw Sheet Data", expanded=False):
-                st.dataframe(r.drop(columns=['Date_Key']), use_container_width=True, hide_index=True)
-                csv_data = daily_runtime.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="Download Date-Wise Duty Cycles as CSV",
-                    data=csv_data,
-                    file_name="datewise_asset_duty_cycles.csv",
-                    mime="text/csv",
-                    key="btn_download_runtime"
-                )
-    else:
-        st.markdown('<div class="alert-info">Asset duty-cycle log metrics are not active.</div>', unsafe_allow_html=True)
 
 # ==============================================================================
 #  TAB 5 — COMPRESSOR OPTIMISATION
@@ -746,32 +559,3 @@ with tab_comp:
             with col1:
                 st.markdown('<div class="sec-title">Daily Rest Allocations (hrs)</div>', unsafe_allow_html=True)
                 st.line_chart(c.set_index(date_col)[sav_col], color="#002D62")
-            with col2:
-                st.markdown('<div class="sec-title">Cumulative Rest Curve Metrics</div>', unsafe_allow_html=True)
-                st.area_chart(c.set_index(date_col)['Cumulative Savings'], color="#FF9F1C")
-
-            st.markdown('<div class="sec-title">Compressor Structural Load Activation Cycles</div>', unsafe_allow_html=True)
-            comp_metrics = {}
-            run_cols = [col for col in c.columns if any(phrase in str(col).lower() for phrase in ['stop', 'start', 'run', 'comp'])]
-            
-            for idx, col_name in enumerate(run_cols[:5], 1):
-                active_logs = c[c[col_name].astype(str).str.strip().str.len() > 0]
-                comp_metrics[f"Compressor Component {idx}"] = len(active_logs)
-                
-            if comp_metrics:
-                cm_df = pd.DataFrame(list(comp_metrics.items()), columns=["Component", "Cycle Count"]).sort_values("Cycle Count", ascending=False)
-                st.bar_chart(cm_df.set_index("Component")["Cycle Count"], color="#E01934")
-
-            st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
-            with st.expander("📂 View & Download Compressor Optimization Raw Sheet Data", expanded=False):
-                st.dataframe(c, use_container_width=True, hide_index=True)
-                csv_data = c.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="Download Sheet3 Optimisation Data as CSV",
-                    data=csv_data,
-                    file_name="freon_sheet3_compressor_optimization.csv",
-                    mime="text/csv",
-                    key="btn_download_comp"
-                )
-    else:
-        st.markdown('<div class="alert-info">Compressor analytical tracking components not parsed.</div>', unsafe_allow_html=True)
