@@ -117,13 +117,10 @@ def read_csv_from_github(url: str, **kwargs):
 @st.cache_data(ttl=300)
 def load_processed_energy_data():
     all_files = list_github_files()
-    
-    # Target only pre-processed active energy metrics files
     target_files = [
         (name, url) for name, url in all_files
         if name.startswith("PROCESSED_DAILY_VARS_Active_Energy_Report") and (name.endswith(".xlsx") or name.endswith(".csv"))
     ]
-    
     if not target_files:
         return None
         
@@ -136,7 +133,6 @@ def load_processed_energy_data():
             
         df.columns = [str(c).strip() for c in df.columns]
         date_col = next((c for c in df.columns if c.lower() in ['date', 'timestamp', 'time']), None)
-        
         if not date_col:
             return None
             
@@ -305,7 +301,7 @@ with st.sidebar:
     st.markdown("""
         <div style="position:fixed; bottom:18px; left:0; width:238px; text-align:center;
                     font-size:10px; color:#94A3B8; font-weight:600; padding:0 8px;">
-            JFL Internal Operations Tool &nbsp;·&nbsp; v3.2
+            JFL Internal Operations Tool &nbsp;·&nbsp; v3.3
         </div>
     """, unsafe_allow_html=True)
 
@@ -359,7 +355,6 @@ with tab_energy:
         e = energy_df.copy()
         e['Date'] = pd.to_datetime(e['Date'])
 
-        # Maps directly to clean columns inside the PROCESSED daily variance file
         consump_cols = [c for c in e.columns if 'consump. v' in c.lower()]
         eq_cols = [c for c in ['dunkin consmp.', 'clc consump.', 'bmc consump.', 'deep consumption'] if c in e.columns]
 
@@ -372,31 +367,25 @@ with tab_energy:
         if consump_cols:
             st.markdown('<div class="sec-title">Daily Delta Consumption Profile — V1 to V9</div>', unsafe_allow_html=True)
             st.line_chart(e.set_index('Date')[consump_cols])
-            with st.expander("🔎 View Delta Consumption (V1-V9) Dataset", expanded=False):
-                st.dataframe(e[['Date'] + consump_cols], use_container_width=True, hide_index=True)
 
         if eq_cols:
             st.markdown('<div class="sec-title">Calculated Process Zone Loads (Dunkin / CLC / BMC / Deep)</div>', unsafe_allow_html=True)
             st.bar_chart(e.set_index('Date')[eq_cols])
-            with st.expander("🔎 View Calculated Process Zone Loads Dataset", expanded=False):
-                st.dataframe(e[['Date'] + eq_cols], use_container_width=True, hide_index=True)
 
-        st.markdown('<div class="sec-title">Full Processed Aggregated Execution Sheet</div>', unsafe_allow_html=True)
-        st.dataframe(e, use_container_width=True, hide_index=True)
-
-        # ─── SECTION BOTTOM: RAW DATA INSPECTOR & EXPORT ───
+        # ─── SYNCED INSPECTOR CONTAINER AT BOTTOM ───
         st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
         with st.expander("📂 View & Download Pre-Processed Active Energy File Data", expanded=False):
-            st.dataframe(e, use_container_width=True)
+            st.dataframe(e, use_container_width=True, hide_index=True)
             csv_data = e.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="Download Processed Energy Data as CSV",
                 data=csv_data,
                 file_name="processed_active_energy_meters.csv",
-                mime="text/csv"
+                mime="text/csv",
+                key="btn_download_energy"
             )
     else:
-        st.markdown('<div class="alert-info"><strong>No processed energy report matching "PROCESSED_DAILY_VARS_Active_Energy_Report" was found inside your GitHub repository root.</strong></div>', unsafe_allow_html=True)
+        st.markdown('<div class="alert-info"><strong>No processed energy report found inside repository.</strong></div>', unsafe_allow_html=True)
 
 # ==============================================================================
 #  TAB 2 — COLD STORAGE TEMPERATURES
@@ -421,16 +410,12 @@ with tab_temp:
 
         st.markdown('<div class="sec-title">Real-Time Temperature Stream</div>', unsafe_allow_html=True)
         st.line_chart(temp_df.set_index('Time')[sensors], color=["#002D62","#0EA5E9","#E01934"])
-        with st.expander("🔎 View Real-Time Temperature Stream Log Sheet", expanded=False):
-            st.dataframe(temp_df[['Time'] + sensors], use_container_width=True, hide_index=True)
 
         st.markdown('<div class="sec-title">Daily Mean Thermal Signature</div>', unsafe_allow_html=True)
         temp_df['Date'] = temp_df['Time'].dt.date
         daily_avg = temp_df.groupby('Date')[sensors].mean().round(2)
         daily_avg.index = daily_avg.index.astype(str)
         st.bar_chart(daily_avg, color=["#002D62","#0EA5E9","#E01934"])
-        with st.expander("🔎 View Daily Mean Thermal Metrics Table", expanded=False):
-            st.dataframe(daily_avg.reset_index(), use_container_width=True, hide_index=True)
 
         st.markdown('<div class="sec-title">Cold-Chain Thermodynamic Stability Audits</div>', unsafe_allow_html=True)
         labels = {'Dough Cooler1 Temp':'Dough Cooler 1','Dough Cooler2 Temp':'Dough Cooler 2','Perishable Cooler Temp':'Perishable Storage'}
@@ -461,16 +446,17 @@ with tab_temp:
             else:
                 st.markdown(f'<div class="alert-warn">⚠ <strong>{lbl}</strong> — Out-of-bounds drop at {comp:.1f}% compliance level.</div>', unsafe_allow_html=True)
 
-        # ─── SECTION BOTTOM: RAW DATA INSPECTOR & EXPORT ───
+        # ─── SYNCED INSPECTOR CONTAINER AT BOTTOM ───
         st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
         with st.expander("📂 View & Download Compiled Temperature Log Raw File Data", expanded=False):
-            st.dataframe(temp_df, use_container_width=True)
+            st.dataframe(temp_df, use_container_width=True, hide_index=True)
             csv_data = temp_df.to_csv(index=False).encode('utf-8')
             st.download_button(
                 label="Download Compiled Temperature Data as CSV",
                 data=csv_data,
                 file_name="compiled_temperature_logs.csv",
-                mime="text/csv"
+                mime="text/csv",
+                key="btn_download_temp"
             )
     else:
         st.markdown('<div class="alert-info">No environment logs could be successfully loaded.</div>', unsafe_allow_html=True)
@@ -508,25 +494,22 @@ with tab_power:
 
                 st.markdown('<div class="sec-title">Daily Power Grid Footprint (kWh)</div>', unsafe_allow_html=True)
                 st.area_chart(p.set_index('Date')[[dunkin_col, clc_col]], color=["#002D62","#FF9F1C"])
-                with st.expander("🔎 View Power Grid Footprint Dataset", expanded=False):
-                    st.dataframe(p[['Date', dunkin_col, clc_col]], use_container_width=True, hide_index=True)
                 
                 if savings_col:
                     st.markdown('<div class="sec-title">Daily Recovery Realized (₹)</div>', unsafe_allow_html=True)
                     st.bar_chart(p.set_index('Date')[savings_col], color="#16A34A")
-                    with st.expander("🔎 View Daily Cost Recovery Savings Dataset", expanded=False):
-                        st.dataframe(p[['Date', savings_col]], use_container_width=True, hide_index=True)
 
-                # ─── SECTION BOTTOM: RAW DATA INSPECTOR & EXPORT ───
+                # ─── SYNCED INSPECTOR CONTAINER AT BOTTOM ───
                 st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
                 with st.expander("📂 View & Download Energy & Cost Savings Raw Sheet Data", expanded=False):
-                    st.dataframe(p, use_container_width=True)
+                    st.dataframe(p, use_container_width=True, hide_index=True)
                     csv_data = p.to_csv(index=False).encode('utf-8')
                     st.download_button(
                         label="Download Sheet1 Cost Data as CSV",
                         data=csv_data,
                         file_name="freon_sheet1_energy_savings.csv",
-                        mime="text/csv"
+                        mime="text/csv",
+                        key="btn_download_power"
                     )
         else:
             st.error("Expected Blast column labels could not be parsed from Sheet1.")
@@ -556,19 +539,18 @@ with tab_runtime:
 
             st.markdown('<div class="sec-title">Daily Asset Displacement Matrix</div>', unsafe_allow_html=True)
             st.bar_chart(r.set_index(fc)[kwh_cols[0]], color="#002D62")
-            with st.expander("🔎 View Asset Displacement Log Metrics", expanded=False):
-                st.dataframe(r[[fc, kwh_cols[0]]], use_container_width=True, hide_index=True)
 
-            # ─── SECTION BOTTOM: RAW DATA INSPECTOR & EXPORT ───
+            # ─── SYNCED INSPECTOR CONTAINER AT BOTTOM ───
             st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
             with st.expander("📂 View & Download Asset Duty Cycle Raw Sheet Data", expanded=False):
-                st.dataframe(r, use_container_width=True)
+                st.dataframe(r, use_container_width=True, hide_index=True)
                 csv_data = r.to_csv(index=False).encode('utf-8')
                 st.download_button(
                     label="Download Sheet2 Duty Cycles as CSV",
                     data=csv_data,
                     file_name="freon_sheet2_asset_duty_cycles.csv",
-                    mime="text/csv"
+                    mime="text/csv",
+                    key="btn_download_runtime"
                 )
     else:
         st.markdown('<div class="alert-info">Asset duty-cycle log metrics are not active.</div>', unsafe_allow_html=True)
@@ -600,17 +582,12 @@ with tab_comp:
             with col1:
                 st.markdown('<div class="sec-title">Daily Rest Allocations (hrs)</div>', unsafe_allow_html=True)
                 st.line_chart(c.set_index(date_col)[sav_col], color="#002D62")
-                with st.expander("🔎 View Daily Rest Time Dataset", expanded=False):
-                    st.dataframe(c[[date_col, sav_col]], use_container_width=True, hide_index=True)
             with col2:
                 st.markdown('<div class="sec-title">Cumulative Rest Curve Metrics</div>', unsafe_allow_html=True)
                 st.area_chart(c.set_index(date_col)['Cumulative Savings'], color="#FF9F1C")
-                with st.expander("🔎 View Cumulative Savings Dataset", expanded=False):
-                    st.dataframe(c[[date_col, 'Cumulative Savings']], use_container_width=True, hide_index=True)
 
             st.markdown('<div class="sec-title">Compressor Structural Load Activation Cycles</div>', unsafe_allow_html=True)
             comp_metrics = {}
-            
             run_cols = [col for col in c.columns if any(phrase in str(col).lower() for phrase in ['stop', 'start', 'run', 'comp'])]
             
             for idx, col_name in enumerate(run_cols[:5], 1):
@@ -620,19 +597,18 @@ with tab_comp:
             if comp_metrics:
                 cm_df = pd.DataFrame(list(comp_metrics.items()), columns=["Component", "Cycle Count"]).sort_values("Cycle Count", ascending=False)
                 st.bar_chart(cm_df.set_index("Component")["Cycle Count"], color="#E01934")
-                with st.expander("🔎 View Component Structural Activation Counts", expanded=False):
-                    st.dataframe(cm_df, use_container_width=True, hide_index=True)
 
-            # ─── SECTION BOTTOM: RAW DATA INSPECTOR & EXPORT ───
+            # ─── SYNCED INSPECTOR CONTAINER AT BOTTOM ───
             st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
             with st.expander("📂 View & Download Compressor Optimization Raw Sheet Data", expanded=False):
-                st.dataframe(c, use_container_width=True)
+                st.dataframe(c, use_container_width=True, hide_index=True)
                 csv_data = c.to_csv(index=False).encode('utf-8')
                 st.download_button(
                     label="Download Sheet3 Optimisation Data as CSV",
                     data=csv_data,
                     file_name="freon_sheet3_compressor_optimization.csv",
-                    mime="text/csv"
+                    mime="text/csv",
+                    key="btn_download_comp"
                 )
     else:
         st.markdown('<div class="alert-info">Compressor analytical tracking components not parsed.</div>', unsafe_allow_html=True)
