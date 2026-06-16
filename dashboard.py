@@ -753,7 +753,7 @@ with tab_energy:
         
         st.markdown('<div class="sec-title">📋 Statistical Summary by Zone</div>', unsafe_allow_html=True)
             
-            st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
+         st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
             
             # Keep your existing chart code below this point...
             fig_delta = go.Figure()
