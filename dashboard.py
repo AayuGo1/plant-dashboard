@@ -201,13 +201,12 @@ hr { border: none; border-top: 1px solid #E2E8F0; margin: 18px 0; }
 """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────
-#  HARDCODED REPOSITORY PATH DETAILS (Zero Setup Required)
+#  HARDCODED REPOSITORY PATH DETAILS
 # ─────────────────────────────────────────────────────────────
 GITHUB_USER = "AayuGo1"
 GITHUB_REPO = "plant-dashboard"
 GITHUB_BRANCH = "main"
 
-# Construct direct raw URLs
 RAW_BASE_URL = f"https://raw.githubusercontent.com/{GITHUB_USER}/{GITHUB_REPO}/{GITHUB_BRANCH}"
 
 # ─────────────────────────────────────────────────────────────
@@ -237,7 +236,7 @@ with st.sidebar:
     st.markdown("<hr style='border-color:#1E3A8A; margin:14px 0;'>", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────
-#  AUTOMATED PIPELINE LOADERS (REMOTE GITHUB FETCH)
+#  AUTOMATED PIPELINE LOADERS
 # ─────────────────────────────────────────────────────────────
 def fast_parse_dates(series):
     return pd.to_datetime(
@@ -245,10 +244,10 @@ def fast_parse_dates(series):
         errors='coerce', dayfirst=True
     )
 
-@st.cache_data(ttl=60) # Auto-checks for new GitHub pushes every 60 seconds
+@st.cache_data(ttl=60)
 def load_temperature_data_from_github():
-    # Call GitHub API to list root repository files dynamically
-    api_url = f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}/contents/"
+    # Use pagination parameters (?per_page=100) to ensure we scan up to 100 files in the repo root
+    api_url = f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}/contents?per_page=100"
     
     try:
         res = requests.get(api_url)
@@ -288,6 +287,7 @@ def load_temperature_data_from_github():
 
 @st.cache_data(ttl=60)
 def load_excel_sheet_from_github(sheet_name, fallback_header_row):
+    # Direct raw request URL bypasses the limited GitHub directory structure tree completely
     raw_url = f"{RAW_BASE_URL}/Power%20consumption%20freon.xlsx"
     
     try:
@@ -359,7 +359,7 @@ with st.sidebar:
         <div style="position:fixed; bottom:18px; left:0; width:238px;
                     text-align:center; font-size:10px; color:#94A3B8;
                     font-weight:600; letter-spacing:0.3px; padding:0 8px;">
-            JFL Internal Operations Tool &nbsp;·&nbsp; v2.7
+            JFL Internal Operations Tool &nbsp;·&nbsp; v2.8
         </div>
     """, unsafe_allow_html=True)
 
