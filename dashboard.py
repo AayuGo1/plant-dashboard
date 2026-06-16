@@ -127,16 +127,16 @@ METER_COLS = {
 }
 
 # ─────────────────────────────────────────────────────────────
-#  ACTIVE ENERGY PROCESSOR (FIXED & ADAPTIVE)
+#  ACTIVE ENERGY PROCESSOR (FIXED FOR EXTENSION PARSING)
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_and_process_energy_files():
     all_files = list_github_files()
     
-    # 1. Look for standalone energy logs first
+    # Matches files starting with Active_Energy_Report that are either .csv or .xlsx
     energy_files = [
         (name, url) for name, url in all_files
-        if name.startswith("Active_Energy_Report") and name.endswith(".xlsx")
+        if name.startswith("Active_Energy_Report") and (name.endswith(".xlsx") or name.endswith(".csv"))
         and not name.startswith("PROCESSED_")
     ]
 
@@ -145,20 +145,27 @@ def load_and_process_energy_files():
     if energy_files:
         for name, url in sorted(energy_files):
             try:
-                df = read_excel_from_github(url)
+                # Handle CSV or Excel dynamically based on true extension pattern
+                if name.endswith(".csv"):
+                    df = read_csv_from_github(url)
+                else:
+                    df = read_excel_from_github(url)
+                    
                 df.columns = [str(c).strip() for c in df.columns]
 
-                if 'Timestamp' not in df.columns:
+                # Match possible timestamp identifiers
+                date_candidate = next((c for c in df.columns if c in ['Timestamp', 'Date', 'time', 'date']), None)
+                if not date_candidate:
                     continue
 
-                df['Timestamp'] = pd.to_datetime(df['Timestamp'], errors='coerce')
-                df = df.dropna(subset=['Timestamp'])
-                df['Date'] = df['Timestamp'].dt.date
+                df['Parsed_Date'] = pd.to_datetime(df[date_candidate], errors='coerce').dt.date
+                df = df.dropna(subset=['Parsed_Date'])
+                df = df.rename(columns={'Parsed_Date': 'Date'})
                 frames.append(df)
             except Exception as e:
-                st.warning(f"Skipped file {name}: {e}")
+                st.warning(f"Skipped parsing energy report file {name}: {e}")
     else:
-        # 2. Fallback: Parse workbook tabs if standalone files are absent
+        # Fallback to workbook matching logic if explicit files are missing
         freon_url = next((u for n, u in all_files if n == "Power consumption freon.xlsx"), None)
         if freon_url:
             try:
@@ -177,7 +184,7 @@ def load_and_process_energy_files():
                         frames.append(df)
                         break
             except Exception as e:
-                st.sidebar.error(f"Failed handling workbook integration fallback: {e}")
+                st.sidebar.error(f"Failed handling workbook layout mapping logic: {e}")
 
     if not frames:
         return None
@@ -201,7 +208,7 @@ def load_and_process_energy_files():
     if combined.empty:
         return None
 
-    # Consumption Matrix Shifts
+    # Consumption Vector Math Calculations via index offsets
     for i in range(1, 10):
         col = METER_COLS[f'V{i}']
         combined[f'consump. v{i}'] = (combined[col] - combined[col].shift(1)).fillna(0)
@@ -323,7 +330,7 @@ with st.sidebar:
                     text-transform:uppercase; margin:12px 0 6px;">Auto-refresh every 5 min</div>""", unsafe_allow_html=True)
 
     all_files = list_github_files()
-    energy_files = [n for n, _ in all_files if n.startswith("Active_Energy_Report") and not n.startswith("PROCESSED_")]
+    energy_files = [n for n, _ in all_files if n.startswith("Active_Energy_Report")]
     csv_files    = [n for n, _ in all_files if n.startswith("DataLog_") and n.endswith(".csv")]
     has_freon    = any(n == "Power consumption freon.xlsx" for n, _ in all_files)
 
@@ -332,12 +339,10 @@ with st.sidebar:
                     color:#94A3B8; text-transform:uppercase; margin-bottom:10px;">
                     GitHub Source Status</div>""", unsafe_allow_html=True)
 
-    # UI updates automatically based on custom sheet integration pipeline status
-    energy_status_ok = len(energy_files) > 0 or has_freon
     st.markdown(f"""
         <div style="margin-bottom:8px;">
-            <span class="status-pill status-{'ok' if energy_status_ok else 'err'}">
-                {'●' if energy_status_ok else '○'}&nbsp; Energy Reports · {len(energy_files) if energy_files else 'Workbook Fallback'}
+            <span class="status-pill status-{'ok' if energy_files else 'err'}">
+                {'●' if energy_files else '○'}&nbsp; Energy Reports · {len(energy_files)} file(s)
             </span>
         </div>
         <div style="margin-bottom:8px;">
@@ -428,7 +433,7 @@ with tab_energy:
         display_cols = ['Date'] + [col for col in METER_COLS.values() if col in e.columns] + consump_cols + eq_cols
         st.dataframe(e[display_cols], use_container_width=True, hide_index=True)
     else:
-        st.markdown('<div class="alert-info"><strong>No Active Energy data metrics compiled.</strong> Check source alignment schema profiles.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="alert-info"><strong>No Active Energy data metrics compiled.</strong> Check file stream synchronization properties.</div>', unsafe_allow_html=True)
 
 # ==============================================================================
 #  TAB 2 — COLD STORAGE TEMPERATURES
