@@ -195,6 +195,3 @@ def load_temperature_data():
     combined = (
         pd.concat(frames, ignore_index=True)
         .dropna(subset=['Time'])
-    )
-
-    return combined
