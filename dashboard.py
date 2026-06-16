@@ -655,7 +655,7 @@ with tab_energy:
             diff_energy[col_label] = diff_series.values
             diff_cols.append(col_label)
         
-                                st.markdown('<div class="sec-title">📉 Day-over-Day Consumption Change (Δ vs Previous Day)</div>', unsafe_allow_html=True)
+                                    st.markdown('<div class="sec-title">📉 Day-over-Day Consumption Change (Δ vs Previous Day)</div>', unsafe_allow_html=True)
         
         # Filter out rows with zero or invalid consumption data
         valid_data_mask = (e_df[eq_cols].sum(axis=1) > 0)
@@ -669,28 +669,40 @@ with tab_energy:
         for col in eq_cols:
             col_label = f"{col} Δ"
             diff_series = e_df_valid[col].diff().fillna(0)
-            # Ensure no negative values
             diff_series = diff_series.clip(lower=0)
             diff_energy[col_label] = diff_series.values
             diff_cols.append(col_label)
         
         if not diff_energy.empty:
             target_energy_row = diff_energy.iloc[-1]
+            last_valid_date = e_df_valid[date_col].iloc[-1].strftime('%d-%b')
             
             ec1, ec2, ec3, ec4 = st.columns(4)
             
             def render_delta_metric(container, col_name, color, label):
-                if f"{col_name} Δ" in diff_energy.columns:
-                    val = target_energy_row[f"{col_name} Δ"]
-                    delta_str = f"{val:+,.1f} kWh"
-                    container.metric(f"{label} Daily Δ", delta_str)
+                if col_name in e_df_valid.columns:
+                    actual_kwh = e_df_valid[col_name].iloc[-1]
+                    delta_key = f"{col_name} Δ"
+                    if delta_key in diff_energy.columns:
+                        delta_val = target_energy_row[delta_key]
+                        delta_text = f"Δ {delta_val:+,.1f} kWh vs prev"
+                    else:
+                        delta_text = "No prior data"
+                        
+                    container.markdown(f"""
+                    <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:8px; padding:16px; border-left:4px solid {color};">
+                        <div style="font-size:10px; font-weight:700; color:#64748B; text-transform:uppercase; letter-spacing:0.5px;">{label} ({last_valid_date})</div>
+                        <div style="font-size:26px; font-weight:800; color:{color}; margin-top:4px;">{actual_kwh:,.1f} kWh</div>
+                        <div style="font-size:11px; font-weight:600; color:#64748B; margin-top:6px;">{delta_text}</div>
+                    </div>
+                    """, unsafe_allow_html=True)
                 else:
-                    container.metric(f"{label} Daily Δ", "No Data")
+                    container.metric(label, "N/A")
             
-            with ec1: render_delta_metric(ec1, dunkin_col, "#002D62", "Dunkin'")
-            with ec2: render_delta_metric(ec2, clc_col, "#FF9F1C", "CLC")
-            with ec3: render_delta_metric(ec3, bmc_col, "#16A34A", "BMC")
-            with ec4: render_delta_metric(ec4, deep_col, "#E01934", "Deep Freezer")
+            with ec1: render_delta_metric(ec1, dunkin_col, "#002D62", "Dunkin' Daily")
+            with ec2: render_delta_metric(ec2, clc_col, "#FF9F1C", "CLC Daily")
+            with ec3: render_delta_metric(ec3, bmc_col, "#16A34A", "BMC Daily")
+            with ec4: render_delta_metric(ec4, deep_col, "#E01934", "Deep Daily")
             
             st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
             
@@ -737,6 +749,7 @@ with tab_energy:
                 shapes=[dict(type='line', xref='paper', yref='y', x0=0, y0=0, x1=1, y1=0, line=dict(color='red', width=2, dash='dash'))]
             )
             st.plotly_chart(fig_delta, use_container_width=True)
+        
         
         st.markdown('<div class="sec-title">📋 Statistical Summary by Zone</div>', unsafe_allow_html=True)
             
