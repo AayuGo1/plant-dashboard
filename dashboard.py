@@ -966,15 +966,13 @@ with tab_temp:
     else:
         st.markdown('<div class="alert-info">No environment logs could be successfully loaded.</div>', unsafe_allow_html=True)
 # ==============================================================================
-#  TAB 3 — ENERGY & COST SAVINGS (MINIMAL — KPI CARDS + DATA ONLY)
+#  TAB 3 — ENERGY & COST SAVINGS (EXECUTIVE MATRIX ONLY)
 # ==============================================================================
 with tab_power:
     if e_df is not None and not e_df.empty:
-        st.markdown('<div class="sec-title">📊 Executive Facility Performance Matrix</div>', unsafe_allow_html=True)
-        
         # ─────────────────────────────────────────────────────────────
-        #  DATA PROCESSING
-        # ─────────────────────────────────────────────────────────────
+        #  DATA PROCESSING (VECTORIZED & LIVE-UPDATING)
+        # ────────────────────────────────────────────────────────────
         facilities = {
             'Dunkin': 'dunkin consmp.',
             'CLC': 'clc consump.',
@@ -982,18 +980,30 @@ with tab_power:
             'Deep (Blast)': 'deep consumption'
         }
         
+        # Extract relevant columns and melt for efficient aggregation
         df_facilities = e_df[['Date'] + list(facilities.values())].copy()
         df_facilities.columns = ['Date'] + list(facilities.keys())
         
         df_melted = df_facilities.melt(id_vars='Date', var_name='Facility', value_name='Daily Consumption')
         df_melted['Daily Consumption'] = pd.to_numeric(df_melted['Daily Consumption'], errors='coerce').fillna(0).clip(lower=0)
         
-        df_summary = df_melted.groupby('Facility')['Daily Consumption'].agg(['sum', 'mean', 'max', 'min', 'count']).reset_index()
-        df_summary.columns = ['Facility', 'Total Power', 'Avg Daily', 'Highest Daily', 'Lowest Daily', 'Days Processed']
+        # Pre-calculate all metrics needed for the cards
+        metrics = df_melted.groupby('Facility')['Daily Consumption'].agg([
+            ('total_power', 'sum'),
+            ('avg_daily', 'mean'),
+            ('highest_daily', 'max'),
+            ('lowest_daily', 'min'),
+            ('days_processed', 'count')
+        ]).reset_index()
         
+        # Map back to facility dictionary for easy iteration
+        facility_metrics = dict(zip(metrics['Facility'], metrics.to_dict('records')))
+        
+        # ────────────────────────────────────────────────────────────
+        #  EXECUTIVE FACILITY PERFORMANCE MATRIX (EXACT MATCH TO IMAGE)
         # ─────────────────────────────────────────────────────────────
-        #  KPI CARDS (EXACTLY AS SHOWN IN IMAGE)
-        # ─────────────────────────────────────────────────────────────
+        st.markdown('<div class="sec-title">📊 Executive Facility Performance Matrix</div>', unsafe_allow_html=True)
+        
         colors = {
             'Dunkin': '#002D62', 
             'CLC': '#FF9F1C', 
@@ -1011,6 +1021,11 @@ with tab_power:
             box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
             margin-bottom: 20px;
             border-left: 5px solid #002D62;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .fac-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -2px rgba(0,0,0,0.04);
         }
         .fac-title {
             font-size: 18px;
@@ -1044,15 +1059,14 @@ with tab_power:
         """, unsafe_allow_html=True)
         
         cols = st.columns(4)
-        for idx, (fac, col_name) in enumerate(facilities.items()):
+        for idx, fac in enumerate(facilities.keys()):
             with cols[idx]:
-                fac_data = df_melted[df_melted['Facility'] == fac]['Daily Consumption']
-                total_power = fac_data.sum()
-                avg_daily = fac_data.mean()
-                highest = fac_data.max()
-                lowest = fac_data.min()
-                total_units = total_power
-                num_days = len(fac_data)
+                m = facility_metrics.get(fac, {})
+                total_power = m.get('total_power', 0)
+                avg_daily = m.get('avg_daily', 0)
+                highest = m.get('highest_daily', 0)
+                lowest = m.get('lowest_daily', 0)
+                num_days = int(m.get('days_processed', 0))
                 
                 st.markdown(f"""
                 <div class="fac-card" style="border-left-color: {colors[fac]};">
@@ -1061,23 +1075,13 @@ with tab_power:
                     <div class="fac-metric"><span class="fac-metric-label">Avg Daily</span><span class="fac-metric-value">{avg_daily:,.1f} kWh</span></div>
                     <div class="fac-metric"><span class="fac-metric-label">Highest Daily</span><span class="fac-metric-value">{highest:,.1f} kWh</span></div>
                     <div class="fac-metric"><span class="fac-metric-label">Lowest Daily</span><span class="fac-metric-value">{lowest:,.1f} kWh</span></div>
-                    <div class="fac-metric"><span class="fac-metric-label">Total Units</span><span class="fac-metric-value">{total_units:,.0f} kWh</span></div>
+                    <div class="fac-metric"><span class="fac-metric-label">Total Units</span><span class="fac-metric-value">{total_power:,.0f} kWh</span></div>
                     <div class="fac-metric"><span class="fac-metric-label">Days Processed</span><span class="fac-metric-value">{num_days}</span></div>
                 </div>
                 """, unsafe_allow_html=True)
-        
-        # ─────────────────────────────────────────────────────────────
-        #  DATA TABLES
-        # ─────────────────────────────────────────────────────────────
-        st.markdown('<div class="sec-title">📋 Facility Summary</div>', unsafe_allow_html=True)
-        st.dataframe(df_summary[['Facility', 'Total Power', 'Avg Daily']], use_container_width=True, hide_index=True)
-        
-        st.markdown('<div class="sec-title">📅 Daily Consumption</div>', unsafe_allow_html=True)
-        df_daily = df_melted[['Date', 'Facility', 'Daily Consumption']].sort_values(['Date', 'Facility'])
-        st.dataframe(df_daily, use_container_width=True, hide_index=True)
 
     else:
-        st.markdown('<div class="alert-info">️ Energy data file not found or empty.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="alert-info">⚠️ Energy data file not found or empty.</div>', unsafe_allow_html=True)
  # ==============================================================================
 #  TAB 4 — ASSET DUTY CYCLES
 # ==============================================================================
