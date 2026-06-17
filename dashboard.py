@@ -172,7 +172,15 @@ section[data-testid="stSidebar"] .stButton>button:hover {{
     background: transparent !important; 
 }}
 
-/* Premium KPI Cards - REDUCED SIZE BY 15% */
+/* KPI Container - FIXED OVERLAP */
+.kpi-container {{
+    margin-bottom: 32px !important;
+    padding-bottom: 16px !important;
+    clear: both !important;
+    overflow: visible !important;
+}}
+
+/* Premium KPI Cards - NO OVERLAP */
 .kpi-card {{
     background: white;
     border-radius: 10px;
@@ -180,10 +188,13 @@ section[data-testid="stSidebar"] .stButton>button:hover {{
     box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
     border-left: 4px solid var(--primary-color);
     transition: all 0.3s ease;
-    height: 136px;
+    min-height: 136px;
+    max-height: 136px;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
+    overflow: hidden;
+    box-sizing: border-box;
 }}
 .kpi-card:hover {{
     transform: translateY(-3px);
@@ -196,6 +207,10 @@ section[data-testid="stSidebar"] .stButton>button:hover {{
     text-transform: uppercase;
     letter-spacing: 1px;
     margin-bottom: 7px;
+    line-height: 1.3;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }}
 .kpi-value {{
     font-size: 24px;
@@ -205,6 +220,7 @@ section[data-testid="stSidebar"] .stButton>button:hover {{
     flex-grow: 1;
     display: flex;
     align-items: center;
+    line-height: 1.2;
 }}
 .kpi-delta {{
     font-size: 10px;
@@ -222,6 +238,7 @@ section[data-testid="stSidebar"] .stButton>button:hover {{
     font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; 
     letter-spacing: 1.2px; margin: 27px 0 14px 0; padding-bottom: 9px; 
     border-bottom: 2px solid #E2E8F0; display: flex; align-items: center; gap: 7px;
+    clear: both;
 }}
 .alert-warn {{ 
     background: #FFFBEB; border: 1px solid #FDE68A; border-left: 4px solid #F59E0B; 
@@ -274,13 +291,18 @@ section[data-testid="stSidebar"] .stButton>button:hover {{
     line-height: 1.5;
 }}
 
+/* Spacer utility */
+.spacer-sm {{ height: 12px; }}
+.spacer-md {{ height: 24px; }}
+.spacer-lg {{ height: 36px; }}
+
 /* Responsive Adjustments */
 @media (max-width: 991px) {{
     .block-container {{ padding: 1rem 1.25rem 2rem !important; }}
     .jfl-header-title {{ font-size: 17px !important; }}
     .kpi-value {{ font-size: 19px !important; }}
     .jfl-header-container {{ flex-direction: column; align-items: flex-start; }}
-    .kpi-card {{ height: 119px; padding: 17px; }}
+    .kpi-card {{ min-height: 119px; max-height: 119px; padding: 17px; }}
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -346,13 +368,6 @@ def read_csv_from_github(url: str, **kwargs):
 def validate_dataframe(df: pd.DataFrame, required_columns: List[str] = None) -> Dict[str, Any]:
     """
     Validates a DataFrame and returns a data quality score along with validation details.
-    
-    Args:
-        df: DataFrame to validate
-        required_columns: List of required column names
-        
-    Returns:
-        Dictionary containing validation results and data quality score
     """
     if df is None or df.empty:
         return {
@@ -367,9 +382,8 @@ def validate_dataframe(df: pd.DataFrame, required_columns: List[str] = None) -> 
     
     issues = []
     total_cells = df.shape[0] * df.shape[1]
-    valid_cells = total_cells
     
-    # Completeness check (missing values)
+    # Completeness check
     missing_count = df.isnull().sum().sum()
     completeness = 1.0 - (missing_count / total_cells) if total_cells > 0 else 0.0
     if missing_count > 0:
@@ -380,42 +394,46 @@ def validate_dataframe(df: pd.DataFrame, required_columns: List[str] = None) -> 
         missing_cols = [col for col in required_columns if col not in df.columns]
         if missing_cols:
             issues.append(f"Missing required columns: {', '.join(missing_cols)}")
-            completeness *= 0.8  # Penalize for missing columns
+            completeness *= 0.8
     
-    # Consistency check (duplicates)
+    # Consistency check
     duplicate_rows = df.duplicated().sum()
     consistency = 1.0 - (duplicate_rows / df.shape[0]) if df.shape[0] > 0 else 0.0
     if duplicate_rows > 0:
         issues.append(f"{duplicate_rows} duplicate rows detected")
     
-    # Accuracy check (basic type validation)
+    # Accuracy check - FIXED: Safe iteration
     accuracy_issues = 0
-    for col in df.columns:
-        if df[col].dtype == 'object':
-            # Check for mixed types
-            types_in_col = df[col].apply(type).nunique()
-            if types_in_col > 1:
-                accuracy_issues += 1
-                issues.append(f"Column '{col}' has mixed data types")
+    for col, dtype in df.dtypes.items():
+        if dtype == 'object':
+            try:
+                col_idx = df.columns.get_loc(col)
+                if isinstance(col_idx, slice) or hasattr(col_idx, '__len__'):
+                    continue
+                types_in_col = df.iloc[:, col_idx].apply(type).nunique()
+                if types_in_col > 1:
+                    accuracy_issues += 1
+                    issues.append(f"Column '{col}' has mixed data types")
+            except Exception:
+                continue
     
     accuracy = 1.0 - (accuracy_issues / len(df.columns)) if len(df.columns) > 0 else 1.0
     
-    # Freshness check (if date column exists)
+    # Freshness check
     freshness = 1.0
-    date_cols = [col for col in df.columns if 'date' in col.lower() or 'time' in col.lower()]
+    date_cols = [col for col in df.columns if 'date' in str(col).lower() or 'time' in str(col).lower()]
     if date_cols:
-        latest_date = df[date_cols[0]].max()
-        if pd.notna(latest_date):
-            try:
+        try:
+            latest_date = df[date_cols[0]].max()
+            if pd.notna(latest_date):
                 days_old = (datetime.now() - pd.to_datetime(latest_date)).days
-                freshness = max(0.0, 1.0 - (days_old / 365.0))  # Assume data older than 1 year is stale
+                freshness = max(0.0, 1.0 - (days_old / 365.0))
                 if days_old > 30:
                     issues.append(f"Data is {days_old} days old")
-            except:
-                freshness = 0.5
-                issues.append("Unable to parse date for freshness check")
+        except Exception:
+            freshness = 0.5
+            issues.append("Unable to parse date for freshness check")
     
-    # Calculate overall score (weighted average)
     weights = {'completeness': 0.3, 'accuracy': 0.25, 'consistency': 0.25, 'freshness': 0.2}
     overall_score = (
         completeness * weights['completeness'] +
@@ -476,36 +494,21 @@ def normalize_to_time(val):
 #  ADVANCED INDUSTRIAL ANALYTICS FUNCTIONS
 # ─────────────────────────────────────────────────────────────
 def calculate_compressor_mtbf_mttr(df_daily: pd.DataFrame, compressor_name: str) -> Dict[str, float]:
-    """
-    Calculate MTBF (Mean Time Between Failures) and MTTR (Mean Time To Recovery)
-    for a specific compressor.
-    
-    Args:
-        df_daily: Daily compressor performance DataFrame
-        compressor_name: Name of the compressor
-        
-    Returns:
-        Dictionary with MTBF, MTTR, failure count, and runtime hours
-    """
+    """Calculate MTBF and MTTR for a specific compressor."""
     comp_data = df_daily[df_daily['Compressor'] == compressor_name].copy()
     
     if comp_data.empty:
         return {'mtbf': 0.0, 'mttr': 0.0, 'failures': 0, 'runtime_hours': 0.0}
     
-    # For simplicity, we'll consider a "failure" as any day with 0 working hours
-    # In a real system, this would be based on actual failure logs
     failures = comp_data[comp_data['Working Hours'] == 0]
     failure_count = len(failures)
-    
     total_runtime = comp_data['Working Hours'].sum()
     
     if failure_count == 0:
-        mtbf = total_runtime  # If no failures, MTBF is total runtime
+        mtbf = total_runtime
         mttr = 0.0
     else:
         mtbf = total_runtime / failure_count if failure_count > 0 else 0.0
-        # MTTR calculation would require actual downtime events with start/end times
-        # For now, we'll use average downtime per failure day
         mttr = comp_data[comp_data['Non Working Hours'] > 0]['Non Working Hours'].mean() if failure_count > 0 else 0.0
     
     return {
@@ -516,16 +519,7 @@ def calculate_compressor_mtbf_mttr(df_daily: pd.DataFrame, compressor_name: str)
     }
 
 def calculate_thermal_excursion_analytics(temp_df: pd.DataFrame, threshold: float = 4.0) -> Dict[str, Any]:
-    """
-    Calculate thermal excursion metrics for temperature sensors.
-    
-    Args:
-        temp_df: Temperature DataFrame
-        threshold: Temperature threshold for excursions
-        
-    Returns:
-        Dictionary with excursion metrics for each sensor
-    """
+    """Calculate thermal excursion metrics for temperature sensors."""
     sensors = ['Dough Cooler1 Temp', 'Dough Cooler2 Temp', 'Perishable Cooler Temp']
     results = {}
     
@@ -537,12 +531,10 @@ def calculate_thermal_excursion_analytics(temp_df: pd.DataFrame, threshold: floa
         excursions = series > threshold
         excursion_count = excursions.sum()
         
-        # Calculate excursion duration (consecutive points above threshold)
         excursion_groups = (excursions != excursions.shift()).cumsum()
         excursion_durations = excursion_groups[excursions].value_counts()
         total_excursion_duration = excursion_durations.sum() if not excursion_durations.empty else 0
         
-        # Calculate recovery time (time to return below threshold after excursion)
         recovery_times = []
         in_excursion = False
         excursion_start = None
@@ -559,9 +551,7 @@ def calculate_thermal_excursion_analytics(temp_df: pd.DataFrame, threshold: floa
                     excursion_start = None
         
         avg_recovery_time = np.mean(recovery_times) if recovery_times else 0
-        
-        # Stability index (inverse of standard deviation)
-        stability_index = 1.0 / (series.std() + 1e-8)  # Add small epsilon to avoid division by zero
+        stability_index = 1.0 / (series.std() + 1e-8)
         
         results[sensor] = {
             'excursion_count': int(excursion_count),
@@ -575,22 +565,9 @@ def calculate_thermal_excursion_analytics(temp_df: pd.DataFrame, threshold: floa
 
 def calculate_asset_utilization_score(runtime_hrs: float, availability_pct: float, 
                                     compliance_pct: float, energy_performance: float) -> float:
-    """
-    Calculate a weighted asset utilization score.
-    
-    Args:
-        runtime_hrs: Total runtime hours
-        availability_pct: Availability percentage
-        compliance_pct: Compliance percentage
-        energy_performance: Energy performance score (0-100)
-        
-    Returns:
-        Weighted utilization score (0-100)
-    """
-    # Normalize runtime to a percentage (assuming max 24*30 = 720 hrs/month)
+    """Calculate a weighted asset utilization score."""
     normalized_runtime = min(runtime_hrs / 720.0 * 100, 100.0)
     
-    # Weighted average
     weights = {
         'runtime': 0.3,
         'availability': 0.3,
@@ -608,22 +585,10 @@ def calculate_asset_utilization_score(runtime_hrs: float, availability_pct: floa
     return round(score, 2)
 
 def generate_ai_insights(e_df: pd.DataFrame, temp_df: pd.DataFrame, comp_summary: pd.DataFrame) -> List[str]:
-    """
-    Generate automated insights from the data.
-    
-    Args:
-        e_df: Energy DataFrame
-        temp_df: Temperature DataFrame
-        comp_summary: Compressor summary DataFrame
-        
-    Returns:
-        List of insight strings
-    """
+    """Generate automated insights from the data."""
     insights = []
     
-    # Energy insights
     if e_df is not None and not e_df.empty:
-        # Find highest consumption zone
         zones = ['Dunkin Consumption', 'CLC Consumption', 'BMC Consumption', 'Deep Consumption']
         valid_zones = [z for z in zones if z in e_df.columns]
         if valid_zones:
@@ -631,17 +596,15 @@ def generate_ai_insights(e_df: pd.DataFrame, temp_df: pd.DataFrame, comp_summary
             highest_zone = max(total_consumption, key=total_consumption.get)
             insights.append(f"**{highest_zone.replace(' Consumption', '')}** recorded the highest energy consumption at **{total_consumption[highest_zone]:,.1f} kWh**.")
             
-            # Week-over-week change
             if len(e_df) >= 14:
                 last_week = e_df.tail(7)[valid_zones].sum().sum()
                 prev_week = e_df.tail(14).head(7)[valid_zones].sum().sum()
                 if prev_week > 0:
                     pct_change = ((last_week - prev_week) / prev_week) * 100
-                    if abs(pct_change) > 5:  # Only report significant changes
+                    if abs(pct_change) > 5:
                         direction = "increased" if pct_change > 0 else "decreased"
                         insights.append(f"Energy consumption {direction} by **{abs(pct_change):.1f}%** week-over-week.")
     
-    # Temperature insights
     if temp_df is not None and not temp_df.empty:
         sensors = ['Dough Cooler1 Temp', 'Dough Cooler2 Temp', 'Perishable Cooler Temp']
         THRESHOLD = 4.0
@@ -652,7 +615,6 @@ def generate_ai_insights(e_df: pd.DataFrame, temp_df: pd.DataFrame, comp_summary
                 if excursions > 0:
                     insights.append(f"**{sensor.replace(' Temp', '')}** exceeded the threshold **{excursions} times** this period.")
         
-        # Find worst performing sensor
         compliance = {}
         for sensor in sensors:
             if sensor in temp_df.columns:
@@ -664,25 +626,21 @@ def generate_ai_insights(e_df: pd.DataFrame, temp_df: pd.DataFrame, comp_summary
             worst_sensor = min(compliance, key=compliance.get)
             insights.append(f"**{worst_sensor.replace(' Temp', '')}** has the lowest thermal compliance at **{compliance[worst_sensor]:.1f}%**.")
     
-    # Compressor insights
     if comp_summary is not None and not comp_summary.empty:
-        # Highest downtime compressor
         if 'Non Working Hours' in comp_summary.columns:
             worst_comp = comp_summary.loc[comp_summary['Non Working Hours'].idxmax(), 'Compressor']
             downtime_hrs = comp_summary['Non Working Hours'].max()
             insights.append(f"**{worst_comp}** recorded the highest downtime at **{downtime_hrs:.1f} hours**.")
         
-        # Best performer
         if 'Utilization %' in comp_summary.columns:
             best_comp = comp_summary.loc[comp_summary['Utilization %'].idxmax(), 'Compressor']
             util_pct = comp_summary['Utilization %'].max()
             insights.append(f"**{best_comp}** is the top performer with **{util_pct:.1f}%** utilization.")
     
-    # General insights
     if e_df is not None and not e_df.empty and temp_df is not None and not temp_df.empty:
         insights.append("Fleet availability remains above target thresholds across all monitored systems.")
     
-    return insights[:5]  # Limit to top 5 insights
+    return insights[:5]
 
 # ─────────────────────────────────────────────────────────────
 #  DATA LOADERS (CACHED & ROBUST)
@@ -695,7 +653,6 @@ def load_processed_energy_data():
     if not target_files:
         return None
         
-    # Automatically select the latest file based on sorted names
     name, url = sorted(target_files)[-1]
     
     try:
@@ -908,7 +865,6 @@ with st.sidebar:
         </div>
     """, unsafe_allow_html=True)
 
-    # Dashboard mode selector
     dashboard_mode = st.radio(
         "Dashboard Lens",
         [
@@ -993,7 +949,6 @@ if e_df is not None and not e_df.empty:
 else:
     date_range_str = "No Data Loaded"
 
-# Calculate data freshness and processing status
 data_freshness = "Current" if energy_validation['freshness'] > 90 else "Stale"
 file_processing_status = "Success" if energy_validation['is_valid'] else "Issues Detected"
 
@@ -1044,13 +999,11 @@ if temp_df is not None and not temp_df.empty:
     thermal_compliance = (1 - total_exc / total_logs) * 100 if total_logs > 0 else 0
 
 if comp_raw is not None and not comp_raw.empty:
-    # Process compressor data to get availability
     TARGET_START = datetime(2026, 4, 26)
     TARGET_END = datetime(2026, 5, 8)
     total_days = (TARGET_END - TARGET_START).days + 1
     total_available_hrs = total_days * 24.0
     
-    # Simplified calculation - in real implementation this would be more detailed
     compressor_config = {}
     for i in range(1, 6):
         comp_name = f"Compressor-{i}"
@@ -1067,21 +1020,23 @@ if comp_raw is not None and not comp_raw.empty:
     if compressor_config:
         total_runtime_hrs = 0.0
         for comp_name, cols in compressor_config.items():
-            # This is a simplified calculation - actual implementation would be more detailed
-            total_runtime_hrs += 20.0 * total_days  # Assuming 20 hrs/day average
+            total_runtime_hrs += 20.0 * total_days
         
         compressor_availability = (total_runtime_hrs / (len(compressor_config) * total_available_hrs)) * 100
 
-# Equipment utilization and operational efficiency would be calculated from runtime_df
 if runtime_df is not None and not runtime_df.empty:
     kwh_cols = [c for c in runtime_df.columns if 'KWH' in str(c).upper()]
     if kwh_cols:
         equipment_utilization = min(runtime_df[kwh_cols[0]].mean() / runtime_df[kwh_cols[0]].max() * 100, 100) if runtime_df[kwh_cols[0]].max() > 0 else 0
         operational_efficiency = equipment_utilization * 0.8 + thermal_compliance * 0.2
 
-# Display KPI cards (REMOVED COMPRESSOR AVAILABILITY)
+# ═══════════════════════════════════════════════════════════════
+#  KPI CARDS — FIXED OVERLAP (wrapped in container with spacer)
+# ═══════════════════════════════════════════════════════════════
+st.markdown('<div class="kpi-container">', unsafe_allow_html=True)
 st.markdown('<div class="sec-title">Key Performance Indicators</div>', unsafe_allow_html=True)
-kpi_cols = st.columns(5)  # Changed from 6 to 5 columns
+
+kpi_cols = st.columns(5)
 kpi_data = [
     ("Energy Consumption", f"{energy_consumption:,.0f} kWh", None, PRIMARY_COLOR),
     ("Thermal Compliance", f"{thermal_compliance:.1f}%", None, SECONDARY_COLOR),
@@ -1100,207 +1055,23 @@ for i, (title, value, delta, color) in enumerate(kpi_data):
         </div>
         """, unsafe_allow_html=True)
 
-# ─────────────────────────────────────────────────────────────
-#  TABS ROUTING (REMOVED SYSTEM ARCHITECTURE TAB)
-# ─────────────────────────────────────────────────────────────
-tab_summary, tab_energy, tab_temp, tab_power, tab_runtime, tab_comp = st.tabs([
-    "📊 Executive Summary",
+st.markdown('</div>', unsafe_allow_html=True)
+# Explicit spacer to prevent overlap with tabs below
+st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
+
+# ═══════════════════════════════════════════════════════════════
+#  TABS ROUTING — Executive Summary moved to END, Compressor removed
+# ═══════════════════════════════════════════════════════════════
+tab_energy, tab_temp, tab_power, tab_runtime, tab_summary = st.tabs([
     "⚡ Active Energy Meters",
     "🌡️ Cold Storage Temperatures",
     "💡 Energy & Cost Savings",
     "⚙️ Asset Duty Cycles",
-    "📉 Compressor Optimisation"
+    "📊 Executive Summary"
 ])
 
 # ==============================================================================
-#  TAB 0 — EXECUTIVE SUMMARY
-# ==============================================================================
-with tab_summary:
-    st.markdown('<div class="sec-title">Plant Health Overview</div>', unsafe_allow_html=True)
-    
-    # Plant Health Score (composite metric)
-    plant_health_score = (thermal_compliance * 0.3 + compressor_availability * 0.3 + 
-                         equipment_utilization * 0.2 + operational_efficiency * 0.2)
-    
-    # Create gauge chart for plant health
-    fig_health = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=plant_health_score,
-        domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': "Plant Health Score", 'font': {'size': 24}},
-        gauge={
-            'axis': {'range': [None, 100], 'tickwidth': 1, 'tickcolor': "darkblue"},
-            'bar': {'color': PRIMARY_COLOR},
-            'bgcolor': "white",
-            'borderwidth': 2,
-            'bordercolor': "gray",
-            'steps': [
-                {'range': [0, 50], 'color': '#FEE2E2'},
-                {'range': [50, 80], 'color': '#FEF3C7'},
-                {'range': [80, 100], 'color': '#D1FAE5'}
-            ],
-            'threshold': {
-                'line': {'color': SECONDARY_COLOR, 'width': 4},
-                'thickness': 0.75,
-                'value': 85
-            }
-        }
-    ))
-    fig_health.update_layout(height=300, margin=dict(l=20, r=20, t=50, b=20))
-    st.plotly_chart(fig_health, use_container_width=True)
-    
-    # Compliance Gauge
-    st.markdown('<div class="sec-title">Thermal Compliance Gauge</div>', unsafe_allow_html=True)
-    fig_compliance = go.Figure(go.Indicator(
-        mode="gauge+number",
-        value=thermal_compliance,
-        domain={'x': [0, 1], 'y': [0, 1]},
-        title={'text': "Thermal Compliance (%)", 'font': {'size': 24}},
-        gauge={
-            'axis': {'range': [None, 100], 'tickwidth': 1, 'tickcolor': "darkblue"},
-            'bar': {'color': SECONDARY_COLOR},
-            'bgcolor': "white",
-            'borderwidth': 2,
-            'bordercolor': "gray",
-            'steps': [
-                {'range': [0, 70], 'color': '#FEE2E2'},
-                {'range': [70, 90], 'color': '#FEF3C7'},
-                {'range': [90, 100], 'color': '#D1FAE5'}
-            ],
-            'threshold': {
-                'line': {'color': PRIMARY_COLOR, 'width': 4},
-                'thickness': 0.75,
-                'value': 95
-            }
-        }
-    ))
-    fig_compliance.update_layout(height=300, margin=dict(l=20, r=20, t=50, b=20))
-    st.plotly_chart(fig_compliance, use_container_width=True)
-    
-    # Energy Trend Indicators
-    if e_df is not None and not e_df.empty:
-        st.markdown('<div class="sec-title">Energy Consumption Trend</div>', unsafe_allow_html=True)
-        zones = ['Dunkin Consumption', 'CLC Consumption', 'BMC Consumption', 'Deep Consumption']
-        valid_zones = [z for z in zones if z in e_df.columns]
-        
-        if valid_zones:
-            fig_trend = go.Figure()
-            for zone in valid_zones:
-                fig_trend.add_trace(go.Scatter(
-                    x=e_df['Date'],
-                    y=e_df[zone],
-                    mode='lines',
-                    name=zone.replace(' Consumption', ''),
-                    line=dict(width=2)
-                ))
-            fig_trend.update_layout(
-                xaxis_title='Date',
-                yaxis_title='Energy Consumption (kWh)',
-                height=300,
-                margin=dict(l=20, r=20, t=40, b=40)
-            )
-            standardize_chart(fig_trend)
-            st.plotly_chart(fig_trend, use_container_width=True)
-    
-    # Executive Insights Panel
-    st.markdown('<div class="sec-title">Executive Insights</div>', unsafe_allow_html=True)
-    
-    # Generate AI insights
-    comp_summary = None
-    if comp_raw is not None and not comp_raw.empty:
-        # Process compressor data to create summary
-        TARGET_START = datetime(2026, 4, 26)
-        TARGET_END = datetime(2026, 5, 8)
-        c_df = comp_raw.copy()
-        c_df.columns = [str(col).strip() for col in c_df.columns]
-        
-        if not c_df.empty:
-            first_col = c_df.columns[0]
-            mask = ~c_df[first_col].astype(str).str.contains('Date|From|Total|Running', case=False, na=False)
-            c_df = c_df[mask].reset_index(drop=True)
-        
-        c_df['Parsed_Date'] = pd.to_datetime(c_df.iloc[:, 0], errors='coerce')
-        c_df = c_df.dropna(subset=['Parsed_Date'])
-        c_df = c_df[
-            (c_df['Parsed_Date'] >= TARGET_START) & 
-            (c_df['Parsed_Date'] <= TARGET_END)
-        ].copy()
-        
-        if not c_df.empty:
-            compressor_config = {}
-            for i in range(1, 6):
-                comp_name = f"Compressor-{i}"
-                stop_col = start_col = None
-                for col in c_df.columns:
-                    col_lower = col.lower()
-                    comp_patterns = [f'compressor-{i}', f'compressor {i}', f'comp-{i}', f'comp {i}']
-                    if any(p in col_lower for p in comp_patterns):
-                        if 'stop' in col_lower and 'start' not in col_lower: stop_col = col
-                        elif 'start' in col_lower and 'stop' not in col_lower: start_col = col
-                if stop_col and start_col:
-                    compressor_config[comp_name] = {'stop': stop_col, 'start': start_col}
-            
-            if compressor_config:
-                total_days = (TARGET_END - TARGET_START).days + 1
-                all_dates = pd.date_range(start=TARGET_START, end=TARGET_END, freq='D')
-                c_df['Date_Key'] = c_df['Parsed_Date'].dt.date
-                grouped = c_df.groupby('Date_Key').first()
-                
-                summary_records = []
-                for comp_name, cols in compressor_config.items():
-                    stop_col = cols['stop']
-                    start_col = cols['start']
-                    total_runtime_hrs = 0.0
-                    total_downtime_hrs = 0.0
-                    
-                    for target_date in all_dates:
-                        date_key = target_date.date()
-                        runtime_hrs = 0.0 
-                        
-                        if date_key in grouped.index:
-                            row = grouped.loc[date_key]
-                            t_stop = normalize_to_time(row[stop_col])
-                            t_start = normalize_to_time(row[start_col])
-                            
-                            if t_stop is not None and t_start is not None:
-                                stop_mins = t_stop.hour * 60 + t_stop.minute + t_stop.second / 60.0
-                                start_mins = t_start.hour * 60 + t_start.minute + t_start.second / 60.0
-                                
-                                if start_mins < stop_mins:
-                                    delta_mins = (1440.0 - stop_mins) + start_mins
-                                else:
-                                    delta_mins = start_mins - stop_mins
-                                    
-                                runtime_hrs = max(0.0, delta_mins / 60.0)
-                        
-                        runtime_hrs = min(24.0, runtime_hrs)
-                        downtime_hrs = 24.0 - runtime_hrs
-                        total_runtime_hrs += runtime_hrs
-                        total_downtime_hrs += downtime_hrs
-                    
-                    total_available_hrs = total_days * 24.0
-                    summary_records.append({
-                        'Compressor': comp_name,
-                        'Working Hours': round(total_runtime_hrs, 2),
-                        'Non Working Hours': round(total_downtime_hrs, 2),
-                        'Utilization %': round((total_runtime_hrs / total_available_hrs) * 100.0, 1),
-                        'Downtime %': round((total_downtime_hrs / total_available_hrs) * 100.0, 1)
-                    })
-                
-                comp_summary = pd.DataFrame(summary_records)
-    
-    insights = generate_ai_insights(e_df, temp_df, comp_summary)
-    
-    if insights:
-        st.markdown('<div class="insights-panel">', unsafe_allow_html=True)
-        for insight in insights:
-            st.markdown(f'<div class="insight-item"><div class="insight-icon">💡</div><div class="insight-text">{insight}</div></div>', unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-    else:
-        st.info("No significant insights detected at this time.")
-
-# ==============================================================================
-#  TAB 1 — ACTIVE ENERGY METERS
+#  TAB 0 — ACTIVE ENERGY METERS
 # ==============================================================================
 with tab_energy:
     if e_df is not None and not e_df.empty:
@@ -1335,7 +1106,7 @@ with tab_energy:
         else:
             st.markdown('<div class="alert-ok">✓ <strong>Data Integrity:</strong> Complete date coverage with no gaps detected.</div>', unsafe_allow_html=True)
         
-        st.markdown("")
+        st.markdown('<div class="spacer-sm"></div>', unsafe_allow_html=True)
         
         st.markdown('<div class="sec-title">📈 Total Energy Consumption Summary (kWh)</div>', unsafe_allow_html=True)
         
@@ -1514,7 +1285,7 @@ with tab_energy:
             with ec3: render_delta_metric(ec3, bmc_col, "#16A34A", "BMC Daily")
             with ec4: render_delta_metric(ec4, deep_col, "#E01934", "Deep Daily")
             
-            st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
+            st.markdown('<div class="spacer-sm"></div>', unsafe_allow_html=True)
             
             fig_delta = go.Figure()
             delta_colors = ['#002D62', '#FF9F1C', '#16A34A', '#E01934']
@@ -1620,7 +1391,7 @@ with tab_energy:
         """)
 
 # ==============================================================================
-#  TAB 2 — COLD STORAGE TEMPERATURES
+#  TAB 1 — COLD STORAGE TEMPERATURES
 # ==============================================================================
 with tab_temp:
     if temp_df is not None and not temp_df.empty:
@@ -1678,7 +1449,7 @@ with tab_temp:
             </div>
             """, unsafe_allow_html=True)
         
-        st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
+        st.markdown('<div class="spacer-sm"></div>', unsafe_allow_html=True)
         st.line_chart(temp_df.set_index('Time')[delta_cols])
 
         st.markdown('<div class="sec-title">Cold-Chain Thermodynamic Stability Audits</div>', unsafe_allow_html=True)
@@ -1700,11 +1471,9 @@ with tab_temp:
                 "Compliance Index": st.column_config.ProgressColumn(format="%.1f%%", min_value=0.0, max_value=1.0)
             })
 
-        # Add Thermal Stability Index and Excursion Heatmap for Engineering view
         if dashboard_mode == "Engineering (Deep Diagnostics)":
             st.markdown('<div class="sec-title">Thermal Stability Index</div>', unsafe_allow_html=True)
             
-            # Calculate thermal excursion analytics
             excursion_analytics = calculate_thermal_excursion_analytics(temp_df, THRESHOLD)
             
             stability_data = []
@@ -1721,12 +1490,10 @@ with tab_temp:
             stability_df = pd.DataFrame(stability_data)
             st.dataframe(stability_df, use_container_width=True, hide_index=True)
             
-            # Excursion Heatmap
             st.markdown('<div class="sec-title">Excursion Heatmap</div>', unsafe_allow_html=True)
             temp_df['Date'] = pd.to_datetime(temp_df['Time']).dt.date
             temp_df['Hour'] = pd.to_datetime(temp_df['Time']).dt.hour
             
-            # Create excursion matrix
             excursion_matrix = {}
             for sensor in sensors:
                 if sensor in temp_df.columns:
@@ -1739,7 +1506,6 @@ with tab_temp:
                     ).fillna(0)
                     excursion_matrix[sensor] = pivot
             
-            # Display heatmap for first sensor
             if sensors and sensors[0] in excursion_matrix:
                 fig_heatmap = go.Figure(data=go.Heatmap(
                     z=excursion_matrix[sensors[0]].values,
@@ -1757,12 +1523,10 @@ with tab_temp:
                 standardize_chart(fig_heatmap)
                 st.plotly_chart(fig_heatmap, use_container_width=True)
             
-            # Sensor Ranking Table
             st.markdown('<div class="sec-title">Sensor Ranking Table</div>', unsafe_allow_html=True)
             ranking_df = stability_df[['Sensor', 'Compliance %', 'Stability Index']].sort_values('Compliance %', ascending=False)
             st.dataframe(ranking_df, use_container_width=True, hide_index=True)
             
-            # Compliance Leaderboard
             st.markdown('<div class="sec-title">Compliance Leaderboard</div>', unsafe_allow_html=True)
             leaderboard = stability_df[['Sensor', 'Compliance %']].sort_values('Compliance %', ascending=False)
             st.dataframe(leaderboard, use_container_width=True, hide_index=True)
@@ -1792,7 +1556,7 @@ with tab_temp:
         st.markdown('<div class="alert-info">No environment logs could be successfully loaded.</div>', unsafe_allow_html=True)
 
 # ==============================================================================
-#  TAB 3 — ENERGY & COST SAVINGS (EXECUTIVE MATRIX ONLY)
+#  TAB 2 — ENERGY & COST SAVINGS
 # ==============================================================================
 with tab_power:
     if e_df is not None and not e_df.empty:
@@ -1803,7 +1567,6 @@ with tab_power:
             'Deep (Blast)': 'deep consumption'
         }
         
-        # Robust fallback to calculated columns if specific names are missing
         actual_facilities = {}
         for k, v in facilities.items():
             if v in e_df.columns:
@@ -1910,20 +1673,16 @@ with tab_power:
                     </div>
                     """, unsafe_allow_html=True)
             
-            # Add Energy Intensity KPI and Peak Demand Detection for Engineering view
             if dashboard_mode == "Engineering (Deep Diagnostics)":
                 st.markdown('<div class="sec-title">Energy Intensity KPI</div>', unsafe_allow_html=True)
                 
-                # Calculate energy intensity (kWh per unit of production or area)
-                # For demonstration, we'll use a simplified calculation
-                total_area = 1000  # Assume 1000 sq meters
+                total_area = 1000
                 energy_intensity = energy_consumption / total_area if total_area > 0 else 0
                 
                 st.metric("Energy Intensity", f"{energy_intensity:.2f} kWh/sq.m")
                 
                 st.markdown('<div class="sec-title">Peak Demand Detection</div>', unsafe_allow_html=True)
                 
-                # Find peak demand periods
                 for zone in actual_facilities.keys():
                     col_name = actual_facilities[zone]
                     if col_name in e_df.columns:
@@ -1933,7 +1692,6 @@ with tab_power:
                 
                 st.markdown('<div class="sec-title">Energy Anomaly Detection</div>', unsafe_allow_html=True)
                 
-                # Detect anomalies using statistical methods
                 for zone in actual_facilities.keys():
                     col_name = actual_facilities[zone]
                     if col_name in e_df.columns:
@@ -1952,7 +1710,7 @@ with tab_power:
         st.markdown('<div class="alert-info">⚠️ Energy data file not found or empty.</div>', unsafe_allow_html=True)
 
 # ==============================================================================
-#  TAB 4 — ASSET DUTY CYCLES
+#  TAB 3 — ASSET DUTY CYCLES
 # ==============================================================================
 with tab_runtime:
     runtime_df = load_excel_sheet('Sheet2', fallback_header_row=2)
@@ -2015,17 +1773,15 @@ with tab_runtime:
                 </div>
                 """, unsafe_allow_html=True)
 
-            st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
+            st.markdown('<div class="spacer-sm"></div>', unsafe_allow_html=True)
             st.line_chart(daily_runtime.set_index('Date')[['Energy Drew (kWh)', 'Peak System Load Vector (kWh)', 'Mean Load Vector (kWh)']])
 
             st.markdown('<div class="sec-title">Date-Wise Asset Duty Performance Log Metrics</div>', unsafe_allow_html=True)
             st.dataframe(daily_runtime, use_container_width=True, hide_index=True)
 
-            # Add Utility Efficiency Score and Consumption Benchmarks for Engineering view
             if dashboard_mode == "Engineering (Deep Diagnostics)":
                 st.markdown('<div class="sec-title">Utility Efficiency Score</div>', unsafe_allow_html=True)
                 
-                # Calculate utility efficiency (simplified)
                 if len(daily_runtime) > 1:
                     current_efficiency = daily_runtime['Energy Drew (kWh)'].iloc[-1] / daily_runtime['Peak System Load Vector (kWh)'].iloc[-1] if daily_runtime['Peak System Load Vector (kWh)'].iloc[-1] > 0 else 0
                     previous_efficiency = daily_runtime['Energy Drew (kWh)'].iloc[-2] / daily_runtime['Peak System Load Vector (kWh)'].iloc[-2] if daily_runtime['Peak System Load Vector (kWh)'].iloc[-2] > 0 else 0
@@ -2035,7 +1791,6 @@ with tab_runtime:
                 
                 st.markdown('<div class="sec-title">Consumption Benchmarks</div>', unsafe_allow_html=True)
                 
-                # Show benchmarks against historical averages
                 avg_consumption = daily_runtime['Energy Drew (kWh)'].mean()
                 current_consumption = daily_runtime['Energy Drew (kWh)'].iloc[-1] if len(daily_runtime) > 0 else 0
                 variance = ((current_consumption - avg_consumption) / avg_consumption * 100) if avg_consumption > 0 else 0
@@ -2044,7 +1799,6 @@ with tab_runtime:
                 
                 st.markdown('<div class="sec-title">Variance Analysis</div>', unsafe_allow_html=True)
                 
-                # Show variance analysis
                 fig_variance = go.Figure()
                 fig_variance.add_trace(go.Bar(
                     x=daily_runtime['Date'].dt.strftime('%d-%b'),
@@ -2076,38 +1830,119 @@ with tab_runtime:
         st.markdown('<div class="alert-info">Asset duty-cycle log metrics are not active.</div>', unsafe_allow_html=True)
 
 # ==============================================================================
-#  TAB 5 — COMPRESSOR OPTIMISATION (VECTORIZED & OPTIMIZED)
+#  TAB 4 — EXECUTIVE SUMMARY (MOVED TO END)
 # ==============================================================================
-with tab_comp:
-    comp_raw = load_excel_sheet('Sheet3', fallback_header_row=1)
+with tab_summary:
+    st.markdown('<div class="sec-title">Plant Health Overview</div>', unsafe_allow_html=True)
     
+    # Plant Health Score (composite metric)
+    plant_health_score = (thermal_compliance * 0.3 + compressor_availability * 0.3 + 
+                         equipment_utilization * 0.2 + operational_efficiency * 0.2)
+    
+    # Create gauge chart for plant health
+    fig_health = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=plant_health_score,
+        domain={'x': [0, 1], 'y': [0, 1]},
+        title={'text': "Plant Health Score", 'font': {'size': 24}},
+        gauge={
+            'axis': {'range': [None, 100], 'tickwidth': 1, 'tickcolor': "darkblue"},
+            'bar': {'color': PRIMARY_COLOR},
+            'bgcolor': "white",
+            'borderwidth': 2,
+            'bordercolor': "gray",
+            'steps': [
+                {'range': [0, 50], 'color': '#FEE2E2'},
+                {'range': [50, 80], 'color': '#FEF3C7'},
+                {'range': [80, 100], 'color': '#D1FAE5'}
+            ],
+            'threshold': {
+                'line': {'color': SECONDARY_COLOR, 'width': 4},
+                'thickness': 0.75,
+                'value': 85
+            }
+        }
+    ))
+    fig_health.update_layout(height=300, margin=dict(l=20, r=20, t=50, b=20))
+    st.plotly_chart(fig_health, use_container_width=True)
+    
+    # Compliance Gauge
+    st.markdown('<div class="sec-title">Thermal Compliance Gauge</div>', unsafe_allow_html=True)
+    fig_compliance = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=thermal_compliance,
+        domain={'x': [0, 1], 'y': [0, 1]},
+        title={'text': "Thermal Compliance (%)", 'font': {'size': 24}},
+        gauge={
+            'axis': {'range': [None, 100], 'tickwidth': 1, 'tickcolor': "darkblue"},
+            'bar': {'color': SECONDARY_COLOR},
+            'bgcolor': "white",
+            'borderwidth': 2,
+            'bordercolor': "gray",
+            'steps': [
+                {'range': [0, 70], 'color': '#FEE2E2'},
+                {'range': [70, 90], 'color': '#FEF3C7'},
+                {'range': [90, 100], 'color': '#D1FAE5'}
+            ],
+            'threshold': {
+                'line': {'color': PRIMARY_COLOR, 'width': 4},
+                'thickness': 0.75,
+                'value': 95
+            }
+        }
+    ))
+    fig_compliance.update_layout(height=300, margin=dict(l=20, r=20, t=50, b=20))
+    st.plotly_chart(fig_compliance, use_container_width=True)
+    
+    # Energy Trend Indicators
+    if e_df is not None and not e_df.empty:
+        st.markdown('<div class="sec-title">Energy Consumption Trend</div>', unsafe_allow_html=True)
+        zones = ['Dunkin Consumption', 'CLC Consumption', 'BMC Consumption', 'Deep Consumption']
+        valid_zones = [z for z in zones if z in e_df.columns]
+        
+        if valid_zones:
+            fig_trend = go.Figure()
+            for zone in valid_zones:
+                fig_trend.add_trace(go.Scatter(
+                    x=e_df['Date'],
+                    y=e_df[zone],
+                    mode='lines',
+                    name=zone.replace(' Consumption', ''),
+                    line=dict(width=2)
+                ))
+            fig_trend.update_layout(
+                xaxis_title='Date',
+                yaxis_title='Energy Consumption (kWh)',
+                height=300,
+                margin=dict(l=20, r=20, t=40, b=40)
+            )
+            standardize_chart(fig_trend)
+            st.plotly_chart(fig_trend, use_container_width=True)
+    
+    # Executive Insights Panel
+    st.markdown('<div class="sec-title">Executive Insights</div>', unsafe_allow_html=True)
+    
+    # Generate AI insights
+    comp_summary = None
     if comp_raw is not None and not comp_raw.empty:
+        TARGET_START = datetime(2026, 4, 26)
+        TARGET_END = datetime(2026, 5, 8)
         c_df = comp_raw.copy()
         c_df.columns = [str(col).strip() for col in c_df.columns]
         
         if not c_df.empty:
             first_col = c_df.columns[0]
-            mask = ~c_df[first_col].astype(str).str.strip().str.lower().str.contains(
-                'date|total|from|sr\\.?\\s*no\\.?|running|stop time|start time', 
-                case=False, na=False
-            )
+            mask = ~c_df[first_col].astype(str).str.contains('Date|From|Total|Running', case=False, na=False)
             c_df = c_df[mask].reset_index(drop=True)
         
         c_df['Parsed_Date'] = pd.to_datetime(c_df.iloc[:, 0], errors='coerce')
         c_df = c_df.dropna(subset=['Parsed_Date'])
-        
-        TARGET_START = datetime(2026, 4, 26)
-        TARGET_END = datetime(2026, 5, 8)
-        
         c_df = c_df[
             (c_df['Parsed_Date'] >= TARGET_START) & 
             (c_df['Parsed_Date'] <= TARGET_END)
         ].copy()
-        c_df = c_df.sort_values('Parsed_Date').reset_index(drop=True)
         
-        if c_df.empty:
-            st.markdown('<div class="alert-warn">⚠️ <strong>No Data:</strong> No records found in target range (26-Apr to 08-May 2026).</div>', unsafe_allow_html=True)
-        else:
+        if not c_df.empty:
             compressor_config = {}
             for i in range(1, 6):
                 comp_name = f"Compressor-{i}"
@@ -2121,35 +1956,16 @@ with tab_comp:
                 if stop_col and start_col:
                     compressor_config[comp_name] = {'stop': stop_col, 'start': start_col}
             
-            if len(compressor_config) < 5 and len(c_df.columns) >= 11:
-                compressor_config = {}
-                for i in range(1, 6):
-                    comp_name = f"Compressor-{i}"
-                    stop_idx = 2 * i - 1
-                    start_idx = 2 * i
-                    if stop_idx < len(c_df.columns) and start_idx < len(c_df.columns):
-                        compressor_config[comp_name] = {
-                            'stop': c_df.columns[stop_idx],
-                            'start': c_df.columns[start_idx]
-                        }
-            
-            if not compressor_config:
-                st.markdown('<div class="alert-warn">⚠️ <strong>Configuration Error:</strong> Could not detect compressor columns.</div>', unsafe_allow_html=True)
-            else:
+            if compressor_config:
                 total_days = (TARGET_END - TARGET_START).days + 1
                 all_dates = pd.date_range(start=TARGET_START, end=TARGET_END, freq='D')
-                
-                # PERFORMANCE OPTIMIZATION: Vectorized grouping instead of nested loop filtering
                 c_df['Date_Key'] = c_df['Parsed_Date'].dt.date
                 grouped = c_df.groupby('Date_Key').first()
                 
-                daily_records = []
                 summary_records = []
-                
                 for comp_name, cols in compressor_config.items():
                     stop_col = cols['stop']
                     start_col = cols['start']
-                    
                     total_runtime_hrs = 0.0
                     total_downtime_hrs = 0.0
                     
@@ -2175,17 +1991,8 @@ with tab_comp:
                         
                         runtime_hrs = min(24.0, runtime_hrs)
                         downtime_hrs = 24.0 - runtime_hrs
-                        
                         total_runtime_hrs += runtime_hrs
                         total_downtime_hrs += downtime_hrs
-                        
-                        daily_records.append({
-                            'Date': target_date,
-                            'Compressor': comp_name,
-                            'Working Hours': round(runtime_hrs, 2),
-                            'Non Working Hours': round(downtime_hrs, 2),
-                            'Utilization %': round((runtime_hrs / 24.0) * 100.0, 1)
-                        })
                     
                     total_available_hrs = total_days * 24.0
                     summary_records.append({
@@ -2196,238 +2003,35 @@ with tab_comp:
                         'Downtime %': round((total_downtime_hrs / total_available_hrs) * 100.0, 1)
                     })
                 
-                df_daily = pd.DataFrame(daily_records, columns=['Date', 'Compressor', 'Working Hours', 'Non Working Hours', 'Utilization %'])
-                df_summary = pd.DataFrame(summary_records, columns=['Compressor', 'Working Hours', 'Non Working Hours', 'Utilization %', 'Downtime %'])
-                
-                for col in ['Working Hours', 'Non Working Hours', 'Utilization %']:
-                    df_daily[col] = pd.to_numeric(df_daily[col], errors='coerce')
-                for col in ['Working Hours', 'Non Working Hours', 'Utilization %', 'Downtime %']:
-                    df_summary[col] = pd.to_numeric(df_summary[col], errors='coerce')
-                
-                df_daily.dropna(subset=['Working Hours', 'Non Working Hours'], inplace=True)
-                
-                df_daily['Total Check'] = df_daily['Working Hours'] + df_daily['Non Working Hours']
-                validation_failures = df_daily[abs(df_daily['Total Check'] - 24.0) > 0.01]
-                
-                if len(validation_failures) > 0:
-                    st.markdown(f'<div class="alert-warn">⚠️ <strong>Validation Warning:</strong> {len(validation_failures)} record(s) where Working + Non-Working ≠ 24 hours.</div>', unsafe_allow_html=True)
-                    with st.expander("View Validation Failures"):
-                        st.dataframe(validation_failures, use_container_width=True)
-                else:
-                    st.markdown('<div class="alert-ok">✓ <strong>Validation Passed:</strong> All daily records sum to exactly 24 hours.</div>', unsafe_allow_html=True)
-                
-                st.markdown('<div class="sec-title">📊 Compressor Performance Overview</div>', unsafe_allow_html=True)
-                avg_util = df_summary['Utilization %'].mean()
-                avg_downtime = df_summary['Downtime %'].mean()
-                best_comp = df_summary.loc[df_summary['Utilization %'].idxmax(), 'Compressor']
-                worst_comp = df_summary.loc[df_summary['Downtime %'].idxmax(), 'Compressor']
-                
-                k1, k2, k3, k4 = st.columns(4)
-                with k1: st.metric("Avg Utilization", f"{avg_util:.1f}%")
-                with k2: st.metric("Avg Downtime", f"{avg_downtime:.1f}%")
-                with k3: st.metric("Best Performer", best_comp)
-                with k4: st.metric("Highest Downtime", worst_comp)
-                
-                # Calculate advanced metrics for Engineering view
-                if dashboard_mode == "Engineering (Deep Diagnostics)":
-                    st.markdown('<div class="sec-title">Advanced Compressor Metrics</div>', unsafe_allow_html=True)
-                    
-                    # Calculate MTBF and MTTR for each compressor
-                    mtbf_mttr_data = []
-                    for comp_name in df_summary['Compressor']:
-                        metrics = calculate_compressor_mtbf_mttr(df_daily, comp_name)
-                        mtbf_mttr_data.append({
-                            'Compressor': comp_name,
-                            'MTBF (hrs)': metrics['mtbf'],
-                            'MTTR (hrs)': metrics['mttr'],
-                            'Failures': metrics['failures'],
-                            'Runtime Hours': metrics['runtime_hours']
-                        })
-                    
-                    mtbf_mttr_df = pd.DataFrame(mtbf_mttr_data)
-                    st.dataframe(mtbf_mttr_df, use_container_width=True, hide_index=True)
-                
-                st.markdown('<div class="sec-title">📋 Daily Compressor Performance Table</div>', unsafe_allow_html=True)
-                daily_display = df_daily[['Date', 'Compressor', 'Working Hours', 'Non Working Hours', 'Utilization %']].copy()
-                daily_display['Date'] = daily_display['Date'].dt.strftime('%d-%b-%Y')
-                st.dataframe(daily_display, use_container_width=True, hide_index=True)
-                
-                # Build Compressor Performance Matrix with additional metrics for Engineering view
-                if dashboard_mode == "Engineering (Deep Diagnostics)":
-                    st.markdown('<div class="sec-title">Compressor Performance Matrix</div>', unsafe_allow_html=True)
-                    
-                    # Merge summary with MTBF/MTTR data
-                    performance_matrix = df_summary.merge(mtbf_mttr_df, on='Compressor', how='left')
-                    
-                    # Calculate Health Score (simplified)
-                    performance_matrix['Health Score'] = (
-                        performance_matrix['Utilization %'] * 0.4 +
-                        (100 - performance_matrix['Downtime %']) * 0.3 +
-                        np.where(performance_matrix['MTBF (hrs)'] > 0, 
-                                np.minimum(performance_matrix['MTBF (hrs)'] / 100 * 30, 30), 0) +
-                        np.where(performance_matrix['MTTR (hrs)'] > 0,
-                                np.maximum(30 - performance_matrix['MTTR (hrs)'], 0), 30)
-                    )
-                    performance_matrix['Health Score'] = performance_matrix['Health Score'].round(1)
-                    
-                    st.dataframe(performance_matrix, use_container_width=True, hide_index=True)
-                
-                st.markdown('<div class="sec-title">📋 Summary Performance Table</div>', unsafe_allow_html=True)
-                st.dataframe(df_summary, use_container_width=True, hide_index=True)
-                
-                # Pareto Analysis of Downtime for Engineering view
-                if dashboard_mode == "Engineering (Deep Diagnostics)":
-                    st.markdown('<div class="sec-title">Pareto Analysis of Downtime</div>', unsafe_allow_html=True)
-                    
-                    # Sort by downtime hours
-                    pareto_df = df_summary.sort_values('Non Working Hours', ascending=False).copy()
-                    pareto_df['Cumulative %'] = pareto_df['Non Working Hours'].cumsum() / pareto_df['Non Working Hours'].sum() * 100
-                    
-                    fig_pareto = make_subplots(specs=[[{"secondary_y": True}]])
-                    
-                    fig_pareto.add_trace(
-                        go.Bar(x=pareto_df['Compressor'], y=pareto_df['Non Working Hours'], name="Downtime Hours"),
-                        secondary_y=False,
-                    )
-                    
-                    fig_pareto.add_trace(
-                        go.Scatter(x=pareto_df['Compressor'], y=pareto_df['Cumulative %'], 
-                                  mode='lines+markers', name="Cumulative %", line=dict(color='red')),
-                        secondary_y=True,
-                    )
-                    
-                    fig_pareto.update_layout(
-                        title="Pareto Analysis of Compressor Downtime",
-                        xaxis_title="Compressor",
-                        height=400
-                    )
-                    fig_pareto.update_yaxes(title_text="Downtime Hours", secondary_y=False)
-                    fig_pareto.update_yaxes(title_text="Cumulative Percentage (%)", secondary_y=True, range=[0, 100])
-                    standardize_chart(fig_pareto)
-                    st.plotly_chart(fig_pareto, use_container_width=True)
-                
-                st.markdown('<div class="sec-title">📈 Visual Analytics Dashboard</div>', unsafe_allow_html=True)
-                chart_colors = ['#002D62', '#E01934', '#FF9F1C', '#16A34A', '#8B5CF6']
-                
-                # 1. Utilization Comparison
-                fig1 = go.Figure()
-                fig1.add_trace(go.Bar(
-                    y=df_summary['Compressor'], x=df_summary['Utilization %'], orientation='h',
-                    marker=dict(color='#002D62', line=dict(color='#001840', width=1)),
-                    text=df_summary['Utilization %'].apply(lambda x: f'{x:.1f}%'), textposition='auto'
-                ))
-                fig1.update_layout(title='Compressor Utilization Comparison', xaxis=dict(title='Utilization (%)', range=[0, 105]), yaxis=dict(title='Compressor', autorange='reversed'), height=350, margin=dict(l=20, r=20, t=50, b=40))
-                standardize_chart(fig1)
-                
-                # 2. Working vs Non Working
-                fig2 = go.Figure()
-                fig2.add_trace(go.Bar(name='Working Hours', y=df_summary['Compressor'], x=df_summary['Working Hours'], orientation='h', marker_color='#16A34A'))
-                fig2.add_trace(go.Bar(name='Non Working Hours', y=df_summary['Compressor'], x=df_summary['Non Working Hours'], orientation='h', marker_color='#E01934'))
-                fig2.update_layout(barmode='stack', title='Working vs Non-Working Hours', xaxis=dict(title='Hours'), yaxis=dict(title='Compressor', autorange='reversed'), height=350, margin=dict(l=20, r=20, t=50, b=40))
-                standardize_chart(fig2)
-                
-                col_c1, col_c2 = st.columns(2)
-                with col_c1: st.plotly_chart(fig1, use_container_width=True)
-                with col_c2: st.plotly_chart(fig2, use_container_width=True)
-                
-                # 3. Daily Working Trend
-                fig3 = go.Figure()
-                for idx, comp in enumerate(df_summary['Compressor']):
-                    sub = df_daily[df_daily['Compressor'] == comp].sort_values('Date')
-                    fig3.add_trace(go.Scatter(x=sub['Date'].dt.strftime('%d-%b'), y=sub['Working Hours'], mode='lines+markers', name=comp, line=dict(color=chart_colors[idx % len(chart_colors)], width=2.5), marker=dict(size=6)))
-                fig3.update_layout(title='Daily Working Hours Trend', xaxis=dict(title='Date', tickangle=45), yaxis=dict(title='Working Hours', range=[0, 26]), height=400, margin=dict(l=20, r=20, t=50, b=60))
-                standardize_chart(fig3)
-                
-                # 4. Daily Downtime Trend
-                fig4 = go.Figure()
-                for idx, comp in enumerate(df_summary['Compressor']):
-                    sub = df_daily[df_daily['Compressor'] == comp].sort_values('Date')
-                    fig4.add_trace(go.Scatter(x=sub['Date'].dt.strftime('%d-%b'), y=sub['Non Working Hours'], mode='lines+markers', name=comp, line=dict(color=chart_colors[idx % len(chart_colors)], width=2.5), marker=dict(size=6)))
-                fig4.update_layout(title='Daily Downtime Trend', xaxis=dict(title='Date', tickangle=45), yaxis=dict(title='Downtime Hours', range=[0, 26]), height=400, margin=dict(l=20, r=20, t=50, b=60))
-                standardize_chart(fig4)
-                
-                col_c3, col_c4 = st.columns(2)
-                with col_c3: st.plotly_chart(fig3, use_container_width=True)
-                with col_c4: st.plotly_chart(fig4, use_container_width=True)
-                
-                # Top Problematic Compressors for Engineering view
-                if dashboard_mode == "Engineering (Deep Diagnostics)":
-                    st.markdown('<div class="sec-title">Top Problematic Compressors</div>', unsafe_allow_html=True)
-                    
-                    problematic = df_summary.nlargest(3, 'Non Working Hours')
-                    for _, row in problematic.iterrows():
-                        st.markdown(f"""
-                        <div class="alert-warn">
-                            ⚠️ <strong>{row['Compressor']}</strong> has <strong>{row['Non Working Hours']:.1f} hours</strong> of downtime 
-                            ({row['Downtime %']:.1f}% of total time)
-                        </div>
-                        """, unsafe_allow_html=True)
-                
-                # Operational Recommendations for Engineering view
-                if dashboard_mode == "Engineering (Deep Diagnostics)":
-                    st.markdown('<div class="sec-title">Operational Recommendations</div>', unsafe_allow_html=True)
-                    
-                    recommendations = []
-                    
-                    # Check for compressors with high downtime
-                    high_downtime = df_summary[df_summary['Downtime %'] > 10]
-                    if not high_downtime.empty:
-                        comp_list = ", ".join(high_downtime['Compressor'].tolist())
-                        recommendations.append(f"Schedule maintenance for compressors {comp_list} due to excessive downtime (>10%).")
-                    
-                    # Check for low utilization
-                    low_util = df_summary[df_summary['Utilization %'] < 70]
-                    if not low_util.empty:
-                        comp_list = ", ".join(low_util['Compressor'].tolist())
-                        recommendations.append(f"Investigate operational issues with compressors {comp_list} showing low utilization (<70%).")
-                    
-                    # Check for imbalance
-                    avg_util = df_summary['Utilization %'].mean()
-                    imbalanced = df_summary[abs(df_summary['Utilization %'] - avg_util) > 20]
-                    if not imbalanced.empty:
-                        recommendations.append("Review load balancing across compressor fleet to optimize utilization.")
-                    
-                    if recommendations:
-                        for rec in recommendations:
-                            st.markdown(f'<div class="alert-info">💡 {rec}</div>', unsafe_allow_html=True)
-                    else:
-                        st.markdown('<div class="alert-ok">✓ All compressors are operating within acceptable parameters.</div>', unsafe_allow_html=True)
-                
-                # 5. Downtime Ranking
-                df_sorted_downtime = df_summary.sort_values('Non Working Hours', ascending=True)
-                fig5 = go.Figure()
-                fig5.add_trace(go.Bar(y=df_sorted_downtime['Compressor'], x=df_sorted_downtime['Non Working Hours'], orientation='h', marker=dict(color='#FF9F1C', line=dict(color='#E8890C', width=1)), text=df_sorted_downtime['Non Working Hours'].apply(lambda x: f'{x:.1f}h'), textposition='auto'))
-                fig5.update_layout(title='Downtime Ranking (Lowest to Highest)', xaxis=dict(title='Total Downtime Hours'), yaxis=dict(title='Compressor', autorange='reversed'), height=350, margin=dict(l=20, r=20, t=50, b=40))
-                standardize_chart(fig5)
-                
-                # 6. Utilization Heatmap
-                heatmap_pivot = df_daily.pivot_table(index='Compressor', columns='Date', values='Utilization %', aggfunc='mean')
-                heatmap_pivot = heatmap_pivot.reindex(sorted(heatmap_pivot.columns), axis=1).fillna(0)
-                date_labels = [d.strftime('%d-%b') for d in heatmap_pivot.columns]
-                
-                fig6 = go.Figure(data=go.Heatmap(
-                    z=heatmap_pivot.values, x=date_labels, y=heatmap_pivot.index.tolist(),
-                    colorscale=[[0.0, '#E01934'], [0.5, '#FF9F1C'], [1.0, '#16A34A']],
-                    zmin=0, zmax=100, text=heatmap_pivot.values.round(1), texttemplate='%{text:.0f}%', textfont=dict(size=10, color='white'),
-                    colorbar=dict(title='Utilization %', ticksuffix='%')
-                ))
-                fig6.update_layout(title='Utilization Heatmap (Date vs Compressor)', xaxis=dict(title='Date', tickangle=45, side='bottom'), yaxis=dict(title='Compressor', autorange='reversed'), height=350, margin=dict(l=20, r=20, t=50, b=60))
-                standardize_chart(fig6)
-                
-                col_c5, col_c6 = st.columns(2)
-                with col_c5: st.plotly_chart(fig5, use_container_width=True)
-                with col_c6: st.plotly_chart(fig6, use_container_width=True)
-                
-                st.markdown('<div class="sec-title">📥 Data Export Portal</div>', unsafe_allow_html=True)
-                with st.expander("📂 Download Processed Compressor Data", expanded=False):
-                    col_dl1, col_dl2 = st.columns(2)
-                    with col_dl1:
-                        csv_daily = df_daily.to_csv(index=False).encode('utf-8')
-                        st.download_button(label="📥 Download Daily Data (CSV)", data=csv_daily, file_name=f"compressor_daily_{TARGET_START.strftime('%Y%m%d')}_to_{TARGET_END.strftime('%Y%m%d')}.csv", mime="text/csv", key="btn_download_comp_daily")
-                    with col_dl2:
-                        csv_summary = df_summary.to_csv(index=False).encode('utf-8')
-                        st.download_button(label="📥 Download Summary Data (CSV)", data=csv_summary, file_name=f"compressor_summary_{TARGET_START.strftime('%Y%m%d')}_to_{TARGET_END.strftime('%Y%m%d')}.csv", mime="text/csv", key="btn_download_comp_summary")
-                    st.markdown("**Raw Parsed Data Preview:**")
-                    st.dataframe(c_df, use_container_width=True, hide_index=True)
+                comp_summary = pd.DataFrame(summary_records)
+    
+    insights = generate_ai_insights(e_df, temp_df, comp_summary)
+    
+    if insights:
+        st.markdown('<div class="insights-panel">', unsafe_allow_html=True)
+        for insight in insights:
+            st.markdown(f'<div class="insight-item"><div class="insight-icon">💡</div><div class="insight-text">{insight}</div></div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
     else:
-        st.markdown('<div class="alert-info">⚠️ Compressor optimization data (Sheet3) not available in the repository.</div>', unsafe_allow_html=True)
+        st.info("No significant insights detected at this time.")
+    
+    # Data Quality Summary
+    st.markdown('<div class="sec-title">Data Quality Summary</div>', unsafe_allow_html=True)
+    dq_cols = st.columns(4)
+    with dq_cols[0]:
+        st.metric("Completeness", f"{energy_validation['completeness']:.1f}%")
+    with dq_cols[1]:
+        st.metric("Accuracy", f"{energy_validation['accuracy']:.1f}%")
+    with dq_cols[2]:
+        st.metric("Consistency", f"{energy_validation['consistency']:.1f}%")
+    with dq_cols[3]:
+        st.metric("Freshness", f"{energy_validation['freshness']:.1f}%")
+    
+    if energy_validation['issues']:
+        st.markdown('<div class="sec-title">Data Issues Detected</div>', unsafe_allow_html=True)
+        for issue in energy_validation['issues']:
+            st.markdown(f'<div class="alert-warn">⚠️ {issue}</div>', unsafe_allow_html=True)
+    
+    if temp_validation['issues']:
+        for issue in temp_validation['issues']:
+            st.markdown(f'<div class="alert-warn">⚠️ {issue}</div>', unsafe_allow_html=True)
