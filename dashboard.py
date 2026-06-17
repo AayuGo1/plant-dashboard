@@ -1469,4 +1469,4 @@ with tab_comp:
                     st.dataframe(c_df, use_container_width=True, hide_index=True)
     else:
         st.markdown('<div class="alert-info">⚠️ Compressor optimization data (Sheet3) not available in the repository.</div>', unsafe_allow_html=True)
-how can i make this dashboard loook more standout for resume and linkedin purpose
+
