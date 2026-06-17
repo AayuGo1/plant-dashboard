@@ -1086,7 +1086,7 @@ with tab_power:
                 fig_dist.update_layout(
                     barmode='stack', hovermode="x unified", margin=dict(l=60, r=20, t=40, b=60), height=400,
                     xaxis=dict(title='Date', type='category', tickangle=45, fixedrange=True),
-                    yaxis=dict(title='Energy (kWh)', fixedrange=True,
+                    yaxis=dict(title='Energy (kWh)', fixedrange=True, gridcolor='#E2E8F0')
 #  TAB 4 — ASSET DUTY CYCLES
 # ==============================================================================
 with tab_runtime:
