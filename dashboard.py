@@ -145,25 +145,25 @@ section[data-testid="stSidebar"] .stButton>button:hover {{
 
 /* Header System */
 .jfl-header-container {{
-    background: #FFFFFF; border-radius: 12px; padding: 28px 32px; margin-bottom: 28px;
-    border: 1px solid #E2E8F0; border-left: 8px solid var(--secondary-color);
+    background: #FFFFFF; border-radius: 12px; padding: 24px 27px; margin-bottom: 24px;
+    border: 1px solid #E2E8F0; border-left: 7px solid var(--secondary-color);
     box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
-    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px;
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 17px;
 }}
-.jfl-header-title {{ font-size: 26px; font-weight: 800; color: var(--primary-color); letter-spacing: -0.5px; }}
-.jfl-header-subtitle {{ font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 4px; }}
-.jfl-header-meta-box {{ background: var(--background-color); border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px 18px; min-width: 160px; }}
-.jfl-meta-label {{ font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #94A3B8; margin-bottom: 4px; }}
-.jfl-meta-value {{ font-size: 14px; font-weight: 800; color: var(--primary-color); }}
+.jfl-header-title {{ font-size: 22px; font-weight: 800; color: var(--primary-color); letter-spacing: -0.5px; }}
+.jfl-header-subtitle {{ font-size: 9px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-secondary); margin-bottom: 3px; }}
+.jfl-header-meta-box {{ background: var(--background-color); border: 1px solid #E2E8F0; border-radius: 7px; padding: 10px 15px; min-width: 136px; }}
+.jfl-meta-label {{ font-size: 8px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #94A3B8; margin-bottom: 3px; }}
+.jfl-meta-value {{ font-size: 12px; font-weight: 800; color: var(--primary-color); }}
 
 /* Tabs Styling */
 .stTabs [data-baseweb="tab-list"] {{ 
     gap: 0; background: #FFFFFF; border-bottom: 2px solid #E2E8F0; 
-    padding: 0 12px; border-radius: 10px 10px 0 0; 
+    padding: 0 10px; border-radius: 9px 9px 0 0; 
 }}
 .stTabs [data-baseweb="tab"] {{ 
     background: transparent; border: none; border-bottom: 3px solid transparent; 
-    padding: 16px 24px; font-size: 13px; font-weight: 700; color: var(--text-secondary); 
+    padding: 14px 20px; font-size: 11px; font-weight: 700; color: var(--text-secondary); 
     transition: all 0.2s ease;
 }}
 .stTabs [data-baseweb="tab"]:hover {{ color: var(--primary-color); }}
@@ -172,15 +172,15 @@ section[data-testid="stSidebar"] .stButton>button:hover {{
     background: transparent !important; 
 }}
 
-/* Premium KPI Cards - EQUAL HEIGHT FIX */
+/* Premium KPI Cards - REDUCED SIZE BY 15% */
 .kpi-card {{
     background: white;
-    border-radius: 12px;
-    padding: 24px;
+    border-radius: 10px;
+    padding: 20px;
     box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
-    border-left: 5px solid var(--primary-color);
+    border-left: 4px solid var(--primary-color);
     transition: all 0.3s ease;
-    height: 160px;
+    height: 136px;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
@@ -190,28 +190,28 @@ section[data-testid="stSidebar"] .stButton>button:hover {{
     box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
 }}
 .kpi-title {{
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 700;
     color: var(--text-secondary);
     text-transform: uppercase;
     letter-spacing: 1px;
-    margin-bottom: 8px;
+    margin-bottom: 7px;
 }}
 .kpi-value {{
-    font-size: 28px;
+    font-size: 24px;
     font-weight: 800;
     color: var(--text-primary);
-    margin-bottom: 8px;
+    margin-bottom: 7px;
     flex-grow: 1;
     display: flex;
     align-items: center;
 }}
 .kpi-delta {{
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 600;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 3px;
 }}
 .kpi-delta.positive {{ color: #16A34A; }}
 .kpi-delta.negative {{ color: #DC2626; }}
@@ -219,30 +219,30 @@ section[data-testid="stSidebar"] .stButton>button:hover {{
 
 /* Section Titles & Alerts */
 .sec-title {{ 
-    font-size: 13px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; 
-    letter-spacing: 1.2px; margin: 32px 0 16px 0; padding-bottom: 10px; 
-    border-bottom: 2px solid #E2E8F0; display: flex; align-items: center; gap: 8px;
+    font-size: 11px; font-weight: 700; color: var(--text-secondary); text-transform: uppercase; 
+    letter-spacing: 1.2px; margin: 27px 0 14px 0; padding-bottom: 9px; 
+    border-bottom: 2px solid #E2E8F0; display: flex; align-items: center; gap: 7px;
 }}
 .alert-warn {{ 
-    background: #FFFBEB; border: 1px solid #FDE68A; border-left: 5px solid #F59E0B; 
-    border-radius: 8px; padding: 14px 18px; font-size: 13.5px; color: #92400E; 
-    margin-bottom: 16px; display: flex; align-items: center; gap: 10px;
+    background: #FFFBEB; border: 1px solid #FDE68A; border-left: 4px solid #F59E0B; 
+    border-radius: 7px; padding: 12px 15px; font-size: 11px; color: #92400E; 
+    margin-bottom: 14px; display: flex; align-items: center; gap: 9px;
 }}
 .alert-ok {{ 
-    background: #F0FDF4; border: 1px solid #BBF7D0; border-left: 5px solid #16A34A; 
-    border-radius: 8px; padding: 14px 18px; font-size: 13.5px; color: #14532D; 
-    margin-bottom: 16px; display: flex; align-items: center; gap: 10px;
+    background: #F0FDF4; border: 1px solid #BBF7D0; border-left: 4px solid #16A34A; 
+    border-radius: 7px; padding: 12px 15px; font-size: 11px; color: #14532D; 
+    margin-bottom: 14px; display: flex; align-items: center; gap: 9px;
 }}
 .alert-info {{ 
-    background: #EFF6FF; border: 1px solid #BFDBFE; border-left: 5px solid #3B82F6; 
-    border-radius: 8px; padding: 14px 18px; font-size: 13.5px; color: #1E3A8A; 
-    margin-bottom: 16px; display: flex; align-items: center; gap: 10px;
+    background: #EFF6FF; border: 1px solid #BFDBFE; border-left: 4px solid #3B82F6; 
+    border-radius: 7px; padding: 12px 15px; font-size: 11px; color: #1E3A8A; 
+    margin-bottom: 14px; display: flex; align-items: center; gap: 9px;
 }}
 
 /* Status Pills */
 .status-pill {{ 
-    display: inline-block; padding: 5px 12px; border-radius: 20px; 
-    font-size: 11px; font-weight: 700; 
+    display: inline-block; padding: 4px 10px; border-radius: 17px; 
+    font-size: 9px; font-weight: 700; 
 }}
 .status-ok {{ background:#D1FAE5; color:#065F46; border:1px solid #A7F3D0; }}
 .status-err {{ background:#FEE2E2; color:#991B1B; border:1px solid #FCA5A5; }}
@@ -250,37 +250,37 @@ section[data-testid="stSidebar"] .stButton>button:hover {{
 /* Insights Panel */
 .insights-panel {{
     background: white;
-    border-radius: 12px;
-    padding: 20px;
+    border-radius: 10px;
+    padding: 17px;
     border: 1px solid #E2E8F0;
-    margin-top: 20px;
+    margin-top: 17px;
 }}
 .insight-item {{
-    padding: 12px 0;
+    padding: 10px 0;
     border-bottom: 1px solid #F1F5F9;
     display: flex;
     align-items: flex-start;
-    gap: 12px;
+    gap: 10px;
 }}
 .insight-item:last-child {{
     border-bottom: none;
 }}
 .insight-icon {{
-    font-size: 20px;
+    font-size: 17px;
     margin-top: 2px;
 }}
 .insight-text {{
-    font-size: 14px;
+    font-size: 12px;
     line-height: 1.5;
 }}
 
 /* Responsive Adjustments */
 @media (max-width: 991px) {{
     .block-container {{ padding: 1rem 1.25rem 2rem !important; }}
-    .jfl-header-title {{ font-size: 20px !important; }}
-    .kpi-value {{ font-size: 22px !important; }}
+    .jfl-header-title {{ font-size: 17px !important; }}
+    .kpi-value {{ font-size: 19px !important; }}
     .jfl-header-container {{ flex-direction: column; align-items: flex-start; }}
-    .kpi-card {{ height: 140px; padding: 20px; }}
+    .kpi-card {{ height: 119px; padding: 17px; }}
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -1079,13 +1079,12 @@ if runtime_df is not None and not runtime_df.empty:
         equipment_utilization = min(runtime_df[kwh_cols[0]].mean() / runtime_df[kwh_cols[0]].max() * 100, 100) if runtime_df[kwh_cols[0]].max() > 0 else 0
         operational_efficiency = equipment_utilization * 0.8 + thermal_compliance * 0.2
 
-# Display KPI cards
+# Display KPI cards (REMOVED COMPRESSOR AVAILABILITY)
 st.markdown('<div class="sec-title">Key Performance Indicators</div>', unsafe_allow_html=True)
-kpi_cols = st.columns(6)
+kpi_cols = st.columns(5)  # Changed from 6 to 5 columns
 kpi_data = [
     ("Energy Consumption", f"{energy_consumption:,.0f} kWh", None, PRIMARY_COLOR),
     ("Thermal Compliance", f"{thermal_compliance:.1f}%", None, SECONDARY_COLOR),
-    ("Compressor Availability", f"{compressor_availability:.1f}%", None, "#16A34A"),
     ("Equipment Utilization", f"{equipment_utilization:.1f}%", None, "#FF9F1C"),
     ("Operational Efficiency", f"{operational_efficiency:.1f}%", None, "#8B5CF6"),
     ("Data Quality Score", f"{data_quality_score:.1f}%", None, "#0EA5E9")
@@ -1102,16 +1101,15 @@ for i, (title, value, delta, color) in enumerate(kpi_data):
         """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────
-#  TABS ROUTING
+#  TABS ROUTING (REMOVED SYSTEM ARCHITECTURE TAB)
 # ─────────────────────────────────────────────────────────────
-tab_summary, tab_energy, tab_temp, tab_power, tab_runtime, tab_comp, tab_system = st.tabs([
+tab_summary, tab_energy, tab_temp, tab_power, tab_runtime, tab_comp = st.tabs([
     "📊 Executive Summary",
     "⚡ Active Energy Meters",
     "🌡️ Cold Storage Temperatures",
     "💡 Energy & Cost Savings",
     "⚙️ Asset Duty Cycles",
-    "📉 Compressor Optimisation",
-    "🔧 System Architecture"
+    "📉 Compressor Optimisation"
 ])
 
 # ==============================================================================
@@ -2433,101 +2431,3 @@ with tab_comp:
                     st.dataframe(c_df, use_container_width=True, hide_index=True)
     else:
         st.markdown('<div class="alert-info">⚠️ Compressor optimization data (Sheet3) not available in the repository.</div>', unsafe_allow_html=True)
-
-# ==============================================================================
-#  TAB 6 — SYSTEM ARCHITECTURE
-# ==============================================================================
-with tab_system:
-    st.markdown('<div class="sec-title">System Architecture Overview</div>', unsafe_allow_html=True)
-    
-    # Data Flow Diagram
-    st.markdown("### Data Flow Architecture")
-    st.markdown("Manufacturing Data Pipeline Architecture")
-    
-    st.markdown("""
-    #### Data Source Layer
-    - GitHub Repository: `AayuGo1/plant-dashboard`
-    - Automatic file discovery for:
-      - Energy Reports (`PROCESSED_DAILY_VARS_Active_Energy_Report`)
-      - Temperature Logs (`DataLog_*.csv`)
-      - Compressor Logs (`freon*.xlsx`)
-      - Utility Reports (`utility*.xlsx`)
-      - Operational Reports (`operational*.xlsx`)
-    
-    #### Processing Layer
-    - Dynamic file classification using regex patterns
-    - Automated data validation and quality scoring
-    - Robust error handling and fallback mechanisms
-    - Caching framework for performance optimization
-    
-    #### Analytics Layer
-    - KPI calculations (Energy, Thermal, Availability)
-    - Advanced industrial analytics (MTBF, MTTR, Excursion Analysis)
-    - AI-generated insights engine
-    - Dual-mode analytics (Executive & Engineering)
-    
-    #### Visualization Layer
-    - Enterprise-grade Plotly visualizations
-    - Responsive design for all devices
-    - Interactive dashboards with drill-down capabilities
-    - Premium UI/UX with glassmorphic elements
-    """)
-    
-    st.markdown('<div class="sec-title">Data Lineage</div>', unsafe_allow_html=True)
-    st.markdown("""
-    ### File → Transformation → KPI
-    
-    **Energy Data Flow:**
-    ```
-    GitHub File → Date Parsing → Register Column Mapping → 
-    Consumption Calculation → Zone Aggregation → KPI Metrics
-    ```
-    
-    **Temperature Data Flow:**
-    ```
-    GitHub File → Time Parsing → Sensor Mapping → 
-    Delta Calculation → Excursion Detection → Compliance Scoring
-    ```
-    
-    **Compressor Data Flow:**
-    ```
-    GitHub File → Date/Time Parsing → Runtime Calculation → 
-    Availability Metrics → MTBF/MTTR → Performance Scoring
-    ```
-    """)
-    
-    st.markdown('<div class="sec-title">Data Quality Dashboard</div>', unsafe_allow_html=True)
-    
-    # Display data quality metrics
-    dq_cols = st.columns(4)
-    with dq_cols[0]:
-        st.metric("Completeness", f"{energy_validation['completeness']:.1f}%", 
-                 delta=f"{temp_validation['completeness']:.1f}%" if temp_df is not None else None)
-    with dq_cols[1]:
-        st.metric("Accuracy", f"{energy_validation['accuracy']:.1f}%", 
-                 delta=f"{temp_validation['accuracy']:.1f}%" if temp_df is not None else None)
-    with dq_cols[2]:
-        st.metric("Consistency", f"{energy_validation['consistency']:.1f}%", 
-                 delta=f"{temp_validation['consistency']:.1f}%" if temp_df is not None else None)
-    with dq_cols[3]:
-        st.metric("Freshness", f"{energy_validation['freshness']:.1f}%", 
-                 delta=f"{temp_validation['freshness']:.1f}%" if temp_df is not None else None)
-    
-    # Show data quality issues
-    if energy_validation['issues']:
-        st.markdown('<div class="sec-title">Energy Data Issues</div>', unsafe_allow_html=True)
-        for issue in energy_validation['issues']:
-            st.markdown(f"- {issue}")
-    
-    if temp_validation['issues']:
-        st.markdown('<div class="sec-title">Temperature Data Issues</div>', unsafe_allow_html=True)
-        for issue in temp_validation['issues']:
-            st.markdown(f"- {issue}")
-    
-    st.markdown('<div class="sec-title">Performance Monitoring</div>', unsafe_allow_html=True)
-    
-    # Simulated performance metrics
-    st.metric("Processing Time", "2.3 seconds")
-    st.metric("Rows Processed", f"{len(e_df) if e_df is not None else 0} + {len(temp_df) if temp_df is not None else 0}")
-    st.metric("Files Loaded", str(data_sources_count))
-    st.metric("Cache Efficiency", "92%")
