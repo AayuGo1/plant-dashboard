@@ -1284,7 +1284,6 @@ with tab_comp:
         c_df.columns = [str(col).strip() for col in c_df.columns]
         
         # Remove structural/header/footer rows dynamically
-        # We look for rows where the first column contains 'date' or 'total' or 'sr'
         if not c_df.empty:
             first_col = c_df.columns[0]
             mask = ~c_df[first_col].astype(str).str.strip().str.lower().str.contains(
@@ -1360,6 +1359,7 @@ with tab_comp:
                 total_days = (TARGET_END - TARGET_START).days + 1
                 all_dates = pd.date_range(start=TARGET_START, end=TARGET_END, freq='D')
                 
+                # Initialize lists
                 daily_records = []
                 summary_records = []
                 
@@ -1421,12 +1421,14 @@ with tab_comp:
                         'Total Stops': int(total_stop_events)
                     })
                 
-                df_daily = pd.DataFrame(daily_records)
-                df_summary = pd.DataFrame(summary_records)
+                # Create DataFrames explicitly to ensure columns exist
+                df_daily = pd.DataFrame(daily_records, columns=['Date', 'Compressor', 'Working Hours', 'Non Working Hours', 'Utilization %'])
+                df_summary = pd.DataFrame(summary_records, columns=['Compressor', 'Working Hours', 'Non Working Hours', 'Utilization %', 'Downtime %', 'Total Stops'])
                 
                 # Ensure numeric types for safety
-                for col in ['Working Hours', 'Non Working Hours', 'Utilization %', 'Downtime %']:
+                for col in ['Working Hours', 'Non Working Hours', 'Utilization %']:
                     df_daily[col] = pd.to_numeric(df_daily[col], errors='coerce')
+                for col in ['Working Hours', 'Non Working Hours', 'Utilization %', 'Downtime %']:
                     df_summary[col] = pd.to_numeric(df_summary[col], errors='coerce')
                 
                 # Drop any rows that became NaN due to conversion errors
