@@ -970,30 +970,87 @@ with tab_temp:
 #  TAB 3 — ENERGY & COST SAVINGS
 # ==============================================================================
 with tab_power:
+    st.markdown('<div class="sec-title">💡 Energy & Cost Savings Dashboard</div>', unsafe_allow_html=True)
+    
+    # Load Sheet1 specifically
     power_df = load_excel_sheet('Sheet1', fallback_header_row=1)
+    
     if power_df is not None and not power_df.empty:
         p = power_df.copy()
         
-        # Auto-detect cumulative meter columns
-        dunkin_meter_col = next((c for c in p.columns if 'dunkin' in c.lower()), None)
-        clc_meter_col = next((c for c in p.columns if 'clc' in c.lower()), None)
-        deep_meter_col = next((c for c in p.columns if 'deep-total' in c.lower()), None)
-        
-        # Find ALL savings columns to get true total raw savings
-        savings_cols = [c for c in p.columns if 'saving' in str(c).lower()]
-        
-        if dunkin_meter_col and clc_meter_col:
-            # Parse dates
-            p['Date'] = fast_parse_dates(p['Date'])
-            p = p.dropna(subset=['Date'])
+        # --- Auto-Detection Logic ---
+        def detect_col(df, keywords, fallback_idx=0):
+            cols = [str(c) for c in df.columns]
+            for kw in keywords:
+                for c in cols:
+                    if kw in c.lower():
+                        return c
+            return cols[fallback_idx] if fallback_idx < len(cols) else None
+
+        # Detect Columns based on file structure
+        date_col = detect_col(p, ['date'], 0)
+        dunkin_meter_col = detect_col(p, ['dunkin blast'], 1) 
+        clc_meter_col = detect_col(p, ['clc blast'], 6)       
+        deep_meter_col = detect_col(p, ['deep-total'], 21)    
+        savings_col = detect_col(p, ['saving'], 5)            
+
+        if date_col and dunkin_meter_col and clc_meter_col and savings_col:
+            st.success(f"✅ Auto-detected: **Date**=`{date_col}`, **Dunkin Meter**=`{dunkin_meter_col}`, **CLC Meter**=`{clc_meter_col}`, **Raw Savings**=`{savings_col}`")
+            
+            # --- Data Cleaning ---
+            p[date_col] = fast_parse_dates(p[date_col])
+            p = p.dropna(subset=[date_col])
             
             if not p.empty:
-                # CRITICAL FIX: Reindex to continuous date range to handle missing dates
+                # ─────────────────────────────────────────────────────────────
+                #  DUPLICATE DATE HANDLING - DEFENSIVE CHECKS
+                # ─────────────────────────────────────────────────────────────
+                if 'Date' not in p.columns:
+                    st.error("❌ Date column missing after parsing.")
+                    st.stop()
+                
+                total_rows = len(p)
+                unique_dates = p['Date'].nunique()
+                duplicate_count = total_rows - unique_dates
+                
+                st.write(f"**Data Quality Check:** {total_rows} total rows, {unique_dates} unique dates")
+                
+                if duplicate_count > 0:
+                    st.warning(f"⚠️ Found **{duplicate_count} duplicate date(s)**. Consolidating...")
+                    
+                    # Show which dates are duplicated
+                    duplicate_dates = p[p['Date'].duplicated(keep=False)]['Date'].unique()
+                    st.write(f"**Duplicate dates found:** {', '.join([d.strftime('%d-%b-%Y') for d in duplicate_dates[:10]])}")
+                    if len(duplicate_dates) > 10:
+                        st.write(f"... and {len(duplicate_dates) - 10} more")
+                    
+                    # Consolidate duplicates by summing numeric columns
+                    numeric_cols = p.select_dtypes(include=[np.number]).columns.tolist()
+                    p = (
+                        p.groupby('Date', as_index=False)[numeric_cols]
+                        .sum(numeric_only=True)
+                    )
+                    
+                    # Verify duplicates are removed
+                    if p['Date'].duplicated().any():
+                        st.error("❌ Duplicate dates still exist after consolidation!")
+                    else:
+                        st.success(f"✓ Duplicates removed. Now {len(p)} unique date rows.")
+                
+                # Final verification
+                assert not p['Date'].duplicated().any(), "Duplicate dates detected after cleaning!"
+                
+                # Sort by date
+                p = p.sort_values(by='Date').reset_index(drop=True)
+                
+                # ─────────────────────────────────────────────────────────────
+                #  REINDEX TO CONTINUOUS DATE RANGE
+                # ─────────────────────────────────────────────────────────────
                 date_range = pd.date_range(start=p['Date'].min(), end=p['Date'].max(), freq='D')
                 p = p.set_index('Date').reindex(date_range).rename_axis('Date').reset_index()
                 
                 # Convert meter columns to numeric
-                for col in [dunkin_meter_col, clc_meter_col, deep_meter_col] + savings_cols:
+                for col in [dunkin_meter_col, clc_meter_col, deep_meter_col, savings_col]:
                     if col and col in p.columns:
                         p[col] = pd.to_numeric(p[col], errors='coerce')
                 
@@ -1015,9 +1072,9 @@ with tab_power:
                 p['Combined Load'] = p['Dunkin Daily'] + p['CLC Daily'] + p['Deep Daily']
                 
                 # Handle Savings (Raw values, no modification)
-                if savings_cols:
+                if savings_col and savings_col in p.columns:
                     # Sum all savings columns. Fill NaN with 0 for missing dates.
-                    p['Total Raw Savings'] = p[savings_cols].sum(axis=1, skipna=True).fillna(0)
+                    p['Total Raw Savings'] = p[savings_col].fillna(0)
                 else:
                     p['Total Raw Savings'] = 0.0
                     
@@ -1043,10 +1100,9 @@ with tab_power:
                 if not p_graph.empty:
                     st.area_chart(p_graph.set_index('Date')[[dunkin_meter_col, clc_meter_col]], color=["#002D62","#FF9F1C"])
                 
-                if savings_cols:
+                if savings_col and savings_col in p.columns:
                     st.markdown('<div class="sec-title">Daily Recovery Realized (₹)</div>', unsafe_allow_html=True)
-                    first_savings_col = savings_cols[0]
-                    st.bar_chart(p.set_index('Date')[first_savings_col], color="#16A34A")
+                    st.bar_chart(p.set_index('Date')[savings_col], color="#16A34A")
 
                 # A. Daily Data Table
                 st.markdown('<div class="sec-title">📋 Daily Energy & Savings Data</div>', unsafe_allow_html=True)
@@ -1070,7 +1126,6 @@ with tab_power:
             st.error("Expected Blast column labels could not be parsed from Sheet1.")
     else:
         st.markdown('<div class="alert-info">Power consumption analytical worksheet missing from repo root.</div>', unsafe_allow_html=True)
-
 # ==============================================================================
 #  TAB 4 — ASSET DUTY CYCLES
 # ==============================================================================
