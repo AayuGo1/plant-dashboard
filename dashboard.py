@@ -172,7 +172,7 @@ section[data-testid="stSidebar"] .stButton>button:hover {{
     background: transparent !important; 
 }}
 
-/* Premium KPI Cards */
+/* Premium KPI Cards - EQUAL HEIGHT FIX */
 .kpi-card {{
     background: white;
     border-radius: 12px;
@@ -180,7 +180,10 @@ section[data-testid="stSidebar"] .stButton>button:hover {{
     box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
     border-left: 5px solid var(--primary-color);
     transition: all 0.3s ease;
-    height: 100%;
+    height: 160px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
 }}
 .kpi-card:hover {{
     transform: translateY(-3px);
@@ -199,6 +202,9 @@ section[data-testid="stSidebar"] .stButton>button:hover {{
     font-weight: 800;
     color: var(--text-primary);
     margin-bottom: 8px;
+    flex-grow: 1;
+    display: flex;
+    align-items: center;
 }}
 .kpi-delta {{
     font-size: 12px;
@@ -274,6 +280,7 @@ section[data-testid="stSidebar"] .stButton>button:hover {{
     .jfl-header-title {{ font-size: 20px !important; }}
     .kpi-value {{ font-size: 22px !important; }}
     .jfl-header-container {{ flex-direction: column; align-items: flex-start; }}
+    .kpi-card {{ height: 140px; padding: 20px; }}
 }}
 </style>
 """, unsafe_allow_html=True)
@@ -399,10 +406,14 @@ def validate_dataframe(df: pd.DataFrame, required_columns: List[str] = None) -> 
     if date_cols:
         latest_date = df[date_cols[0]].max()
         if pd.notna(latest_date):
-            days_old = (datetime.now() - pd.to_datetime(latest_date)).days
-            freshness = max(0.0, 1.0 - (days_old / 365.0))  # Assume data older than 1 year is stale
-            if days_old > 30:
-                issues.append(f"Data is {days_old} days old")
+            try:
+                days_old = (datetime.now() - pd.to_datetime(latest_date)).days
+                freshness = max(0.0, 1.0 - (days_old / 365.0))  # Assume data older than 1 year is stale
+                if days_old > 30:
+                    issues.append(f"Data is {days_old} days old")
+            except:
+                freshness = 0.5
+                issues.append("Unable to parse date for freshness check")
     
     # Calculate overall score (weighted average)
     weights = {'completeness': 0.3, 'accuracy': 0.25, 'consistency': 0.25, 'freshness': 0.2}
