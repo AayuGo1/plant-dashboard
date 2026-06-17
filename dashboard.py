@@ -1210,16 +1210,44 @@ with tab_runtime:
     else:
         st.markdown('<div class="alert-info">Asset duty-cycle log metrics are not active.</div>', unsafe_allow_html=True)
 # ==============================================================================
-#  TAB 5 — COMPRESSOR OPTIMISATION (RE-ENGINEERED PRODUCTION SUITE)
+#  TAB 5 — COMPRESSOR OPTIMISATION (NORMALIZED EXCEPTION ENGINE)
 # ==============================================================================
 with tab_comp:
-    # 1. Fetch raw underlying dataset directly
     comp_raw = load_excel_sheet('Sheet3', fallback_header_row=1)
     
     if comp_raw is not None and not comp_raw.empty:
         c_mod = comp_raw.copy()
         
-        # Clean header alignment quirks manually from explicit row metrics
+        # ─────────────────────────────────────────────────────────────
+        #  HELPER FUNCTION: TIME FORMAT NORMALIZATION
+        # ─────────────────────────────────────────────────────────────
+        def normalize_to_time(val):
+            """Safely extracts a datetime.time object from mixed Excel/Pandas cell variants."""
+            if pd.isna(val):
+                return None
+            val_str = str(val).strip()
+            if not val_str or val_str.lower() == 'nan':
+                return None
+            
+            # Case A: Full ISO/Excel Date-Time String (e.g., '1900-01-12 04:30:00')
+            if ' ' in val_str:
+                try:
+                    return pd.to_datetime(val_str).time()
+                except Exception:
+                    pass
+            
+            # Case B: Standard HMS Format String (e.g., '23:30:00')
+            try:
+                return pd.to_datetime(val_str, format='%H:%M:%S').time()
+            except Exception:
+                try:
+                    return pd.to_datetime(val_str, format='%H:%M').time()
+                except Exception:
+                    pass
+            
+            return None
+
+        # Clean structural headers
         if 'Date' not in c_mod.columns and c_mod.shape[1] > 0:
             if c_mod.iloc[0].astype(str).str.strip().str.lower().iloc[0] == 'date':
                 c_mod.columns = [str(x).strip() for x in c_mod.iloc[0]]
@@ -1227,15 +1255,14 @@ with tab_comp:
                 
         c_mod.columns = [str(col).strip() for col in c_mod.columns]
         
-        # Drop summary/total formatting metadata rows
+        # Eliminate trailing rows and summary headers
         c_mod = c_mod[~c_mod.iloc[:, 0].astype(str).str.strip().str.lower().str.contains('date|total|from|sr\\.?\\s*no\\.?|running', na=False)]
         
-        # Parse and anchor explicit datetime index mapping
         c_mod['Parsed_Date'] = pd.to_datetime(c_mod.iloc[:, 0], errors='coerce')
         c_mod = c_mod.dropna(subset=['Parsed_Date'])
         
         # ─────────────────────────────────────────────────────────────
-        #  DATE FILTER VALIDATION STEP: 26 April 2026 → 8 May 2026
+        #  STRICT DATE FILTER CRITERIA: 26-Apr-2026 to 08-May-2026
         # ─────────────────────────────────────────────────────────────
         TARGET_START = pd.to_datetime('2026-04-26')
         TARGET_END = pd.to_datetime('2026-05-08')
@@ -1243,18 +1270,10 @@ with tab_comp:
         c_filtered = c_mod[(c_mod['Parsed_Date'] >= TARGET_START) & (c_mod['Parsed_Date'] <= TARGET_END)].copy()
         c_filtered = c_filtered.sort_values('Parsed_Date').reset_index(drop=True)
         
-        total_days_monitored = (TARGET_END - TARGET_START).days + 1
-        total_hours_per_compressor = total_days_monitored * 24.0
+        total_days = (TARGET_END - TARGET_START).days + 1
+        total_available_hours = total_days * 24.0
         
-        # Display data audit statistics on screen
-        st.markdown("### 📋 Automated Data Audit & Schema Verification")
-        st.code(f"""
-Shape of Raw Dataset: {comp_raw.shape}
-Shape of Filtered Dataset: {c_filtered.shape}
-Date Range Evaluated: {c_filtered['Parsed_Date'].min().strftime('%Y-%m-%d')} to {c_filtered['Parsed_Date'].max().strftime('%Y-%m-%d')}
-        """)
-        
-        # Explicit mapping structure for 5-compressor layout array
+        # Target Axis Positional Columns Map 
         compressor_slots = {
             "Compressor-1": {"stop": c_filtered.columns[1], "start": c_filtered.columns[2]},
             "Compressor-2": {"stop": c_filtered.columns[3], "start": c_filtered.columns[4]},
@@ -1268,111 +1287,92 @@ Date Range Evaluated: {c_filtered['Parsed_Date'].min().strftime('%Y-%m-%d')} to 
         all_target_dates = pd.date_range(start=TARGET_START, end=TARGET_END, freq='D')
         
         # ─────────────────────────────────────────────────────────────
-        #  COMPRESSOR RUNTIME & EXCEPTION DURATION PARSING MATRIX
+        #  MATHEMATICAL CORE ENGINE (DOWNTIME WINDOW PROCESSING)
         # ─────────────────────────────────────────────────────────────
         for comp_name, slots in compressor_slots.items():
             stop_col = slots["stop"]
             start_col = slots["start"]
             
-            total_non_working_hours = 0.0
-            stop_count = 0
-            start_count = 0
+            accumulated_working_hours = 0.0
+            accumulated_downtime_hours = 0.0
+            total_stops = 0
             
-            # Map values explicitly per calendar day
             for target_date in all_target_dates:
                 day_rows = c_filtered[c_filtered['Parsed_Date'].dt.date == target_date.date()]
-                day_non_working = 0.0
+                day_downtime = 0.0
                 
-                for _, row in day_rows.iterrows():
-                    stop_val = str(row[stop_col]).strip() if pd.notna(row[stop_col]) else ""
-                    start_val = str(row[start_col]).strip() if pd.notna(row[start_col]) else ""
-                    
-                    if stop_val and stop_val.lower() != 'nan' and start_val and start_val.lower() != 'nan':
-                        try:
-                            t_stop = pd.to_datetime(stop_val, format='%H:%M:%S', errors='coerce').time()
-                            t_start = pd.to_datetime(start_val, format='%H:%M:%S', errors='coerce').time()
+                if not day_rows.empty:
+                    for _, row in day_rows.iterrows():
+                        t_stop = normalize_to_time(row[stop_col])
+                        t_start = normalize_to_time(row[start_col])
+                        
+                        if t_stop is not None and t_start is not None:
+                            # Convert directly to standard minute deltas to secure normalization
+                            stop_minutes = t_stop.hour * 60 + t_stop.minute + t_stop.second / 60.0
+                            start_minutes = t_start.hour * 60 + t_start.minute + t_start.second / 60.0
                             
-                            if t_stop and t_start:
-                                dt_stop = pd.datetime.combine(target_date.date(), t_stop)
-                                dt_start = pd.datetime.combine(target_date.date(), t_start)
+                            # Handle Midnight Crossing Correction Check
+                            if start_minutes < stop_minutes:
+                                delta_hrs = ((1440.0 - stop_minutes) + start_minutes) / 60.0
+                            else:
+                                delta_hrs = (start_minutes - stop_minutes) / 60.0
                                 
-                                # Midnight crossover validation check
-                                if dt_start < dt_stop:
-                                    dt_start += pd.timedelta(days=1)
-                                    
-                                delta_hrs = (dt_start - dt_stop).total_seconds() / 3600.0
-                                if delta_hrs > 0:
-                                    day_non_working += delta_hrs
-                                    stop_count += 1
-                                    start_count += 1
-                        except Exception:
-                            pass
+                            day_downtime += max(0.0, delta_hrs)
+                            total_stops += 1
                 
-                day_working = max(0.0, 24.0 - day_non_working)
-                total_non_working_hours += day_non_working
+                # Rule Fallback Guard: If missing or zeroed out, downtime remains 0.0, working hours become 24.0
+                day_downtime = min(24.0, day_downtime)
+                day_working = 24.0 - day_downtime
+                
+                accumulated_downtime_hours += day_downtime
+                accumulated_working_hours += day_working
                 
                 daily_records.append({
                     "Date": target_date,
                     "Compressor": comp_name,
                     "Working Hours": round(day_working, 2),
-                    "Non-Working Hours": round(day_non_working, 2)
+                    "Downtime Hours": round(day_downtime, 2),
+                    "Utilization %": round((day_working / 24.0) * 100.0, 1)
                 })
             
-            total_working_hours = max(0.0, total_hours_per_compressor - total_non_working_hours)
-            utilization_pct = (total_working_hours / total_hours_per_compressor) * 100.0
-            downtime_pct = (total_non_working_hours / total_hours_per_compressor) * 100.0
+            utilization_pct = (accumulated_working_hours / total_available_hours) * 100.0
+            downtime_pct = (accumulated_downtime_hours / total_available_hours) * 100.0
             
             summary_records.append({
                 "Compressor Name": str(comp_name),
-                "Working Hours": float(total_working_hours),
-                "Non-Working Hours": float(total_non_working_hours),
+                "Working Hours": round(float(accumulated_working_hours), 2),
+                "Non-Working Hours": round(float(accumulated_downtime_hours), 2),
                 "Utilization %": round(float(utilization_pct), 1),
                 "Downtime %": round(float(downtime_pct), 1),
-                "Start Count": int(start_count),
-                "Stop Count": int(stop_count)
+                "Stop Events Count": int(total_stops)
             })
             
         df_summary = pd.DataFrame(summary_records)
         df_daily = pd.DataFrame(daily_records)
         
         # ─────────────────────────────────────────────────────────────
-        #  DATA INTEGRITY SELF-AUDIT CHECKS
+        #  PRODUCTION INTEGRITY CHECKS
         # ─────────────────────────────────────────────────────────────
-        st.markdown("### 🛡️ Data Integrity & Time-Conservation Audit")
+        st.markdown(f"### 🏭 Operational Window Analysis Summary")
+        st.write(f"Reporting Scope: **{TARGET_START.strftime('%d-%b-%Y')} to {TARGET_END.strftime('%d-%b-%Y')}** ({total_available_hours:,.0f} Total Available Hours/Node)")
         
-        validation_errors = 0
-        audit_logs = []
+        validation_passed = True
         for _, r in df_summary.iterrows():
-            calculated_sum = r["Working Hours"] + r["Non-Working Hours"]
-            discrepancy = abs(calculated_sum - total_hours_per_compressor)
-            if discrepancy > 0.01:
-                validation_errors += 1
-                audit_logs.append(f"❌ {r['Compressor Name']} failed audit by {discrepancy:.2f} hours.")
-            else:
-                audit_logs.append(f"✓ {r['Compressor Name']} verified cleanly: {calculated_sum:.1f}/{total_hours_per_compressor:.1f} hours.")
+            time_sum = r["Working Hours"] + r["Non-Working Hours"]
+            if abs(time_sum - total_available_hours) > 0.01:
+                validation_passed = False
                 
-        for log in audit_logs:
-            st.write(log)
+        if validation_passed:
+            st.markdown('<div class="alert-ok">✓ <strong>Time Balance Integrity:</strong> Working Hours + Non-Working Hours perfectly equals total monitored period scale hours for all nodes.</div>', unsafe_allow_html=True)
             
-        # Display data frame validation specifications explicitly
-        st.code(f"""
-Null Values inside df_summary:
-{df_summary.isnull().sum().to_string()}
-
-DataFrame Summary Data-Types:
-{df_summary.dtypes.to_string()}
-        """)
-        
-        # ─────────────────────────────────────────────────────────────
-        #  RENDER CHARTS ONLY AFTER VALIDATION REASSURANCE
-        # ─────────────────────────────────────────────────────────────
-        if validation_errors == 0:
-            st.success("✓ All system assets passed the time balance verification. Initializing Plotly rendering canvas...")
+            # ─────────────────────────────────────────────────────────────
+            #  COMPATIBLE, STABLE PLOTLY GRAPH RE-ENGINEERING
+            # ─────────────────────────────────────────────────────────────
+            st.markdown('<div class="sec-title">📊 Visual Efficiency Matrices</div>', unsafe_allow_html=True)
+            v_col1, v_col2 = st.columns(2)
             
-            col_v1, col_v2 = st.columns(2)
-            
-            with col_v1:
-                # Chart 1: Compressor Utilization Horizon Comparison
+            with v_col1:
+                # Chart 1: Utilization Comparison Horizontal Bar
                 fig1 = go.Figure()
                 fig1.add_trace(go.Bar(
                     y=df_summary["Compressor Name"],
@@ -1383,96 +1383,61 @@ DataFrame Summary Data-Types:
                     textposition='auto'
                 ))
                 fig1.update_layout(
-                    title="Compressor Asset Operational Utilization Ratio (%)",
+                    title="Compressor Operational Utilization Ratio (%)",
                     xaxis=dict(title="Utilization (%)", range=[0, 105], gridcolor='#E2E8F0'),
-                    yaxis=dict(title="Asset Node", autorange="reversed"),
-                    height=350, margin=dict(l=20, r=20, t=40, b=40), plot_bgcolor='rgba(0,0,0,0)'
+                    yaxis=dict(title="Asset Identification Node", autorange="reversed"),
+                    height=340, margin=dict(l=20, r=20, t=40, b=40), plot_bgcolor='rgba(0,0,0,0)'
                 )
                 st.plotly_chart(fig1, use_container_width=True)
                 
-                # Chart 3: Daily Runtime Trend
+                # Chart 3: Daily Trend Stream Line
                 fig3 = go.Figure()
                 for c_name in df_summary["Compressor Name"].unique():
-                    c_df = df_daily[df_daily["Compressor"] == c_name]
+                    sub_df = df_daily[df_daily["Compressor"] == c_name]
                     fig3.add_trace(go.Scatter(
-                        x=c_df["Date"].dt.strftime('%d-%b'),
-                        y=c_df["Working Hours"],
+                        x=sub_df["Date"].dt.strftime('%d-%b'),
+                        y=sub_df["Working Hours"],
                         mode='lines+markers',
                         name=c_name
                     ))
                 fig3.update_layout(
-                    title="Daily Runtime Trend (Working Hours/Day)",
-                    xaxis=dict(title="Timeline Axis", tickangle=45),
-                    yaxis=dict(title="Runtime (Hours)", range=[0, 26], gridcolor='#E2E8F0'),
-                    height=350, margin=dict(l=20, r=20, t=40, b=40), plot_bgcolor='rgba(0,0,0,0)'
+                    title="Daily Working Hours Allocations Trend Line",
+                    xaxis=dict(title="Timeline Calendar Stream", tickangle=45),
+                    yaxis=dict(title="Active Duty Run (Hours)", range=[-1, 26], gridcolor='#E2E8F0'),
+                    height=340, margin=dict(l=20, r=20, t=40, b=40), plot_bgcolor='rgba(0,0,0,0)'
                 )
                 st.plotly_chart(fig3, use_container_width=True)
                 
-            with col_v2:
-                # Chart 2: Stacked Working vs Non-Working Hours Breakdown
+            with v_col2:
+                # Chart 2: Stacked Working vs Non-Working Bar
                 fig2 = go.Figure()
-                fig2.add_trace(go.Bar(name='Working Hours', y=df_summary["Compressor Name"], x=df_summary["Working Hours"], orientation='h', marker_color='#16A34A'))
-                fig2.add_trace(go.Bar(name='Non-Working Hours', y=df_summary["Compressor Name"], x=df_summary["Non-Working Hours"], orientation='h', marker_color='#E01934'))
+                fig2.add_trace(go.Bar(name='Working Run Time', y=df_summary["Compressor Name"], x=df_summary["Working Hours"], orientation='h', marker_color='#16A34A'))
+                fig2.add_trace(go.Bar(name='Downtime Windows', y=df_summary["Compressor Name"], x=df_summary["Non-Working Hours"], orientation='h', marker_color='#E01934'))
                 fig2.update_layout(
-                    barmode='stack', title="Time Budget Allocation: Working vs Non-Working Hours",
-                    xaxis=dict(title="Total System Time (Hours)", gridcolor='#E2E8F0'),
+                    barmode='stack', title="Time Budget Profile: Working vs Non-Working Hours",
+                    xaxis=dict(title="Total Budget Block Hours", gridcolor='#E2E8F0'),
                     yaxis=dict(autorange="reversed"),
-                    height=350, margin=dict(l=20, r=20, t=40, b=40), plot_bgcolor='rgba(0,0,0,0)'
+                    height=340, margin=dict(l=20, r=20, t=40, b=40), plot_bgcolor='rgba(0,0,0,0)'
                 )
                 st.plotly_chart(fig2, use_container_width=True)
                 
-                # Chart 4: Daily Downtime Trend
+                # Chart 4: Top Downtime Ranked Bar
+                df_sorted_down = df_summary.sort_values('Non-Working Hours', ascending=True)
                 fig4 = go.Figure()
-                for c_name in df_summary["Compressor Name"].unique():
-                    c_df = df_daily[df_daily["Compressor"] == c_name]
-                    fig4.add_trace(go.Scatter(
-                        x=c_df["Date"].dt.strftime('%d-%b'),
-                        y=c_df["Non-Working Hours"],
-                        mode='lines+markers',
-                        name=c_name
-                    ))
+                fig4.add_trace(go.Bar(x=df_sorted_down["Non-Working Hours"], y=df_sorted_down["Compressor Name"], orientation='h', marker_color='#FF9F1C'))
                 fig4.update_layout(
-                    title="Daily Downtime Trend (Non-Working Hours/Day)",
-                    xaxis=dict(title="Timeline Axis", tickangle=45),
-                    yaxis=dict(title="Downtime (Hours)", range=[0, 26], gridcolor='#E2E8F0'),
-                    height=350, margin=dict(l=20, r=20, t=40, b=40), plot_bgcolor='rgba(0,0,0,0)'
+                    title="Ranked System Asset Downtime Accumulations (Total Hours)",
+                    xaxis=dict(title="Non-Working Time (Hours)", gridcolor='#E2E8F0'),
+                    yaxis=dict(autorange="reversed"),
+                    height=340, margin=dict(l=20, r=20, t=40, b=40), plot_bgcolor='rgba(0,0,0,0)'
                 )
                 st.plotly_chart(fig4, use_container_width=True)
-                
-            # Chart 5 & 6 Row
-            col_v3, col_v4 = st.columns(2)
-            with col_v3:
-                # Chart 5: Top Downtime Compressors
-                df_sorted_down = df_summary.sort_values('Non-Working Hours', ascending=True)
-                fig5 = go.Figure()
-                fig5.add_trace(go.Bar(x=df_sorted_down["Non-Working Hours"], y=df_sorted_down["Compressor Name"], orientation='h', marker_color='#FF9F1C'))
-                fig5.update_layout(
-                    title="Top Downtime Compressors (Ranked)",
-                    xaxis=dict(title="Downtime (Hours)", gridcolor='#E2E8F0'),
-                    yaxis=dict(autorange="reversed"), height=350, margin=dict(l=20, r=20, t=40, b=40), plot_bgcolor='rgba(0,0,0,0)'
-                )
-                st.plotly_chart(fig5, use_container_width=True)
-                
-            with col_v4:
-                # Chart 6: Heatmap Matrix
-                pivot_heatmap = df_daily.pivot(index="Compressor", columns="Date", values="Working Hours")
-                pivot_heatmap.columns = [c.strftime('%d-%b') for c in pivot_heatmap.columns]
-                fig6 = go.Figure(data=go.Heatmap(
-                    z=pivot_heatmap.values, x=list(pivot_heatmap.columns), y=list(pivot_heatmap.index),
-                    colorscale='YlGnBu', colorbar=dict(title="Hours Active")
-                ))
-                fig6.update_layout(
-                    title="Utilization Heatmap Matrix (Compressor vs Date)",
-                    xaxis=dict(title="Timeline Calendar Matrix"), yaxis=dict(title="Asset Node ID"),
-                    height=350, margin=dict(l=20, r=20, t=40, b=40)
-                )
-                st.plotly_chart(fig6, use_container_width=True)
 
-            # Performance Matrix Display Window
-            st.markdown('<div class="sec-title">📋 Consolidated Performance Summary Matrix</div>', unsafe_allow_html=True)
+            # Executive Tabular Overview
+            st.markdown('<div class="sec-title">📋 Performance Ledger & Statistics Summary</div>', unsafe_allow_html=True)
             st.dataframe(df_summary, use_container_width=True, hide_index=True)
         else:
-            st.error("❌ Plotly initialization aborted because data validation audits failed.")
-            st.dataframe(df_summary, use_container_width=True)
+            st.error("❌ Process calculations aborted due to time budget validation discrepancy failures.")
+            st.dataframe(df_summary, use_container_width=True, hide_index=True)
     else:
         st.markdown('<div class="alert-info">Power consumption analytical worksheet missing from repo root.</div>', unsafe_allow_html=True)
