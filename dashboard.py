@@ -973,44 +973,56 @@ with tab_power:
     power_df = load_excel_sheet('Sheet1', fallback_header_row=1)
     if power_df is not None and not power_df.empty:
         p = power_df.copy()
-        p['Date'] = fast_parse_dates(p['Date'])
-        p = p.dropna(subset=['Date']).sort_values('Date')
         
-        # Auto-detect columns
-        dunkin_col = next((c for c in p.columns if 'dunkin' in c.lower()), None)
-        clc_col = next((c for c in p.columns if 'clc' in c.lower()), None)
-        deep_col = next((c for c in p.columns if 'deep-total' in c.lower()), None)
+        # Auto-detect cumulative meter columns
+        dunkin_meter_col = next((c for c in p.columns if 'dunkin' in c.lower()), None)
+        clc_meter_col = next((c for c in p.columns if 'clc' in c.lower()), None)
+        deep_meter_col = next((c for c in p.columns if 'deep-total' in c.lower()), None)
         
         # Find ALL savings columns to get true total raw savings
         savings_cols = [c for c in p.columns if 'saving' in str(c).lower()]
         
-        if dunkin_col and clc_col:
-            p[dunkin_col] = pd.to_numeric(p[dunkin_col], errors='coerce').fillna(0)
-            p[clc_col]    = pd.to_numeric(p[clc_col],    errors='coerce').fillna(0)
-            if deep_col:
-                p[deep_col] = pd.to_numeric(p[deep_col], errors='coerce').fillna(0)
+        if dunkin_meter_col and clc_meter_col:
+            # Parse dates
+            p['Date'] = fast_parse_dates(p['Date'])
+            p = p.dropna(subset=['Date'])
             
-            for sc in savings_cols:
-                p[sc] = pd.to_numeric(p[sc], errors='coerce').fillna(0)
-                
-            # Calculate total raw savings (SUM of all savings columns)
-            if savings_cols:
-                p['Total Raw Savings'] = p[savings_cols].sum(axis=1)
-            else:
-                p['Total Raw Savings'] = 0
-                
-            # Calculate daily consumption for KPI and Table
-            p['Dunkin Daily'] = p[dunkin_col].diff().fillna(0).clip(lower=0)
-            p['CLC Daily'] = p[clc_col].diff().fillna(0).clip(lower=0)
-            if deep_col:
-                p['Deep Daily'] = p[deep_col].diff().fillna(0).clip(lower=0)
-            else:
-                p['Deep Daily'] = 0
-                
-            p['Combined Load'] = p['Dunkin Daily'] + p['CLC Daily'] + p['Deep Daily']
-            p['Optimized Value'] = p['Total Raw Savings'] * 7
-
             if not p.empty:
+                # CRITICAL FIX: Reindex to continuous date range to handle missing dates
+                date_range = pd.date_range(start=p['Date'].min(), end=p['Date'].max(), freq='D')
+                p = p.set_index('Date').reindex(date_range).rename_axis('Date').reset_index()
+                
+                # Convert meter columns to numeric
+                for col in [dunkin_meter_col, clc_meter_col, deep_meter_col] + savings_cols:
+                    if col and col in p.columns:
+                        p[col] = pd.to_numeric(p[col], errors='coerce')
+                
+                # Function to calculate daily consumption safely
+                def calc_daily_consumption(series):
+                    diff = series.diff()
+                    # If current or previous is NaN, diff is NaN. Fill with 0.
+                    # Clip negative values to 0 (handles meter resets)
+                    return diff.fillna(0).clip(lower=0)
+                
+                # Calculate daily consumption
+                p['Dunkin Daily'] = calc_daily_consumption(p[dunkin_meter_col])
+                p['CLC Daily'] = calc_daily_consumption(p[clc_meter_col])
+                if deep_meter_col and deep_meter_col in p.columns:
+                    p['Deep Daily'] = calc_daily_consumption(p[deep_meter_col])
+                else:
+                    p['Deep Daily'] = 0.0
+                    
+                p['Combined Load'] = p['Dunkin Daily'] + p['CLC Daily'] + p['Deep Daily']
+                
+                # Handle Savings (Raw values, no modification)
+                if savings_cols:
+                    # Sum all savings columns. Fill NaN with 0 for missing dates.
+                    p['Total Raw Savings'] = p[savings_cols].sum(axis=1, skipna=True).fillna(0)
+                else:
+                    p['Total Raw Savings'] = 0.0
+                    
+                p['Optimized Value'] = p['Total Raw Savings'] * 7
+
                 # B. KPI Cards
                 st.markdown('<div class="sec-title">⚡ Key Performance Indicators</div>', unsafe_allow_html=True)
                 k1, k2, k3, k4, k5, k6 = st.columns(6)
@@ -1026,13 +1038,13 @@ with tab_power:
                 # 1. Keep original graphs exactly as they appear
                 st.markdown('<div class="sec-title">Daily Power Grid Footprint (kWh)</div>', unsafe_allow_html=True)
                 # Original logic filtered out rows where dunkin_col >= 500_000
-                p_graph = p[p[dunkin_col] < 500_000].copy()
+                # We use the cumulative columns for the original graph
+                p_graph = p[p[dunkin_meter_col] < 500_000].copy()
                 if not p_graph.empty:
-                    st.area_chart(p_graph.set_index('Date')[[dunkin_col, clc_col]], color=["#002D62","#FF9F1C"])
+                    st.area_chart(p_graph.set_index('Date')[[dunkin_meter_col, clc_meter_col]], color=["#002D62","#FF9F1C"])
                 
                 if savings_cols:
                     st.markdown('<div class="sec-title">Daily Recovery Realized (₹)</div>', unsafe_allow_html=True)
-                    # Original code plotted the first detected savings column
                     first_savings_col = savings_cols[0]
                     st.bar_chart(p.set_index('Date')[first_savings_col], color="#16A34A")
 
@@ -1058,6 +1070,7 @@ with tab_power:
             st.error("Expected Blast column labels could not be parsed from Sheet1.")
     else:
         st.markdown('<div class="alert-info">Power consumption analytical worksheet missing from repo root.</div>', unsafe_allow_html=True)
+
 # ==============================================================================
 #  TAB 4 — ASSET DUTY CYCLES
 # ==============================================================================
