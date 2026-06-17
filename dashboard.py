@@ -1210,134 +1210,383 @@ with tab_runtime:
     else:
         st.markdown('<div class="alert-info">Asset duty-cycle log metrics are not active.</div>', unsafe_allow_html=True)
 
-
 # ==============================================================================
-#  TAB 5 — COMPRESSOR OPTIMISATION
+#  TAB 5 — COMPRESSOR OPTIMISATION (REFACTORED — OFF-HOURS / DOWNTIME FOCUS)
 # ==============================================================================
 with tab_comp:
-    comp_df = load_excel_sheet('Sheet3', fallback_header_row=3)
-    if comp_df is not None and not comp_df.empty:
-        c  = comp_df.copy()
-        
-        # Clean column names to remove hidden characters/spaces
-        c.columns = [str(col).strip() for col in c.columns]
-        
-        # Print detected columns for debugging
-        st.write("Available Columns in Sheet3:", list(c.columns))
-        
-        c  = c[~c.iloc[:,0].astype(str).str.strip().str.lower().str.fullmatch(r'date|total|from|sr\.?\s*no\.?|stop|start', na=False)]
-        c.iloc[:,0] = fast_parse_dates(c.iloc[:,0])
-        c  = c.dropna(subset=[c.columns[0]]).sort_values(c.columns[0])
-        
-        # Detect Savings column safely
-        possible_saving_cols = [
-            col for col in c.columns
-            if "saving" in str(col).lower()
-        ]
-        
-        if len(possible_saving_cols) == 0:
-            st.warning("Savings column not found in Sheet3. Continuing without savings metrics.")
-            sav_col = None
-        else:
-            sav_col = possible_saving_cols[0]
-            st.info(f"Detected Savings Column: `{sav_col}`")
+    try:
+        # ------------------------------------------------------------------
+        # 1. LOAD & SANITIZE RAW SHEET
+        # ------------------------------------------------------------------
+        comp_df = load_excel_sheet('Sheet3', fallback_header_row=3)
 
-        # Safely process savings column
-        if sav_col and sav_col in c.columns:
-            c[sav_col] = pd.to_numeric(c[sav_col], errors='coerce').fillna(0)
-            c['Cumulative Savings'] = c[sav_col].cumsum()
-        else:
-            c['Cumulative Savings'] = 0
-            sav_col = None # Ensure it's None if not found
-
-        date_col = c.columns[0]
-
-        k1, k2, k3, k4 = st.columns(4)
-        if sav_col and sav_col in c.columns:
-            with k1: st.metric("Relief Window Saved", f"{c[sav_col].sum():,.1f} hrs")
-            with k2: st.metric("Mean Daily Dampening", f"{c[sav_col].mean():.1f} hrs")
-            with k3: st.metric("Peak Single Window Stop", f"{c[sav_col].max():.1f} hrs")
-        else:
-            with k1: st.metric("Relief Window Saved", "N/A")
-            with k2: st.metric("Mean Daily Dampening", "N/A")
-            with k3: st.metric("Peak Single Window Stop", "N/A")
-        with k4: st.metric("Audited Shift Blocks",     f"{len(c)}")
-
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown('<div class="sec-title">Daily Rest Allocations (hrs)</div>', unsafe_allow_html=True)
-            if sav_col and sav_col in c.columns:
-                st.line_chart(c.set_index(date_col)[sav_col], color="#002D62")
-            else:
-                st.info("No savings data available to plot.")
-        with col2:
-            st.markdown('<div class="sec-title">Cumulative Rest Curve Metrics</div>', unsafe_allow_html=True)
-            if sav_col and sav_col in c.columns:
-                st.area_chart(c.set_index(date_col)['Cumulative Savings'], color="#FF9F1C")
-            else:
-                st.info("No cumulative savings data available to plot.")
-
-        if temp_df is not None and not temp_df.empty:
-            st.markdown('<div class="sec-title">Thermodynamic Drift vs. System Optimization Rest Cycles</div>', unsafe_allow_html=True)
-            
-            if sav_col and sav_col in c.columns:
-                daily_rest_agg = c.groupby(c[date_col].dt.date)[sav_col].sum().reset_index()
-                daily_rest_agg.columns = ['Date', 'Rest_Hours']
-                daily_rest_agg['Date'] = pd.to_datetime(daily_rest_agg['Date'])
-                
-                t_clean = temp_df.copy()
-                t_clean['Date_Key'] = pd.to_datetime(t_clean['Time']).dt.date
-                
-                dough1_col = next((col for col in t_clean.columns if 'cooler1' in col.lower().replace(" ", "")), None)
-                
-                if dough1_col:
-                    daily_thermal_mean = t_clean.groupby('Date_Key')[dough1_col].mean().reset_index()
-                    daily_thermal_mean.columns = ['Date', 'Mean_Temp']
-                    daily_thermal_mean['Date'] = pd.to_datetime(daily_thermal_mean['Date'])
-                    
-                    diagnostic_matrix = pd.merge(daily_rest_agg, daily_thermal_mean, on='Date', how='inner')
-                    
-                    if not diagnostic_matrix.empty:
-                        fig_diag = make_subplots(specs=[[{"secondary_y": True}]])
-                        x_labels = diagnostic_matrix['Date'].dt.strftime('%d-%b').tolist()
-                        
-                        fig_diag.add_trace(
-                            go.Bar(x=x_labels, y=diagnostic_matrix['Rest_Hours'].tolist(), name="Rest Window (Hrs)", marker_color='#002D62', opacity=0.75),
-                            secondary_y=False
-                        )
-                        fig_diag.add_trace(
-                            go.Scatter(x=x_labels, y=diagnostic_matrix['Mean_Temp'].tolist(), mode='lines+markers', name="Dough 1 Mean Temp (°C)", line=dict(color='#E01934', width=2.5)),
-                            secondary_y=True
-                        )
-                        fig_diag.update_layout(hovermode="x unified", margin=dict(l=20, r=20, t=10, b=10), height=350, legend=dict(orientation="h", y=1.15))
-                        fig_diag.update_yaxes(title_text="Rest Profile (Hrs)", secondary_y=False)
-                        fig_diag.update_yaxes(title_text="Thermal State (°C)", secondary_y=True)
-                        st.plotly_chart(fig_diag, use_container_width=True)
-            else:
-                st.info("No savings data available for thermodynamic drift analysis.")
-
-        st.markdown('<div class="sec-title">Compressor Structural Load Activation Cycles</div>', unsafe_allow_html=True)
-        comp_metrics = {}
-        run_cols = [col for col in c.columns if any(phrase in str(col).lower() for phrase in ['stop', 'start', 'run', 'comp'])]
-        
-        for idx, col_name in enumerate(run_cols[:5], 1):
-            active_logs = c[c[col_name].astype(str).str.strip().str.len() > 0]
-            comp_metrics[f"Compressor Component {idx}"] = len(active_logs)
-            
-        if comp_metrics:
-            cm_df = pd.DataFrame(list(comp_metrics.items()), columns=["Component", "Cycle Count"]).sort_values("Cycle Count", ascending=False)
-            st.bar_chart(cm_df.set_index("Component")["Cycle Count"], color="#E01934")
-
-        st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
-        with st.expander("📂 View & Download Compressor Optimization Raw Sheet Data", expanded=False):
-            st.dataframe(c, use_container_width=True, hide_index=True)
-            csv_data = c.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="Download Sheet3 Optimisation Data as CSV",
-                data=csv_data,
-                file_name="freon_sheet3_compressor_optimization.csv",
-                mime="text/csv",
-                key="btn_download_comp"
+        if comp_df is None or comp_df.empty:
+            st.markdown(
+                '<div class="alert-info">Compressor analytical tracking components not parsed.</div>',
+                unsafe_allow_html=True
             )
-    else:
-        st.markdown('<div class="alert-info">Compressor analytical tracking components not parsed.</div>', unsafe_allow_html=True)
+        else:
+            c = comp_df.copy()
+            c.columns = [str(col).strip() for col in c.columns]   # strip hidden chars
+            
+            # Drop metadata/header rows that leaked into the data body
+            c = c[~c.iloc[:, 0].astype(str).str.strip().str.lower().str.fullmatch(
+                r'date|total|from|sr\.?\s*no\.?|stop|start', na=False
+            )]
+            
+            # Parse dates defensively
+            c.iloc[:, 0] = fast_parse_dates(c.iloc[:, 0])
+            c = c.dropna(subset=[c.columns[0]]).sort_values(c.columns[0]).reset_index(drop=True)
+            date_col = c.columns[0]
+
+            # ------------------------------------------------------------------
+            # 2. SAVINGS COLUMN DETECTION  (existing logic preserved)
+            # ------------------------------------------------------------------
+            possible_saving_cols = [col for col in c.columns if "saving" in str(col).lower()]
+            if not possible_saving_cols:
+                st.warning("Savings column not found in Sheet3. Continuing without savings metrics.")
+                sav_col = None
+            else:
+                sav_col = possible_saving_cols[0]
+                st.info(f"Detected Savings Column: `{sav_col}`")
+
+            if sav_col and sav_col in c.columns:
+                c[sav_col] = pd.to_numeric(c[sav_col], errors='coerce').fillna(0)
+                c['Cumulative Savings'] = c[sav_col].cumsum()
+            else:
+                c['Cumulative Savings'] = 0
+                sav_col = None
+
+            # ------------------------------------------------------------------
+            # 3. KPI METRICS  (existing)
+            # ------------------------------------------------------------------
+            k1, k2, k3, k4 = st.columns(4)
+            if sav_col and sav_col in c.columns:
+                with k1: st.metric("Relief Window Saved", f"{c[sav_col].sum():,.1f} hrs")
+                with k2: st.metric("Mean Daily Dampening", f"{c[sav_col].mean():.1f} hrs")
+                with k3: st.metric("Peak Single Window Stop", f"{c[sav_col].max():.1f} hrs")
+            else:
+                with k1: st.metric("Relief Window Saved", "N/A")
+                with k2: st.metric("Mean Daily Dampening", "N/A")
+                with k3: st.metric("Peak Single Window Stop", "N/A")
+            with k4: st.metric("Audited Shift Blocks", f"{len(c)}")
+
+            # ------------------------------------------------------------------
+            # 4. DAILY REST & CUMULATIVE CURVE  (existing)
+            # ------------------------------------------------------------------
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown('<div class="sec-title">Daily Rest Allocations (hrs)</div>', unsafe_allow_html=True)
+                if sav_col and sav_col in c.columns:
+                    st.line_chart(c.set_index(date_col)[sav_col], color="#002D62")
+                else:
+                    st.info("No savings data available to plot.")
+            with col2:
+                st.markdown('<div class="sec-title">Cumulative Rest Curve Metrics</div>', unsafe_allow_html=True)
+                if sav_col and sav_col in c.columns:
+                    st.area_chart(c.set_index(date_col)['Cumulative Savings'], color="#FF9F1C")
+                else:
+                    st.info("No cumulative savings data available to plot.")
+
+            # ------------------------------------------------------------------
+            # 5. THERMODYNAMIC DRIFT  (existing, guarded)
+            # ------------------------------------------------------------------
+            try:
+                if temp_df is not None and not temp_df.empty:
+                    st.markdown(
+                        '<div class="sec-title">Thermodynamic Drift vs. System Optimization Rest Cycles</div>',
+                        unsafe_allow_html=True
+                    )
+                    if sav_col and sav_col in c.columns:
+                        daily_rest_agg = c.groupby(c[date_col].dt.date)[sav_col].sum().reset_index()
+                        daily_rest_agg.columns = ['Date', 'Rest_Hours']
+                        daily_rest_agg['Date'] = pd.to_datetime(daily_rest_agg['Date'])
+                        
+                        t_clean = temp_df.copy()
+                        t_clean['Date_Key'] = pd.to_datetime(t_clean['Time']).dt.date
+                        
+                        dough1_col = next((col for col in t_clean.columns if 'cooler1' in col.lower().replace(" ", "")), None)
+                        
+                        if dough1_col:
+                            daily_thermal_mean = t_clean.groupby('Date_Key')[dough1_col].mean().reset_index()
+                            daily_thermal_mean.columns = ['Date', 'Mean_Temp']
+                            daily_thermal_mean['Date'] = pd.to_datetime(daily_thermal_mean['Date'])
+                            
+                            diagnostic_matrix = pd.merge(daily_rest_agg, daily_thermal_mean, on='Date', how='inner')
+                            
+                            if not diagnostic_matrix.empty:
+                                fig_diag = make_subplots(specs=[[{"secondary_y": True}]])
+                                x_labels = diagnostic_matrix['Date'].dt.strftime('%d-%b').tolist()
+                                
+                                fig_diag.add_trace(
+                                    go.Bar(x=x_labels, y=diagnostic_matrix['Rest_Hours'].tolist(), name="Rest Window (Hrs)", marker_color='#002D62', opacity=0.75),
+                                    secondary_y=False
+                                )
+                                fig_diag.add_trace(
+                                    go.Scatter(x=x_labels, y=diagnostic_matrix['Mean_Temp'].tolist(), mode='lines+markers', name="Dough 1 Mean Temp (°C)", line=dict(color='#E01934', width=2.5)),
+                                    secondary_y=True
+                                )
+                                fig_diag.update_layout(hovermode="x unified", margin=dict(l=20, r=20, t=10, b=10), height=350, legend=dict(orientation="h", y=1.15))
+                                fig_diag.update_yaxes(title_text="Rest Profile (Hrs)", secondary_y=False)
+                                fig_diag.update_yaxes(title_text="Thermal State (°C)", secondary_y=True)
+                                st.plotly_chart(fig_diag, use_container_width=True)
+                    else:
+                        st.info("No savings data available for thermodynamic drift analysis.")
+            except NameError:
+                pass   # temp_df not defined in this runtime
+            except Exception as e:
+                st.warning(f"Thermodynamic drift analysis skipped: {e}")
+
+            # ==================================================================
+            # 6. NEW — COMPRESSOR DETECTION & OFF-HOURS / DOWNTIME ANALYTICS
+            # ==================================================================
+            st.markdown('<div class="sec-title">🔧 Compressor Downtime / OFF-Hours Analysis</div>', unsafe_allow_html=True)
+
+            try:
+                compressors = detect_compressors(c.columns)
+
+                # --------------------------------------------------------------
+                # 6a. Diagnostics panel
+                # --------------------------------------------------------------
+                with st.expander("🔍 Diagnostics: Detected Compressor Columns & Processing Method", expanded=False):
+                    if not compressors:
+                        st.warning("No compressor columns detected.")
+                    else:
+                        diag_rows = []
+                        for comp_id, cols in sorted(compressors.items()):
+                            diag_rows.append({
+                                'Compressor ID': comp_id,
+                                'Stop Column': cols.get('stop', '—'),
+                                'Start Column': cols.get('start', '—'),
+                                'Run Column': cols.get('run', '—'),
+                                'OFF/Downtime Column': cols.get('off', '—'),
+                                'Processing Method': (
+                                    'Direct OFF Column' if 'off' in cols else
+                                    'Stop→Start Duration' if ('stop' in cols and 'start' in cols) else
+                                    'Run Column' if 'run' in cols else
+                                    'Unknown'
+                                )
+                            })
+                        st.dataframe(pd.DataFrame(diag_rows), use_container_width=True, hide_index=True)
+
+                if not compressors:
+                    st.warning("No compressor columns detected. Expected patterns like `Compressor-1 Stop time`.")
+                else:
+                    st.success(f"Detected **{len(compressors)}** compressor(s): {', '.join(sorted(compressors.keys()))}")
+
+                    # ----------------------------------------------------------
+                    # 6b. Build per-row OFF-hours dataframe
+                    # ----------------------------------------------------------
+                    off_df = pd.DataFrame({date_col: c[date_col].values})
+
+                    for comp_id, cols in compressors.items():
+                        comp_name = f"Compressor {comp_id}"
+
+                        # Priority 1: Direct OFF/Downtime column
+                        if 'off' in cols:
+                            off_df[comp_name] = pd.to_numeric(c[cols['off']], errors='coerce')
+
+                        # Priority 2: Stop → Start calculation
+                        elif 'stop' in cols and 'start' in cols:
+                            stop_col, start_col = cols['stop'], cols['start']
+                            
+                            # Optimized: Parse columns independently instead of row-by-row apply
+                            stop_times = c[stop_col].apply(parse_time_string)
+                            start_times = c[start_col].apply(parse_time_string)
+                            
+                            off_hours_list = [
+                                calculate_off_hours(st_t, st_s) 
+                                for st_t, st_s in zip(stop_times, start_times)
+                            ]
+                            off_df[comp_name] = off_hours_list
+
+                        # Priority 3: Direct Run column (cannot reliably compute OFF hours)
+                        elif 'run' in cols:
+                            off_df[comp_name] = np.nan
+
+                    # Drop rows where every compressor is NaN
+                    comp_cols = [col for col in off_df.columns if col != date_col]
+                    if comp_cols:
+                        off_df = off_df.dropna(subset=comp_cols, how='all').reset_index(drop=True)
+
+                    if off_df.empty or not comp_cols:
+                        st.warning("No valid compressor OFF-hours data could be calculated.")
+                    else:
+                        # ------------------------------------------------------
+                        # 6c. Daily OFF-Hours table (Date | Compressor | OFF Hours)
+                        # ------------------------------------------------------
+                        melted_off = off_df.melt(id_vars=[date_col], var_name='Compressor', value_name='OFF Hours').dropna(subset=['OFF Hours'])
+                        melted_off_events = melted_off[melted_off['OFF Hours'] > 0].copy()
+
+                        st.markdown('<div class="sec-title">📋 Daily Downtime Log (Date | Compressor | OFF Hours)</div>', unsafe_allow_html=True)
+                        st.dataframe(
+                            melted_off_events.sort_values([date_col, 'Compressor']).reset_index(drop=True),
+                            use_container_width=True, hide_index=True
+                        )
+
+                        # ------------------------------------------------------
+                        # 6d. Summary statistics table
+                        # ------------------------------------------------------
+                        summary_rows = []
+                        for cc in comp_cols:
+                            valid = off_df[cc].dropna()
+                            if valid.empty: continue
+                            events = (valid > 0).sum()
+                            summary_rows.append({
+                                'Compressor': cc,
+                                'Total OFF Hours': round(valid.sum(), 2),
+                                'Average OFF Hours': round(valid.mean(), 2),
+                                'Maximum OFF Hours': round(valid.max(), 2),
+                                'Minimum OFF Hours': round(valid.min(), 2),
+                                'Downtime Events': int(events)
+                            })
+
+                        if not summary_rows:
+                            st.warning("All compressor records were invalid or empty.")
+                        else:
+                            summary_df = pd.DataFrame(summary_rows)
+                            
+                            st.markdown('<div class="sec-title">📊 Compressor Downtime Summary</div>', unsafe_allow_html=True)
+                            st.dataframe(
+                                summary_df.style.format({
+                                    'Total OFF Hours': '{:,.2f}',
+                                    'Average OFF Hours': '{:,.2f}',
+                                    'Maximum OFF Hours': '{:,.2f}',
+                                    'Minimum OFF Hours': '{:,.2f}'
+                                }),
+                                use_container_width=True, hide_index=True
+                            )
+
+                            # --------------------------------------------------
+                            # 6e. CHART 1 — Bar: Total OFF Hours per Compressor
+                            # --------------------------------------------------
+                            st.markdown('<div class="sec-title">Total OFF Hours by Compressor</div>', unsafe_allow_html=True)
+                            fig_bar = px.bar(summary_df, x='Compressor', y='Total OFF Hours', color='Compressor', text='Total OFF Hours')
+                            fig_bar.update_layout(showlegend=False, height=400, margin=dict(l=20, r=20, t=40, b=20))
+                            fig_bar.update_traces(texttemplate='%{text:.1f}', textposition='outside')
+                            st.plotly_chart(fig_bar, use_container_width=True)
+
+                            # --------------------------------------------------
+                            # 6f. CHART 2 — Line: Daily OFF Hours Trend
+                            # --------------------------------------------------
+                            st.markdown('<div class="sec-title">Daily OFF Hours Trend</div>', unsafe_allow_html=True)
+                            fig_line = px.line(melted_off, x=date_col, y='OFF Hours', color='Compressor', markers=True)
+                            fig_line.update_layout(height=400, hovermode='x unified', margin=dict(l=20, r=20, t=40, b=20))
+                            st.plotly_chart(fig_line, use_container_width=True)
+
+                            # --------------------------------------------------
+                            # 6g. CHART 3 — Stacked Area: Daily Contribution
+                            # --------------------------------------------------
+                            st.markdown('<div class="sec-title">Daily Compressor Downtime Contribution (Stacked Area)</div>', unsafe_allow_html=True)
+                            fig_area = px.area(melted_off, x=date_col, y='OFF Hours', color='Compressor')
+                            fig_area.update_layout(height=400, hovermode='x unified', margin=dict(l=20, r=20, t=40, b=20))
+                            st.plotly_chart(fig_area, use_container_width=True)
+
+                            # --------------------------------------------------
+                            # 6h. CHART 4 — Pie: Downtime Share
+                            # --------------------------------------------------
+                            st.markdown('<div class="sec-title">Downtime Share Distribution</div>', unsafe_allow_html=True)
+                            fig_pie = px.pie(summary_df, values='Total OFF Hours', names='Compressor', hole=0.3)
+                            fig_pie.update_layout(height=400, margin=dict(l=20, r=20, t=40, b=20))
+                            fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+                            st.plotly_chart(fig_pie, use_container_width=True)
+
+                            # --------------------------------------------------
+                            # 6i. CHART 5 — Heatmap: Compressor × Date
+                            # --------------------------------------------------
+                            st.markdown('<div class="sec-title">Downtime Heatmap (Compressor × Date)</div>', unsafe_allow_html=True)
+                            try:
+                                pivot_df = melted_off.pivot_table(index='Compressor', columns=date_col, values='OFF Hours', aggfunc='sum').fillna(0)
+                                date_labels = [d.strftime('%d-%b') for d in pivot_df.columns]
+                                
+                                fig_heat = go.Figure(data=go.Heatmap(
+                                    z=pivot_df.values, x=date_labels, y=pivot_df.index.tolist(),
+                                    colorscale='YlOrRd', colorbar=dict(title='OFF Hours'),
+                                    hovertemplate='Compressor: %{y}<br>Date: %{x}<br>OFF Hours: %{z:.2f}<extra></extra>'
+                                ))
+                                fig_heat.update_layout(height=350, margin=dict(l=20, r=20, t=40, b=20), xaxis=dict(title='Date', tickangle=45), yaxis=dict(title='Compressor'))
+                                st.plotly_chart(fig_heat, use_container_width=True)
+                            except Exception as e:
+                                st.warning(f"Heatmap generation skipped: {e}")
+
+            except Exception as e:
+                st.error(f"Compressor OFF-hours analysis failed: {e}")
+                st.info("Verify that compressor columns follow patterns like `Compressor-1 Stop time`.")
+
+            # ==================================================================
+            # 7. IMPROVED SAVINGS LOGIC
+            # ==================================================================
+            st.markdown('<div class="sec-title">💰 Estimated Energy Savings from Compressor Downtime</div>', unsafe_allow_html=True)
+
+            try:
+                if sav_col and sav_col in c.columns and 'off_df' in locals() and not off_df.empty and comp_cols:
+                    # Calculate total calculated OFF hours across all compressors per day
+                    daily_calc_off = off_df.set_index(date_col)[comp_cols].sum(axis=1).reset_index()
+                    daily_calc_off.columns = [date_col, 'Calculated OFF Hours']
+
+                    # Merge with actual savings
+                    savings_daily = c[[date_col, sav_col]].copy()
+                    savings_merged = pd.merge(daily_calc_off, savings_daily, on=date_col, how='inner')
+
+                    if not savings_merged.empty:
+                        total_calc_off = savings_merged['Calculated OFF Hours'].sum()
+                        total_savings_hrs = savings_merged[sav_col].sum()
+
+                        savings_pct = (total_savings_hrs / total_calc_off * 100) if total_calc_off > 0 else 0
+
+                        sk1, sk2, sk3 = st.columns(3)
+                        with sk1: st.metric("Total Calculated OFF Hours", f"{total_calc_off:,.1f} hrs")
+                        with sk2: st.metric("Total Savings Hours (Actual)", f"{total_savings_hrs:,.1f} hrs")
+                        with sk3: st.metric("Savings Efficiency %", f"{savings_pct:.1f}%")
+
+                        # Savings table
+                        savings_table_rows = []
+                        for cc in comp_cols:
+                            comp_total = off_df[cc].sum()
+                            contrib_pct = (comp_total / total_calc_off * 100) if total_calc_off > 0 else 0
+                            est_savings = comp_total * (total_savings_hrs / total_calc_off) if total_calc_off > 0 else 0
+                            
+                            savings_table_rows.append({
+                                'Compressor': cc,
+                                'Total OFF Hours': round(comp_total, 2),
+                                'Contribution %': round(contrib_pct, 2),
+                                'Estimated Savings Hours': round(est_savings, 2)
+                            })
+
+                        savings_table_df = pd.DataFrame(savings_table_rows)
+                        
+                        st.markdown('<div class="sec-title">📊 Compressor Savings Contribution</div>', unsafe_allow_html=True)
+                        st.dataframe(
+                            savings_table_df.style.format({
+                                'Total OFF Hours': '{:,.2f}',
+                                'Contribution %': '{:,.2f}%',
+                                'Estimated Savings Hours': '{:,.2f}'
+                            }),
+                            use_container_width=True, hide_index=True
+                        )
+                    else:
+                        st.info("No overlapping data between OFF-hours and savings columns.")
+                else:
+                    st.info("Savings column or OFF-hours data not available for savings estimation.")
+            except Exception as e:
+                st.warning(f"Savings estimation skipped: {e}")
+
+            # ------------------------------------------------------------------
+            # 8. RAW DATA INSPECTOR & CSV EXPORT  (existing)
+            # ------------------------------------------------------------------
+            st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
+            with st.expander("📂 View & Download Compressor Optimization Raw Sheet Data", expanded=False):
+                st.dataframe(c, use_container_width=True, hide_index=True)
+                csv_data = c.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="Download Sheet3 Optimisation Data as CSV",
+                    data=csv_data,
+                    file_name="freon_sheet3_compressor_optimization.csv",
+                    mime="text/csv",
+                    key="btn_download_comp"
+                )
+
+    except Exception as e:
+        # Outer safety net — tab never crashes the whole dashboard
+        st.error(f"Compressor Optimisation tab encountered an error: {e}")
+        st.info("The rest of the dashboard remains fully functional.")
