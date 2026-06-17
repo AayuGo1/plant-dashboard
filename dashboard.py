@@ -967,16 +967,16 @@ with tab_temp:
         st.markdown('<div class="alert-info">No environment logs could be successfully loaded.</div>', unsafe_allow_html=True)
 
 # ==============================================================================
-#  TAB 3 — ENERGY & COST SAVINGS (EXECUTIVE REBUILD)
+#  TAB 3 — ENERGY & COST SAVINGS (OPTIMIZED — 4 DATA-RICH CHARTS)
 # ==============================================================================
 with tab_power:
     if e_df is not None and not e_df.empty:
-        st.markdown('<div class="sec-title">💡 Executive Facility Power Analytics</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec-title"> Executive Facility Power Analytics</div>', unsafe_allow_html=True)
         
         # ─────────────────────────────────────────────────────────────
         #  DEBUG & SCHEMA INSPECTION
         # ─────────────────────────────────────────────────────────────
-        with st.expander("🐞 Debug & Data Schema Inspection"):
+        with st.expander(" Debug & Data Schema Inspection"):
             st.write("**DataFrame Head:**")
             st.dataframe(e_df.head())
             st.write("**Columns:**")
@@ -1036,17 +1036,16 @@ with tab_power:
             df_facilities = e_df[['Date'] + list(facilities.values())].copy()
             df_facilities.columns = ['Date'] + list(facilities.keys())
             
-            # Melt to long format for efficient vectorized processing
             df_melted = df_facilities.melt(id_vars='Date', var_name='Facility', value_name='Daily Consumption')
             df_melted['Daily Consumption'] = pd.to_numeric(df_melted['Daily Consumption'], errors='coerce')
             df_melted['Daily Consumption'] = df_melted['Daily Consumption'].fillna(0).clip(lower=0)
             
-            # Vectorized Summary Aggregation
-            df_summary = df_melted.groupby('Facility')['Daily Consumption'].agg(['sum', 'mean']).reset_index()
-            df_summary.columns = ['Facility', 'Total Consumption', 'Avg Daily Consumption']
+            df_summary = df_melted.groupby('Facility')['Daily Consumption'].agg(['sum', 'mean', 'max', 'min', 'count']).reset_index()
+            df_summary.columns = ['Facility', 'Total Consumption', 'Avg Daily Consumption', 'Highest Daily', 'Lowest Daily', 'Days Processed']
+            df_summary['Contribution (%)'] = (df_summary['Total Consumption'] / df_summary['Total Consumption'].sum() * 100).round(1)
             
             # ─────────────────────────────────────────────────────────────
-            #  EXECUTIVE KPI CARDS (PREMIUM UI)
+            #  EXECUTIVE KPI CARDS (PREMIUM UI — EXACTLY AS SHOWN IN IMAGE)
             # ─────────────────────────────────────────────────────────────
             st.markdown('<div class="sec-title">📊 Executive Facility Performance Matrix</div>', unsafe_allow_html=True)
             
@@ -1121,166 +1120,7 @@ with tab_power:
                         <div class="fac-metric"><span class="fac-metric-label">Total Power</span><span class="fac-metric-value">{total_power:,.0f} kWh</span></div>
                         <div class="fac-metric"><span class="fac-metric-label">Avg Daily</span><span class="fac-metric-value">{avg_daily:,.1f} kWh</span></div>
                         <div class="fac-metric"><span class="fac-metric-label">Highest Daily</span><span class="fac-metric-value">{highest:,.1f} kWh</span></div>
-                        <div class="fac-metric"><span class="fac-metric-label">Lowest Daily</span><span class="fac-metric-value">{lowest:,.1f} kWh</span></div>
-                        <div class="fac-metric"><span class="fac-metric-label">Total Units</span><span class="fac-metric-value">{total_units:,.0f} kWh</span></div>
-                        <div class="fac-metric"><span class="fac-metric-label">Days Processed</span><span class="fac-metric-value">{num_days}</span></div>
-                    </div>
-                    """, unsafe_allow_html=True)
-            
-            # ─────────────────────────────────────────────────────────────
-            #  REQUIRED TABLES
-            # ─────────────────────────────────────────────────────────────
-            st.markdown('<div class="sec-title">📋 Facility Summary</div>', unsafe_allow_html=True)
-            st.dataframe(df_summary, use_container_width=True, hide_index=True)
-            
-            st.markdown('<div class="sec-title">📅 Daily Summary</div>', unsafe_allow_html=True)
-            df_daily_summary = df_melted[['Date', 'Facility', 'Daily Consumption']].sort_values(['Date', 'Facility'])
-            st.dataframe(df_daily_summary, use_container_width=True, hide_index=True)
-            
-            st.markdown('<div class="sec-title">✅ Validation Summary</div>', unsafe_allow_html=True)
-            validation_data = []
-            for fac, col in facilities.items():
-                records_processed = len(e_df)
-                missing_records = e_df[col].isna().sum()
-                total_consumption = e_df[col].fillna(0).clip(lower=0).sum()
-                validation_data.append({
-                    'Facility': fac,
-                    'Records Processed': records_processed,
-                    'Missing Records': missing_records,
-                    'Total Consumption': total_consumption
-                })
-            df_validation = pd.DataFrame(validation_data)
-            st.dataframe(df_validation, use_container_width=True, hide_index=True)
-            
-            # ─────────────────────────────────────────────────────────────
-            #  VISUAL ANALYTICS DASHBOARD (8 CHARTS)
-            # ─────────────────────────────────────────────────────────────
-            st.markdown('<div class="sec-title">📈 Visual Analytics Dashboard</div>', unsafe_allow_html=True)
-            
-            # 1. Total Power Consumption Comparison
-            fig1 = go.Figure()
-            fig1.add_trace(go.Bar(
-                y=df_summary['Facility'], x=df_summary['Total Consumption'], orientation='h',
-                marker_color=[colors[f] for f in df_summary['Facility']],
-                text=df_summary['Total Consumption'].apply(lambda x: f'{x:,.0f} kWh'), textposition='auto'
-            ))
-            fig1.update_layout(title='Total Power Consumption Comparison', xaxis_title='Total Consumption (kWh)', 
-                               yaxis=dict(title='Facility', autorange='reversed'), height=350, 
-                               margin=dict(l=20, r=20, t=50, b=40), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-            
-            # 2. Average Daily Consumption Comparison
-            fig2 = go.Figure()
-            fig2.add_trace(go.Bar(
-                y=df_summary['Facility'], x=df_summary['Avg Daily Consumption'], orientation='h',
-                marker_color=[colors[f] for f in df_summary['Facility']],
-                text=df_summary['Avg Daily Consumption'].apply(lambda x: f'{x:,.1f} kWh'), textposition='auto'
-            ))
-            fig2.update_layout(title='Average Daily Consumption Comparison', xaxis_title='Avg Daily Consumption (kWh)', 
-                               yaxis=dict(title='Facility', autorange='reversed'), height=350, 
-                               margin=dict(l=20, r=20, t=50, b=40), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-            
-            col1, col2 = st.columns(2)
-            with col1: st.plotly_chart(fig1, use_container_width=True)
-            with col2: st.plotly_chart(fig2, use_container_width=True)
-            
-            # 3. Daily Consumption Trend
-            fig3 = go.Figure()
-            for fac in facilities.keys():
-                fac_data = df_melted[df_melted['Facility'] == fac].sort_values('Date')
-                fig3.add_trace(go.Scatter(
-                    x=fac_data['Date'], y=fac_data['Daily Consumption'], mode='lines+markers', name=fac,
-                    line=dict(color=colors[fac], width=2.5), marker=dict(size=6)
-                ))
-            fig3.update_layout(title='Daily Consumption Trend', xaxis_title='Date', yaxis_title='Daily Consumption (kWh)',
-                               height=400, margin=dict(l=20, r=20, t=50, b=60),
-                               legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                               plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-            st.plotly_chart(fig3, use_container_width=True)
-            
-            # 4. Consumption Contribution (Donut)
-            fig4 = go.Figure()
-            fig4.add_trace(go.Pie(
-                labels=df_summary['Facility'], values=df_summary['Total Consumption'], hole=.45,
-                marker=dict(colors=[colors[f] for f in df_summary['Facility']]), textinfo='label+percent',
-                hovertemplate='<b>%{label}</b><br>Consumption: %{value:,.0f} kWh<br>Share: %{percent}<extra></extra>'
-            ))
-            fig4.update_layout(title='Consumption Contribution Share', height=400, 
-                               margin=dict(l=20, r=20, t=50, b=40), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-            
-            # 5. Daily Consumption Heatmap
-            heatmap_data = df_melted.pivot_table(index='Facility', columns='Date', values='Daily Consumption', aggfunc='sum')
-            heatmap_data = heatmap_data.reindex(sorted(heatmap_data.columns), axis=1)
-            fig5 = go.Figure(data=go.Heatmap(
-                z=heatmap_data.values, x=[d.strftime('%d-%b') for d in heatmap_data.columns], y=heatmap_data.index.tolist(),
-                colorscale='Viridis', colorbar=dict(title='kWh'),
-                hovertemplate='Facility: %{y}<br>Date: %{x}<br>Consumption: %{z:,.1f} kWh<extra></extra>'
-            ))
-            fig5.update_layout(title='Daily Consumption Heatmap', xaxis_title='Date', yaxis_title='Facility',
-                               height=350, margin=dict(l=20, r=20, t=50, b=60), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-            
-            col3, col4 = st.columns(2)
-            with col3: st.plotly_chart(fig4, use_container_width=True)
-            with col4: st.plotly_chart(fig5, use_container_width=True)
-            
-            # 6. Cumulative Energy Consumption Trend
-            fig6 = go.Figure()
-            for fac in facilities.keys():
-                fac_data = df_melted[df_melted['Facility'] == fac].sort_values('Date').copy()
-                fac_data['Cumulative'] = fac_data['Daily Consumption'].cumsum()
-                fig6.add_trace(go.Scatter(
-                    x=fac_data['Date'], y=fac_data['Cumulative'], mode='lines', name=fac,
-                    line=dict(color=colors[fac], width=3)
-                ))
-            fig6.update_layout(title='Cumulative Energy Consumption Trend', xaxis_title='Date', yaxis_title='Cumulative Consumption (kWh)',
-                               height=400, margin=dict(l=20, r=20, t=50, b=60),
-                               legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                               plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-            st.plotly_chart(fig6, use_container_width=True)
-            
-            # 7. Top Consumption Days
-            top_days = df_melted.nlargest(10, 'Daily Consumption')
-            fig7 = go.Figure()
-            fig7.add_trace(go.Bar(
-                x=top_days['Daily Consumption'],
-                y=top_days['Facility'] + ' (' + top_days['Date'].dt.strftime('%d-%b') + ')',
-                orientation='h', marker_color=[colors[f] for f in top_days['Facility']],
-                text=top_days['Daily Consumption'].apply(lambda x: f'{x:,.0f} kWh'), textposition='auto'
-            ))
-            fig7.update_layout(title='Top 10 Highest Consumption Days', xaxis_title='Daily Consumption (kWh)',
-                               yaxis=dict(title='Facility & Date', autorange='reversed'), height=400, 
-                               margin=dict(l=120, r=20, t=50, b=40), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-            
-            # 8. Facility Performance Matrix (Scatter)
-            fig8 = go.Figure()
-            for fac in facilities.keys():
-                fac_summary = df_summary[df_summary['Facility'] == fac]
-                fig8.add_trace(go.Scatter(
-                    x=fac_summary['Avg Daily Consumption'], y=fac_summary['Total Consumption'],
-                    mode='markers+text', name=fac, marker=dict(size=20, color=colors[fac], line=dict(width=2, color='white')),
-                    text=fac, textposition='top center',
-                    hovertemplate=f'<b>{fac}</b><br>Avg Daily: %{{x:,.1f}} kWh<br>Total: %{{y:,.0f}} kWh<extra></extra>'
-                ))
-            fig8.update_layout(title='Facility Performance Matrix (Avg vs Total)', xaxis_title='Average Daily Consumption (kWh)',
-                               yaxis_title='Total Consumption (kWh)', height=400, margin=dict(l=20, r=20, t=50, b=60),
-                               plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
-            
-            col5, col6 = st.columns(2)
-            with col5: st.plotly_chart(fig7, use_container_width=True)
-            with col6: st.plotly_chart(fig8, use_container_width=True)
-            
-            # ─────────────────────────────────────────────────────────────
-            #  DATA EXPORT PORTAL
-            # ─────────────────────────────────────────────────────────────
-            st.markdown('<div class="sec-title">📥 Data Export Portal</div>', unsafe_allow_html=True)
-            with st.expander("📂 Download Processed Facility Data", expanded=False):
-                csv_summary = df_summary.to_csv(index=False).encode('utf-8')
-                st.download_button(label="📥 Download Facility Summary (CSV)", data=csv_summary, file_name="facility_power_summary.csv", mime="text/csv", key="btn_download_fac_summary")
-                
-                csv_daily = df_daily_summary.to_csv(index=False).encode('utf-8')
-                st.download_button(label="📥 Download Daily Summary (CSV)", data=csv_daily, file_name="facility_daily_summary.csv", mime="text/csv", key="btn_download_fac_daily")
-
-    else:
-        st.markdown('<div class="alert-info">⚠️ Energy data file not found or empty.</div>', unsafe_allow_html=True)# ==============================================================================
+                        <div class="fac-metric"><span class="fac-metric-label">Lowest Daily</# ==============================================================================
 #  TAB 4 — ASSET DUTY CYCLES
 # ==============================================================================
 with tab_runtime:
