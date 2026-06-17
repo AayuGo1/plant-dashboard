@@ -1403,10 +1403,10 @@ with tab_comp:
                 st.markdown('<div class="alert-warn">❌ <strong>Time Balancing Discrepancies Detected:</strong> Operational discrepancies identified below:</div>', unsafe_allow_html=True)
                 for err in error_log:
                     st.write(err)
-            
-       # ─────────────────────────────────────────────────────────────
-            #  HARDENED & FIXED PLOTLY VISUALIZATIONS GENERATOR
-            # ─────────────────────────────────────────────────────────────
+ 
+# ─────────────────────────────────────────────────────────────
+ #  HARDENED & FIXED PLOTLY VISUALIZATIONS GENERATOR
+ # ─────────────────────────────────────────────────────────────
             st.markdown('<div class="sec-title">📊 Executive Visual Optimization Analytical Panels</div>', unsafe_allow_html=True)
             
             vis_col1, vis_col2 = st.columns(2)
@@ -1423,19 +1423,18 @@ with tab_comp:
                     textposition='auto'
                 ))
                 
-                # STEP 4: Defensive Hardening Validation Checks
                 if fig1 is not None and len(fig1.data) > 0:
                     fig1.update_layout(
                         title="Compressor Asset Operational Utilization Ratio (%)",
                         xaxis=dict(title="Utilization (%)", range=[0, 105], gridcolor='#E2E8F0'),
-                        yaxis=dict(title="Asset Node", autoreverse=True), # FIXED: Changed 'autocreverse' to 'autoreverse'
+                        yaxis=dict(title="Asset Node", autoreverse=True), # FIXED HERE
                         height=350, 
                         margin=dict(l=20, r=20, t=40, b=40), 
                         plot_bgcolor='rgba(0,0,0,0)'
                     )
                     st.plotly_chart(fig1, use_container_width=True)
                 else:
-                    st.warning("⚠️ High Horizon Utilization comparison data stream is empty.")
+                    st.warning("⚠️ Compressor utilization data stream is empty.")
                 
                 # Chart 3: Daily Runtime Trend Dynamic Stream
                 fig3 = go.Figure()
@@ -1469,13 +1468,13 @@ with tab_comp:
                         barmode='stack', 
                         title="Time Budget Breakdown: Working vs. Non-Working (Hrs)",
                         xaxis=dict(title="Total Accumulated Period Hours", gridcolor='#E2E8F0'),
-                        yaxis=dict(autoreverse=True), # FIXED: Changed 'autocreverse' to 'autoreverse'
+                        yaxis=dict(autoreverse=True), # FIXED HERE
                         height=350, margin=dict(l=20, r=20, t=40, b=40), plot_bgcolor='rgba(0,0,0,0)', 
                         legend=dict(orientation="h", y=-0.15)
                     )
                     st.plotly_chart(fig2, use_container_width=True)
                 else:
-                    st.warning("⚠️ Time Budget matrix components could not be rendered.")
+                    st.warning("⚠️ Time Budget components could not be rendered.")
                 
                 # Chart 4: Top Disruption / Downtime ranked generators
                 df_sorted_down = df_summary.sort_values('Non-Working Hours', ascending=True)
