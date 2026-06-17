@@ -1001,12 +1001,12 @@ with tab_temp:
     else:
         st.markdown('<div class="alert-info">No environment logs could be successfully loaded.</div>', unsafe_allow_html=True)
 
-# # ==============================================================================
+# ==============================================================================
 #  TAB 3 — ENERGY & COST SAVINGS (FIXED)
 # ==============================================================================
 # FIXES APPLIED:
 # 1. Use precomputed Total/Savings columns from Sheet1 (no manual diffing)
-# 2. Correct date parsing: force dayfirst, fix Excel's MM/DD swap for early Apr dates
+# 2. Correct date parsing: fix Excel's MM/DD swap for first 12 rows, parse strings as DD/MM/YYYY
 # 3. Align all blocks to same daily convention (shift Dunkin/CLC/BMC down 1 row)
 # 4. Detect & exclude meter-reset anomalies (e.g., 05/25/26)
 # 5. Drop placeholder rows (all cumulative meters NaN/blank)
@@ -1021,15 +1021,6 @@ with tab_power:
         p = power_df.copy()
         
         # --- Column Mapping (based on verified structure) ---
-        # Expected columns (0-indexed from header row index=1):
-        expected_cols = [
-            'Date',
-            'Dunkin Blast', '', '', '', 'Total_Dunkin', 'Savings_Dunkin',
-            'CLC Blast', '', '', '', 'Total_CLC', 'Savings_CLC',
-            'BMC', '', '', '', 'Total_BMC', 'Savings_BMC',
-            'Deep-1', 'deep-2', 'rack', 'Deep-total', 'Savings_Deep', '', 'Value in INR'
-        ]
-        # Assign clean names to relevant columns only
         col_map = {
             p.columns[0]: 'Date',
             p.columns[5]: 'Total_Dunkin',
@@ -1053,39 +1044,57 @@ with tab_power:
             st.error("❌ Required columns missing in Sheet1.")
             st.stop()
 
-        # --- DATE PARSING: Force dayfirst, fix swapped early dates ---
-        def safe_dayfirst_parse(date_val):
-            if pd.isna(date_val):
-                return pd.NaT
-            try:
-                # Try strict day-first parsing
-                return pd.to_datetime(date_val, dayfirst=True, errors='coerce')
-            except Exception:
-                return pd.NaT
-
-        p['Date'] = p['Date'].apply(safe_dayfirst_parse)
+        # --- DATE PARSING: Fix Excel's MM/DD swap for first 12 rows ---
+        from datetime import datetime
+        
+        def parse_dates_robust(date_series):
+            """Parse dates handling Excel's MM/DD swap for first 12 rows"""
+            parsed_dates = []
+            
+            for i, date_val in enumerate(date_series):
+                if pd.isna(date_val):
+                    parsed_dates.append(pd.NaT)
+                    continue
+                
+                # If it's a datetime object (Excel parsed it)
+                if isinstance(date_val, (datetime, pd.Timestamp)):
+                    # Check if this is one of the first 12 dates that got swapped
+                    # Excel parsed "01/04/26" as Jan 4, "02/04/26" as Feb 4, etc.
+                    # Pattern: day=4, and it's in the first 12 rows
+                    if i < 12 and date_val.day == 4:
+                        # Swap month and day: Jan 4 → Apr 1, Feb 4 → Apr 2, etc.
+                        corrected = date_val.replace(month=date_val.day, day=date_val.month)
+                        parsed_dates.append(corrected)
+                    else:
+                        # Keep as is (May 1, May 2, etc. are correct)
+                        parsed_dates.append(date_val)
+                else:
+                    # It's a string - parse as DD/MM/YYYY or DD/MM/YY
+                    try:
+                        parsed = pd.to_datetime(str(date_val), dayfirst=True, errors='coerce')
+                        parsed_dates.append(parsed)
+                    except:
+                        parsed_dates.append(pd.NaT)
+            
+            return pd.Series(parsed_dates, index=date_series.index)
+        
+        p['Date'] = parse_dates_robust(p['Date'])
         p = p.dropna(subset=['Date']).sort_values('Date').reset_index(drop=True)
-# Validate monotonic increasing dates with no gaps
-p['Date'] = pd.to_datetime(p['Date'])
-expected_dates = pd.date_range(start=p['Date'].min(), end=p['Date'].max(), freq='D')
-actual_dates = pd.Index(p['Date'].unique())
-if not set(actual_dates) == set(expected_dates):
-    missing_dates = expected_dates.difference(actual_dates)
-    extra_dates = actual_dates.difference(expected_dates)
-    if not missing_dates.empty or not extra_dates.empty:
-        st.warning(f"⚠️ Date sequence has gaps or duplicates. Found {len(p)} rows from {p['Date'].min().date()} to {p['Date'].max().date()}. Proceeding without filling.")
-        # --- ALIGNMENT: Shift Dunkin/CLC/BMC down by 1 row to match Deep convention ---
-        # Consumption on Date X should reflect usage during that calendar day.
-        # Currently, Dunkin/CLC/BMC values are reported as ending on NEXT day.
-        for col in ['Total_Dunkin', 'Savings_Dunkin', 'Total_CLC', 'Savings_CLC', 'Total_BMC', 'Savings_BMC']:
-            p[col] = p[col].shift(1)  # Move each value to the next day's row
 
-        # Now drop the first row (it has NaN for shifted values and no Deep data for 01/04/26 anyway)
+        # Validate monotonic increasing dates
+        p['Date'] = pd.to_datetime(p['Date'])
+        date_diffs = p['Date'].diff().dropna()
+        if (date_diffs > pd.Timedelta(days=1)).any():
+            st.warning("⚠️ Date sequence has gaps. Proceeding without filling.")
+
+        # --- ALIGNMENT: Shift Dunkin/CLC/BMC down by 1 row to match Deep convention ---
+        for col in ['Total_Dunkin', 'Savings_Dunkin', 'Total_CLC', 'Savings_CLC', 'Total_BMC', 'Savings_BMC']:
+            p[col] = p[col].shift(1)
+
+        # Drop the first row (it has NaN for shifted values)
         p = p.iloc[1:].reset_index(drop=True)
 
         # --- ANOMALY DETECTION: Exclude meter-reset days ---
-        # Typical daily ranges: Dunkin/CLC/BMC ~0-2000 kWh, Deep ~1500-2500 kWh
-        # Flag any day where |Total| > 10,000 or |Savings| > 10,000 as anomaly
         anomaly_mask = (
             (p['Total_Dunkin'].abs() > 10000) |
             (p['Savings_Dunkin'].abs() > 10000) |
@@ -1102,7 +1111,6 @@ if not set(actual_dates) == set(expected_dates):
                                  'Total_BMC', 'Savings_BMC', 'Total_Deep', 'Savings_Deep']] = np.nan
 
         # --- FINAL DAILY VALUES ---
-        # Fill any remaining NaN in daily totals with 0 (only for non-anomaly missing data)
         daily_cols = ['Total_Dunkin', 'Total_CLC', 'Total_BMC', 'Total_Deep']
         savings_cols = ['Savings_Dunkin', 'Savings_CLC', 'Savings_BMC', 'Savings_Deep']
         p[daily_cols] = p[daily_cols].fillna(0)
@@ -1121,10 +1129,9 @@ if not set(actual_dates) == set(expected_dates):
         # --- RECONCILIATION CHECK ---
         total_savings_kwh = p['Total Daily Savings (kWh)'].sum()
         total_savings_inr = p['Daily Cost Savings (₹)'].sum()
-        # Source workbook summary: ~66,553.8 kWh saved, ~₹495,160.27
         source_kwh = 66553.8
         source_inr = 495160.27
-        kwh_match = abs(total_savings_kwh - source_kwh) < 500  # tolerance for excluded anomalies
+        kwh_match = abs(total_savings_kwh - source_kwh) < 500
         inr_match = abs(total_savings_inr - source_inr) < 5000
         if kwh_match and inr_match:
             recon_badge = "✓ matches source totals"
@@ -1154,12 +1161,12 @@ if not set(actual_dates) == set(expected_dates):
         # A. Daily Data Table
         st.markdown('<div class="sec-title">📋 Daily Energy & Savings Data</div>', unsafe_allow_html=True)
         table_df = p[['Date', 'Total_Dunkin', 'Total_CLC', 'Total_BMC', 'Total_Deep',
-                      'Combined Load', 'Total Daily Savings (kWh)', 'Daily Cost Savings (₹)']].copy()
+                      'Combined Load', 'Total Daily Savings (kWh)', 'Daily Cost Savings ()']].copy()
         table_df.columns = ['Date', 'Dunkin Blast', 'CLC Blast', 'BMC', 'Deep Consumption',
                             'Combined Load', 'Savings (kWh)', 'Cost Savings (₹)']
         # Mark anomaly rows if any (for visibility)
         if anomaly_mask.any():
-            table_df['Anomaly'] = anomaly_mask.reset_index(drop=True).map({True: "⚠ meter reset — excluded", False: ""})
+            table_df['Anomaly'] = anomaly_mask.reset_index(drop=True).map({True: " meter reset — excluded", False: ""})
             table_df = table_df[['Date', 'Dunkin Blast', 'CLC Blast', 'BMC', 'Deep Consumption',
                                  'Combined Load', 'Savings (kWh)', 'Cost Savings (₹)', 'Anomaly']]
         st.dataframe(table_df, use_container_width=True, hide_index=True)
@@ -1178,7 +1185,6 @@ if not set(actual_dates) == set(expected_dates):
             )
     else:
         st.markdown('<div class="alert-info">Power consumption analytical worksheet missing from repo root.</div>', unsafe_allow_html=True)
-# ==============================================================================
 #  TAB 4 — ASSET DUTY CYCLES
 # ==============================================================================
 with tab_runtime:
