@@ -969,190 +969,193 @@ with tab_temp:
 # ==============================================================================
 #  TAB 3 — ENERGY & COST SAVINGS
 # ==============================================================================
-# ==============================================================================
-#  TAB 3 — ENERGY & COST SAVINGS
-# ==============================================================================
 with tab_power:
+    st.markdown('<div class="sec-title">💡 Energy & Cost Savings Dashboard</div>', unsafe_allow_html=True)
+    
+    # Load Sheet1 specifically
     power_df = load_excel_sheet('Sheet1', fallback_header_row=1)
     
     if power_df is not None and not power_df.empty:
         p = power_df.copy()
         
-        # ---------------------------------------------------------------------
-        # Auto-Detect Columns
-        # ---------------------------------------------------------------------
-        col_names = [str(c) for c in p.columns]
-        lower_names = [c.lower() for c in col_names]
-        
-        def find_col(keywords, fallback_idx):
+        # --- Auto-Detection Logic ---
+        def detect_col(df, keywords, fallback_idx=0):
+            cols = [str(c) for c in df.columns]
             for kw in keywords:
-                for i, name in enumerate(lower_names):
-                    if kw in name:
-                        return col_names[i]
-            return col_names[fallback_idx] if fallback_idx < len(col_names) else col_names[0]
+                for c in cols:
+                    if kw in c.lower():
+                        return c
+            return cols[fallback_idx] if fallback_idx < len(cols) else None
 
-        date_col = find_col(['date', 'day', 'time', 'period'], 0)
-        dunkin_col = find_col(['dunkin', 'dunkin blast'], 1)
-        clc_col = find_col(['clc', 'clc blast'], 2)
-        savings_col = find_col(['saving', 'cost', 'savings'], 3)
+        # Detect Date
+        date_col = detect_col(p, ['date', 'day', 'time'], 0)
         
-        # Clean and Parse Data
-        p[date_col] = pd.to_datetime(p[date_col], errors='coerce')
-        p = p.dropna(subset=[date_col]).sort_values(by=date_col).reset_index(drop=True)
+        # Detect Consumption Columns (Using specific names from your file)
+        dunkin_col = detect_col(p, ['dunkin blast'], 1)
+        clc_col = detect_col(p, ['clc blast'], 6) 
         
-        numeric_cols = [dunkin_col, clc_col, savings_col]
-        for col in numeric_cols:
-            if col in p.columns:
+        # Detect ALL Savings Columns to get a true total (Your file has Savings for Dunkin, CLC, BMC, Deep)
+        savings_cols = [c for c in p.columns if 'saving' in str(c).lower()]
+        
+        if date_col and dunkin_col and clc_col:
+            st.success(f"✅ Auto-detected: **Date**=`{date_col}`, **Dunkin**=`{dunkin_col}`, **CLC**=`{clc_col}`")
+            if savings_cols:
+                st.info(f"💰 Found {len(savings_cols)} savings columns: `{', '.join(savings_cols)}`")
+            
+            # --- Data Cleaning ---
+            p[date_col] = fast_parse_dates(p[date_col])
+            p = p.dropna(subset=[date_col]).sort_values(by=date_col).reset_index(drop=True)
+            
+            # Convert numeric columns
+            for col in [dunkin_col, clc_col] + savings_cols:
                 p[col] = pd.to_numeric(p[col], errors='coerce').fillna(0)
+            
+            # Calculate Total Daily Savings if multiple columns exist
+            if savings_cols:
+                p['Total Daily Savings'] = p[savings_cols].sum(axis=1)
+                savings_display_col = 'Total Daily Savings'
             else:
-                p[col] = 0 # Fallback if column completely missing
-                
-        # Filter out extreme outliers if any
-        p = p[p[dunkin_col] < 500_000]
-        p = p[p[clc_col] < 500_000]
+                # Fallback if no savings column found
+                p['Total Daily Savings'] = 0
+                savings_display_col = 'Total Daily Savings'
 
-        if not p.empty:
-            # Derived Metrics
+            # --- Derived Metrics ---
             p['Combined Load'] = p[dunkin_col] + p[clc_col]
-            p['Cumulative Savings'] = p[savings_col].cumsum()
-            p['Optimized Value'] = p[savings_col] * 7
+            p['Cumulative Savings'] = p[savings_display_col].cumsum()
+            p['Optimized Value'] = p[savings_display_col] * 7
             p['Cumulative Optimized Value'] = p['Optimized Value'].cumsum()
 
-            # -----------------------------------------------------------------
-            # 1. KPI Cards
-            # -----------------------------------------------------------------
-            total_dunkin = p[dunkin_col].sum()
-            total_clc = p[clc_col].sum()
-            combined_load = p['Combined Load'].sum()
-            total_savings = p[savings_col].sum()
-            optimized_value = total_savings * 7
+            if not p.empty:
+                # --- 1. KPI Cards ---
+                total_dunkin = p[dunkin_col].sum()
+                total_clc = p[clc_col].sum()
+                combined_load = p['Combined Load'].sum()
+                total_savings = p[savings_display_col].sum()
+                optimized_value = total_savings * 7
 
-            st.markdown('<div class="sec-title">Key Performance Indicators</div>', unsafe_allow_html=True)
-            k1, k2, k3, k4, k5 = st.columns(5)
-            k1.metric("Total Dunkin Blast (kWh)", f"{total_dunkin:,.0f}", delta=f"{p[dunkin_col].mean():.0f} avg/day")
-            k2.metric("Total CLC Blast (kWh)", f"{total_clc:,.0f}", delta=f"{p[clc_col].mean():.0f} avg/day")
-            k3.metric("Combined Load (kWh)", f"{combined_load:,.0f}", delta=f"{p['Combined Load'].mean():.0f} avg/day")
-            k4.metric("Total Savings (₹)", f"₹{total_savings:,.2f}", delta=f"₹{p[savings_col].mean():.2f} avg/day")
-            k5.metric("Optimized Value (₹)", f"₹{optimized_value:,.2f}", help="Calculated as Total Savings × 7")
+                kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
+                kpi1.metric("Total Dunkin Blast (kWh)", f"{total_dunkin:,.0f}", delta=f"{p[dunkin_col].mean():.0f} avg/day")
+                kpi2.metric("Total CLC Blast (kWh)", f"{total_clc:,.0f}", delta=f"{p[clc_col].mean():.0f} avg/day")
+                kpi3.metric("Combined Load (kWh)", f"{combined_load:,.0f}", delta=f"{p['Combined Load'].mean():.0f} avg/day")
+                kpi4.metric("Total Savings (₹)", f"₹ {total_savings:,.2f}", delta=f"₹ {p[savings_display_col].mean():,.2f} avg/day")
+                kpi5.metric("Optimized Value (₹)", f"₹ {optimized_value:,.2f}", help="Calculated as Total Savings × 7")
 
-            # Format dates for X-axis across charts
-            x_dates = p[date_col].dt.strftime('%d-%b').tolist()
+                st.markdown("---")
 
-            # -----------------------------------------------------------------
-            # 2. Daily Consumption Trend (Line Chart)
-            # -----------------------------------------------------------------
-            st.markdown('<div class="sec-title">Daily Consumption Trend</div>', unsafe_allow_html=True)
-            fig_trend = go.Figure()
-            
-            fig_trend.add_trace(go.Scatter(x=x_dates, y=p[dunkin_col], mode='lines+markers', name=dunkin_col, line=dict(color='#002D62', width=2.5)))
-            fig_trend.add_trace(go.Scatter(x=x_dates, y=p[clc_col], mode='lines+markers', name=clc_col, line=dict(color='#FF9F1C', width=2.5)))
-            fig_trend.add_trace(go.Scatter(x=x_dates, y=p['Combined Load'], mode='lines+markers', name='Combined Load', line=dict(color='#16A34A', width=2.5, dash='dash')))
-            
-            fig_trend.update_layout(
-                hovermode="x unified", margin=dict(l=20, r=20, t=10, b=10), height=400,
-                xaxis=dict(type='category', tickangle=45),
-                yaxis=dict(title='Consumption (kWh)', gridcolor='#E2E8F0'),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)'
-            )
-            st.plotly_chart(fig_trend, use_container_width=True)
-
-            # -----------------------------------------------------------------
-            # 3. Daily Energy Distribution (Stacked Bar)
-            # -----------------------------------------------------------------
-            st.markdown('<div class="sec-title">Daily Energy Distribution</div>', unsafe_allow_html=True)
-            fig_dist = go.Figure()
-            fig_dist.add_trace(go.Bar(x=x_dates, y=p[dunkin_col], name=dunkin_col, marker_color='#002D62'))
-            fig_dist.add_trace(go.Bar(x=x_dates, y=p[clc_col], name=clc_col, marker_color='#FF9F1C'))
-            
-            fig_dist.update_layout(
-                barmode='stack', hovermode="x unified", margin=dict(l=20, r=20, t=10, b=10), height=400,
-                xaxis=dict(type='category', tickangle=45),
-                yaxis=dict(title='Consumption (kWh)', gridcolor='#E2E8F0'),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)'
-            )
-            st.plotly_chart(fig_dist, use_container_width=True)
-
-            # -----------------------------------------------------------------
-            # 4. Savings Trend (Bar + Line)
-            # -----------------------------------------------------------------
-            st.markdown('<div class="sec-title">Savings & Optimized Value Trend</div>', unsafe_allow_html=True)
-            fig_savings = make_subplots(specs=[[{"secondary_y": True}]])
-            
-            fig_savings.add_trace(
-                go.Bar(x=x_dates, y=p[savings_col], name='Daily Savings (₹)', marker_color='#0EA5E9', opacity=0.8),
-                secondary_y=False
-            )
-            fig_savings.add_trace(
-                go.Scatter(x=x_dates, y=p['Cumulative Optimized Value'], name='Cumulative Optimized Value (₹)', mode='lines+markers', line=dict(color='#E01934', width=3)),
-                secondary_y=True
-            )
-            
-            fig_savings.update_layout(
-                hovermode="x unified", margin=dict(l=20, r=20, t=10, b=10), height=400,
-                xaxis=dict(type='category', tickangle=45),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-                plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)'
-            )
-            fig_savings.update_yaxes(title_text="Daily Savings (₹)", secondary_y=False, gridcolor='#E2E8F0')
-            fig_savings.update_yaxes(title_text="Cumulative Optimized Value (₹)", secondary_y=True)
-            
-            st.plotly_chart(fig_savings, use_container_width=True)
-
-            # -----------------------------------------------------------------
-            # 5. Executive Summary Table
-            # -----------------------------------------------------------------
-            st.markdown('<div class="sec-title">Executive Summary</div>', unsafe_allow_html=True)
-            
-            summary_data = {
-                "Metric": [
-                    "Total Dunkin Blast Consumption",
-                    "Total CLC Blast Consumption",
-                    "Total Combined Load",
-                    "Average Daily Savings",
-                    "Total Cumulative Savings",
-                    "Total Optimized Value (Savings × 7)"
-                ],
-                "Value": [
-                    f"{total_dunkin:,.2f} kWh",
-                    f"{total_clc:,.2f} kWh",
-                    f"{combined_load:,.2f} kWh",
-                    f"₹{p[savings_col].mean():,.2f}",
-                    f"₹{total_savings:,.2f}",
-                    f"₹{optimized_value:,.2f}"
-                ],
-                "Peak Daily Value": [
-                    f"{p[dunkin_col].max():,.2f} kWh",
-                    f"{p[clc_col].max():,.2f} kWh",
-                    f"{p['Combined Load'].max():,.2f} kWh",
-                    f"₹{p[savings_col].max():,.2f}",
-                    f"₹{p['Cumulative Savings'].max():,.2f}",
-                    f"₹{p['Cumulative Optimized Value'].max():,.2f}"
-                ]
-            }
-            summary_df = pd.DataFrame(summary_data)
-            st.dataframe(summary_df, use_container_width=True, hide_index=True)
-
-            # -----------------------------------------------------------------
-            # Raw Data Inspector & Export
-            # -----------------------------------------------------------------
-            st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
-            with st.expander("📂 View & Download Energy & Cost Savings Raw Sheet Data", expanded=False):
-                st.dataframe(p, use_container_width=True, hide_index=True)
-                csv_data = p.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="Download Sheet1 Cost Data as CSV",
-                    data=csv_data,
-                    file_name="freon_sheet1_energy_savings.csv",
-                    mime="text/csv",
-                    key="btn_download_power"
+                # --- 2. Daily Consumption Trend (Line Chart) ---
+                st.markdown('<div class="sec-title">📈 Daily Consumption Trend</div>', unsafe_allow_html=True)
+                fig_trend = go.Figure()
+                x_dates = p[date_col].dt.strftime('%d-%b').tolist()
+                
+                fig_trend.add_trace(go.Scatter(
+                    x=x_dates, y=p[dunkin_col], mode='lines+markers', name='Dunkin Blast', 
+                    line=dict(color='#002D62', width=2.5), marker=dict(size=6)
+                ))
+                fig_trend.add_trace(go.Scatter(
+                    x=x_dates, y=p[clc_col], mode='lines+markers', name='CLC Blast', 
+                    line=dict(color='#FF9F1C', width=2.5), marker=dict(size=6)
+                ))
+                fig_trend.add_trace(go.Scatter(
+                    x=x_dates, y=p['Combined Load'], mode='lines+markers', name='Combined Load', 
+                    line=dict(color='#E01934', width=3, dash='dash'), marker=dict(size=6)
+                ))
+                
+                fig_trend.update_layout(
+                    hovermode="x unified", margin=dict(l=60, r=20, t=40, b=60), height=400,
+                    xaxis=dict(title='Date', type='category', tickangle=45, fixedrange=True),
+                    yaxis=dict(title='Consumption (kWh)', fixedrange=True, gridcolor='#E2E8F0'),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, bgcolor='rgba(255,255,255,0.8)'),
+                    plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)'
                 )
+                st.plotly_chart(fig_trend, use_container_width=True)
+
+                # --- 3. Daily Energy Distribution (Stacked Bar) ---
+                st.markdown('<div class="sec-title">🏭 Daily Energy Distribution</div>', unsafe_allow_html=True)
+                fig_dist = go.Figure()
+                fig_dist.add_trace(go.Bar(x=x_dates, y=p[dunkin_col], name='Dunkin Blast', marker_color='#002D62'))
+                fig_dist.add_trace(go.Bar(x=x_dates, y=p[clc_col], name='CLC Blast', marker_color='#FF9F1C'))
+                
+                fig_dist.update_layout(
+                    barmode='stack', hovermode="x unified", margin=dict(l=60, r=20, t=40, b=60), height=400,
+                    xaxis=dict(title='Date', type='category', tickangle=45, fixedrange=True),
+                    yaxis=dict(title='Energy (kWh)', fixedrange=True, gridcolor='#E2E8F0'),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, bgcolor='rgba(255,255,255,0.8)'),
+                    plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)'
+                )
+                st.plotly_chart(fig_dist, use_container_width=True)
+
+                # --- 4. Savings Trend (Bar + Line) ---
+                st.markdown('<div class="sec-title">💰 Savings & Optimized Value Trend</div>', unsafe_allow_html=True)
+                fig_savings = make_subplots(specs=[[{"secondary_y": True}]])
+                
+                fig_savings.add_trace(
+                    go.Bar(x=x_dates, y=p[savings_display_col], name='Daily Savings (₹)', marker_color='#16A34A', opacity=0.8),
+                    secondary_y=False
+                )
+                fig_savings.add_trace(
+                    go.Scatter(x=x_dates, y=p['Cumulative Optimized Value'], name='Cumulative Optimized Value (₹)', mode='lines+markers', line=dict(color='#E01934', width=3), marker=dict(size=6)),
+                    secondary_y=True
+                )
+                
+                fig_savings.update_layout(
+                    hovermode="x unified", margin=dict(l=60, r=60, t=40, b=60), height=400,
+                    xaxis=dict(title='Date', type='category', tickangle=45, fixedrange=True),
+                    legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, bgcolor='rgba(255,255,255,0.8)'),
+                    plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)'
+                )
+                fig_savings.update_yaxes(title_text="Daily Savings (₹)", secondary_y=False, gridcolor='#E2E8F0')
+                fig_savings.update_yaxes(title_text="Cumulative Optimized Value (₹)", secondary_y=True)
+                st.plotly_chart(fig_savings, use_container_width=True)
+
+                # --- 5. Executive Summary Table ---
+                st.markdown('<div class="sec-title">📋 Executive Summary</div>', unsafe_allow_html=True)
+                summary_data = {
+                    "Metric": [
+                        "Total Dunkin Blast Consumption",
+                        "Total CLC Blast Consumption",
+                        "Total Combined Load",
+                        "Average Daily Savings",
+                        "Total Cumulative Savings",
+                        "Total Optimized Value (Savings × 7)"
+                    ],
+                    "Value": [
+                        f"{total_dunkin:,.2f} kWh",
+                        f"{total_clc:,.2f} kWh",
+                        f"{combined_load:,.2f} kWh",
+                        f"₹ {p[savings_display_col].mean():,.2f}",
+                        f"₹ {total_savings:,.2f}",
+                        f"₹ {optimized_value:,.2f}"
+                    ],
+                    "Peak Daily Value": [
+                        f"{p[dunkin_col].max():,.2f} kWh",
+                        f"{p[clc_col].max():,.2f} kWh",
+                        f"{p['Combined Load'].max():,.2f} kWh",
+                        f"₹ {p[savings_display_col].max():,.2f}",
+                        f"₹ {p['Cumulative Savings'].max():,.2f}",
+                        f"₹ {p['Cumulative Optimized Value'].max():,.2f}"
+                    ]
+                }
+                summary_df = pd.DataFrame(summary_data)
+                st.dataframe(summary_df, use_container_width=True, hide_index=True)
+
+                # Raw Data Inspector & Export Portal
+                st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
+                with st.expander("📂 View & Download Energy & Cost Savings Raw Sheet Data", expanded=False):
+                    st.dataframe(p, use_container_width=True, hide_index=True)
+                    csv_data = p.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="Download Sheet1 Cost Data as CSV",
+                        data=csv_data,
+                        file_name="freon_sheet1_energy_savings.csv",
+                        mime="text/csv",
+                        key="btn_download_power"
+                    )
+            else:
+                st.markdown('<div class="alert-info">No valid data available after cleaning.</div>', unsafe_allow_html=True)
         else:
-            st.markdown('<div class="alert-warn">⚠️ No valid data remaining after filtering outliers.</div>', unsafe_allow_html=True)
+            st.error("Expected column labels (Date, Dunkin, CLC, Savings) could not be parsed from Sheet1.")
     else:
-        st.markdown('<div class="alert-info">Power consumption analytical worksheet missing from repo root.</div>', unsafe_allow_html=True)
-# ==============================================================================
+        st.markdown('<div class="alert-info">Power consumption analytical worksheet missing from repo root.</div>', unsafe_allow_html=True)# ==============================================================================
 #  TAB 4 — ASSET DUTY CYCLES
 # ==============================================================================
 with tab_runtime:
