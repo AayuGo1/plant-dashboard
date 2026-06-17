@@ -8,6 +8,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from datetime import datetime, time as dt_time
+from copy import deepcopy
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -26,9 +27,11 @@ class Config:
         'gray': '#64748B', 'light_gray': '#E2E8F0', 'bg': '#F4F6F9'
     }
     
+    # Base Plotly Layout Template
     PLOTLY_LAYOUT = dict(
         font=dict(family='Inter, Segoe UI, sans-serif', color='#0F172A', size=12),
-        plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(0,0,0,0)', 
+        paper_bgcolor='rgba(0,0,0,0)',
         margin=dict(l=60, r=20, t=50, b=60),
         hoverlabel=dict(font_size=12, bgcolor='white', bordercolor='#E2E8F0'),
         legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1, bgcolor='rgba(255,255,255,0.9)'),
@@ -322,8 +325,20 @@ class DataProcessor:
 class ChartBuilder:
     @staticmethod
     def get_layout(**kwargs):
-        layout = Config.PLOTLY_LAYOUT.copy()
-        layout.update(kwargs)
+        """
+        Deep merges user-provided kwargs into the base Plotly layout.
+        Handles nested dictionaries like xaxis/yaxis correctly to avoid TypeErrors.
+        """
+        layout = deepcopy(Config.PLOTLY_LAYOUT)
+        
+        for key, value in kwargs.items():
+            if key in layout and isinstance(layout[key], dict) and isinstance(value, dict):
+                # Merge nested dicts (e.g., xaxis, yaxis)
+                layout[key].update(value)
+            else:
+                # Overwrite or add new keys
+                layout[key] = value
+                
         return layout
 
     @staticmethod
@@ -490,7 +505,15 @@ with tab_energy:
             colors = ['#002D62', '#E01934', '#FF9F1C', '#16A34A', '#0EA5E9', '#8B5CF6', '#EC4899', '#F59E0B', '#10B981']
             for i, col in enumerate(existing_v_channels):
                 fig.add_trace(go.Scatter(x=x_dates, y=e_df[col], mode='lines+markers', name=meter_names.get(col, col), line=dict(width=2.5, color=colors[i % len(colors)]), marker=dict(size=6)))
-            fig.update_layout(hovermode="x unified", height=450, xaxis=dict(title='Date', type='category', tickangle=45, fixedrange=True), yaxis=dict(title='Daily Consumption (kWh)', fixedrange=True), **ChartBuilder.get_layout())
+            
+            # Fixed: Using ChartBuilder.get_layout() with safe merging
+            fig.update_layout(
+                hovermode="x unified", 
+                height=450, 
+                xaxis=dict(title='Date', type='category', tickangle=45, fixedrange=True), 
+                yaxis=dict(title='Daily Consumption (kWh)', fixedrange=True), 
+                **ChartBuilder.get_layout()
+            )
             st.plotly_chart(fig, use_container_width=True)
         
         st.markdown(UIBuilder.section_header("Process Zone Daily Energy Distribution", "🏭"), unsafe_allow_html=True)
@@ -498,7 +521,15 @@ with tab_energy:
         zone_colors = {dunkin_col: '#002D62', clc_col: '#FF9F1C', bmc_col: '#16A34A', deep_col: '#E01934'}
         for col in eq_cols:
             fig_zone.add_trace(go.Bar(x=x_dates, y=e_df[col], name=col.replace(' Consumption', '').title(), marker_color=zone_colors.get(col)))
-        fig_zone.update_layout(barmode='stack', hovermode="x unified", height=450, xaxis=dict(title='Date', type='category', tickangle=45, fixedrange=True), yaxis=dict(title='Total Energy (kWh)', fixedrange=True), **ChartBuilder.get_layout())
+        
+        fig_zone.update_layout(
+            barmode='stack', 
+            hovermode="x unified", 
+            height=450, 
+            xaxis=dict(title='Date', type='category', tickangle=45, fixedrange=True), 
+            yaxis=dict(title='Total Energy (kWh)', fixedrange=True), 
+            **ChartBuilder.get_layout()
+        )
         st.plotly_chart(fig_zone, use_container_width=True)
         
         st.markdown(UIBuilder.section_header("Day-over-Day Consumption Change (Δ vs Previous Day)", "📉"), unsafe_allow_html=True)
