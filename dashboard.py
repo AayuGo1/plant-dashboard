@@ -1394,10 +1394,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ============================================================================
 # SECTION 13: KPI CARDS (RESPONSIVE, NO OVERLAP)
-# ============================================================================
-
 st.markdown(
     '<div class="sec-title">Key Performance Indicators</div>',
     unsafe_allow_html=True,
@@ -1412,6 +1409,7 @@ kpi_data = [
     ("Data Quality Score", f"{data_quality_score:.1f}", "%", BRAND["accent_cyan"]),
 ]
 
+# Build KPI cards HTML
 kpi_cards_html = '<div class="kpi-grid">'
 for title, value, unit, color in kpi_data:
     kpi_cards_html += f"""
@@ -1425,8 +1423,8 @@ for title, value, unit, color in kpi_data:
     """
 kpi_cards_html += "</div>"
 
+# Render with unsafe_allow_html=True
 st.markdown(kpi_cards_html, unsafe_allow_html=True)
-
 # ============================================================================
 # SECTION 14: ENERGY PERFORMANCE
 # ============================================================================
