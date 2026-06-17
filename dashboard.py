@@ -971,162 +971,142 @@ with tab_temp:
 # ==============================================================================
 with tab_power:
     st.markdown('<div class="sec-title">💡 Energy & Cost Savings Dashboard</div>', unsafe_allow_html=True)
-    
-    # Load Sheet1 specifically
+
+    # Load Sheet1 (header is on the second row, index 1)
     power_df = load_excel_sheet('Sheet1', fallback_header_row=1)
-    
+
     if power_df is not None and not power_df.empty:
         p = power_df.copy()
-        
-        # --- Auto-Detection Logic ---
-        def detect_col(df, keywords, fallback_idx=0):
-            cols = [str(c) for c in df.columns]
-            for kw in keywords:
-                for c in cols:
-                    if kw in c.lower():
-                        return c
-            return cols[fallback_idx] if fallback_idx < len(cols) else None
 
-        # Detect Columns based on file structure
-        date_col = detect_col(p, ['date'], 0)
-        dunkin_meter_col = detect_col(p, ['dunkin blast'], 1) 
-        clc_meter_col = detect_col(p, ['clc blast'], 6)       
-        deep_meter_col = detect_col(p, ['deep-total'], 21)    
-        savings_col = detect_col(p, ['saving'], 5)            
+        # ── Column constants (matched to actual Sheet1 headers) ─────────────
+        COL_DATE       = 'Date'
+        COL_DUNKIN     = 'Dunkin Blast'   # cumulative kWh meter
+        COL_CLC        = 'CLC Blast'      # cumulative kWh meter
+        COL_DEEP       = 'Deep-total'     # cumulative kWh meter
+        COL_SAV_DUNKIN = 'Savings'        # daily savings – Dunkin  (₹)
+        COL_SAV_CLC    = 'Savings.1'      # daily savings – CLC     (₹)
+        COL_SAV_BMC    = 'Savings.2'      # daily savings – BMC     (₹)
+        COL_SAV_DEEP   = 'Savings.3'      # daily savings – Deep    (₹)
 
-        if date_col and dunkin_meter_col and clc_meter_col and savings_col:
-            st.success(f"✅ Auto-detected: **Date**=`{date_col}`, **Dunkin Meter**=`{dunkin_meter_col}`, **CLC Meter**=`{clc_meter_col}`, **Raw Savings**=`{savings_col}`")
-            
-            # --- Data Cleaning ---
-            p[date_col] = fast_parse_dates(p[date_col])
-            p = p.dropna(subset=[date_col])
-            
-            if not p.empty:
-                # ─────────────────────────────────────────────────────────────
-                #  DUPLICATE DATE HANDLING - DEFENSIVE CHECKS
-                # ─────────────────────────────────────────────────────────────
-                if 'Date' not in p.columns:
-                    st.error("❌ Date column missing after parsing.")
-                    st.stop()
-                
-                total_rows = len(p)
-                unique_dates = p['Date'].nunique()
-                duplicate_count = total_rows - unique_dates
-                
-                st.write(f"**Data Quality Check:** {total_rows} total rows, {unique_dates} unique dates")
-                
-                if duplicate_count > 0:
-                    st.warning(f"⚠️ Found **{duplicate_count} duplicate date(s)**. Consolidating...")
-                    
-                    # Show which dates are duplicated
-                    duplicate_dates = p[p['Date'].duplicated(keep=False)]['Date'].unique()
-                    st.write(f"**Duplicate dates found:** {', '.join([d.strftime('%d-%b-%Y') for d in duplicate_dates[:10]])}")
-                    if len(duplicate_dates) > 10:
-                        st.write(f"... and {len(duplicate_dates) - 10} more")
-                    
-                    # Consolidate duplicates by summing numeric columns
-                    numeric_cols = p.select_dtypes(include=[np.number]).columns.tolist()
-                    p = (
-                        p.groupby('Date', as_index=False)[numeric_cols]
-                        .sum(numeric_only=True)
-                    )
-                    
-                    # Verify duplicates are removed
-                    if p['Date'].duplicated().any():
-                        st.error("❌ Duplicate dates still exist after consolidation!")
-                    else:
-                        st.success(f"✓ Duplicates removed. Now {len(p)} unique date rows.")
-                
-                # Final verification
-                assert not p['Date'].duplicated().any(), "Duplicate dates detected after cleaning!"
-                
-                # Sort by date
-                p = p.sort_values(by='Date').reset_index(drop=True)
-                
-                # ─────────────────────────────────────────────────────────────
-                #  REINDEX TO CONTINUOUS DATE RANGE
-                # ─────────────────────────────────────────────────────────────
-                date_range = pd.date_range(start=p['Date'].min(), end=p['Date'].max(), freq='D')
-                p = p.set_index('Date').reindex(date_range).rename_axis('Date').reset_index()
-                
-                # Convert meter columns to numeric
-                for col in [dunkin_meter_col, clc_meter_col, deep_meter_col, savings_col]:
-                    if col and col in p.columns:
-                        p[col] = pd.to_numeric(p[col], errors='coerce')
-                
-                # Function to calculate daily consumption safely
-                def calc_daily_consumption(series):
-                    diff = series.diff()
-                    # If current or previous is NaN, diff is NaN. Fill with 0.
-                    # Clip negative values to 0 (handles meter resets)
-                    return diff.fillna(0).clip(lower=0)
-                
-                # Calculate daily consumption
-                p['Dunkin Daily'] = calc_daily_consumption(p[dunkin_meter_col])
-                p['CLC Daily'] = calc_daily_consumption(p[clc_meter_col])
-                if deep_meter_col and deep_meter_col in p.columns:
-                    p['Deep Daily'] = calc_daily_consumption(p[deep_meter_col])
-                else:
-                    p['Deep Daily'] = 0.0
-                    
-                p['Combined Load'] = p['Dunkin Daily'] + p['CLC Daily'] + p['Deep Daily']
-                
-                # Handle Savings (Raw values, no modification)
-                if savings_col and savings_col in p.columns:
-                    # Sum all savings columns. Fill NaN with 0 for missing dates.
-                    p['Total Raw Savings'] = p[savings_col].fillna(0)
-                else:
-                    p['Total Raw Savings'] = 0.0
-                    
-                p['Optimized Value'] = p['Total Raw Savings'] * 7
+        REQUIRED = [COL_DATE, COL_DUNKIN, COL_CLC, COL_SAV_DUNKIN, COL_SAV_CLC]
+        missing  = [c for c in REQUIRED if c not in p.columns]
+        if missing:
+            st.error(f"❌ Required columns missing from Sheet1: {missing}")
+            st.stop()
 
-                # B. KPI Cards
-                st.markdown('<div class="sec-title">⚡ Key Performance Indicators</div>', unsafe_allow_html=True)
-                k1, k2, k3, k4, k5, k6 = st.columns(6)
-                with k1: st.metric("Total Dunkin Blast (kWh)", f"{p['Dunkin Daily'].sum():,.0f}")
-                with k2: st.metric("Total CLC Blast (kWh)", f"{p['CLC Daily'].sum():,.0f}")
-                with k3: st.metric("Total Deep Consumption (kWh)", f"{p['Deep Daily'].sum():,.0f}")
-                with k4: st.metric("Combined Load (kWh)", f"{p['Combined Load'].sum():,.0f}")
-                with k5: st.metric("Total Savings (₹)", f"₹ {p['Total Raw Savings'].sum():,.2f}")
-                with k6: st.metric("Optimized Value (₹)", f"₹ {(p['Total Raw Savings'].sum() * 7):,.2f}")
-                
-                st.markdown("---")
+        # ── Date parsing ────────────────────────────────────────────────────
+        p[COL_DATE] = fast_parse_dates(p[COL_DATE])
+        p = p.dropna(subset=[COL_DATE]).copy()
 
-                # 1. Keep original graphs exactly as they appear
-                st.markdown('<div class="sec-title">Daily Power Grid Footprint (kWh)</div>', unsafe_allow_html=True)
-                # Original logic filtered out rows where dunkin_col >= 500_000
-                # We use the cumulative columns for the original graph
-                p_graph = p[p[dunkin_meter_col] < 500_000].copy()
-                if not p_graph.empty:
-                    st.area_chart(p_graph.set_index('Date')[[dunkin_meter_col, clc_meter_col]], color=["#002D62","#FF9F1C"])
-                
-                if savings_col and savings_col in p.columns:
-                    st.markdown('<div class="sec-title">Daily Recovery Realized (₹)</div>', unsafe_allow_html=True)
-                    st.bar_chart(p.set_index('Date')[savings_col], color="#16A34A")
+        if p.empty:
+            st.warning("No valid date rows found in Sheet1.")
+            st.stop()
 
-                # A. Daily Data Table
-                st.markdown('<div class="sec-title">📋 Daily Energy & Savings Data</div>', unsafe_allow_html=True)
-                table_df = p[['Date', 'Dunkin Daily', 'CLC Daily', 'Deep Daily', 'Combined Load', 'Total Raw Savings', 'Optimized Value']].copy()
-                table_df.columns = ['Date', 'Dunkin Blast', 'CLC Blast', 'Deep Consumption', 'Combined Load', 'Savings', 'Optimized Value']
-                st.dataframe(table_df, use_container_width=True, hide_index=True)
+        # Drop meter-reset rows (negative cumulative readings are artifacts)
+        p = p[p[COL_DUNKIN].isna() | (p[COL_DUNKIN] > 0)].copy()
 
-                # Raw Data Inspector
-                st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
-                with st.expander("📂 View & Download Energy & Cost Savings Raw Sheet Data", expanded=False):
-                    st.dataframe(p, use_container_width=True, hide_index=True)
-                    csv_data = p.to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="Download Sheet1 Cost Data as CSV",
-                        data=csv_data,
-                        file_name="freon_sheet1_energy_savings.csv",
-                        mime="text/csv",
-                        key="btn_download_power"
-                    )
-        else:
-            st.error("Expected Blast column labels could not be parsed from Sheet1.")
+        # ── Duplicate date handling ─────────────────────────────────────────
+        n_dupes = len(p) - p[COL_DATE].nunique()
+        if n_dupes > 0:
+            numeric_cols = p.select_dtypes(include=[np.number]).columns.tolist()
+            p = p.groupby(COL_DATE, as_index=False)[numeric_cols].sum(numeric_only=True)
+            st.info(f"ℹ️ {n_dupes} duplicate date(s) consolidated by summing.")
+
+        p = p.sort_values(COL_DATE).reset_index(drop=True)
+
+        # ── Reindex to continuous daily range ───────────────────────────────
+        date_range = pd.date_range(start=p[COL_DATE].min(), end=p[COL_DATE].max(), freq='D')
+        p = p.set_index(COL_DATE).reindex(date_range).rename_axis('Date').reset_index()
+
+        # ── Convert to numeric ──────────────────────────────────────────────
+        all_data_cols = [COL_DUNKIN, COL_CLC, COL_DEEP,
+                         COL_SAV_DUNKIN, COL_SAV_CLC, COL_SAV_BMC, COL_SAV_DEEP]
+        for col in all_data_cols:
+            if col in p.columns:
+                p[col] = pd.to_numeric(p[col], errors='coerce')
+
+        # ── Daily consumption from cumulative meter diffs ───────────────────
+        def daily_diff(series):
+            return series.diff().fillna(0).clip(lower=0)
+
+        p['Dunkin Daily']    = daily_diff(p[COL_DUNKIN])
+        p['CLC Daily']       = daily_diff(p[COL_CLC])
+        p['Deep Daily']      = daily_diff(p[COL_DEEP]) if COL_DEEP in p.columns else 0.0
+        p['Combined Load']   = p['Dunkin Daily'] + p['CLC Daily'] + p['Deep Daily']
+
+        # ── Total savings: sum all four section columns row-wise ────────────
+        sav_cols_present = [c for c in [COL_SAV_DUNKIN, COL_SAV_CLC, COL_SAV_BMC, COL_SAV_DEEP]
+                            if c in p.columns]
+        p['Total Savings']   = p[sav_cols_present].fillna(0).sum(axis=1)
+
+        # Clip outlier spikes (meter-reset rows inflate savings unrealistically)
+        savings_cap          = p['Total Savings'].quantile(0.98)
+        p['Total Savings']   = p['Total Savings'].clip(upper=savings_cap)
+
+        # ── KPI Cards ───────────────────────────────────────────────────────
+        st.markdown('<div class="sec-title">⚡ Key Performance Indicators</div>', unsafe_allow_html=True)
+
+        total_load    = p['Combined Load'].sum()
+        total_savings = p['Total Savings'].sum()
+        savings_per_unit = total_savings / total_load if total_load > 0 else 0
+
+        k1, k2, k3, k4, k5, k6 = st.columns(6)
+        with k1: st.metric("Dunkin Blast (kWh)",    f"{p['Dunkin Daily'].sum():,.0f}")
+        with k2: st.metric("CLC Blast (kWh)",       f"{p['CLC Daily'].sum():,.0f}")
+        with k3: st.metric("Deep Storage (kWh)",    f"{p['Deep Daily'].sum():,.0f}")
+        with k4: st.metric("Combined Load (kWh)",   f"{total_load:,.0f}")
+        with k5: st.metric("Total Savings (₹)",     f"₹{total_savings:,.2f}")
+        with k6: st.metric("Savings / kWh (₹)",     f"₹{savings_per_unit:,.4f}")
+
+        st.markdown("---")
+
+        # ── Chart 1 — Cumulative Meter Readings ─────────────────────────────
+        st.markdown('<div class="sec-title">📈 Cumulative Meter Readings (kWh)</div>', unsafe_allow_html=True)
+        meter_chart = p.set_index('Date')[[COL_DUNKIN, COL_CLC]].dropna(how='all')
+        if not meter_chart.empty:
+            st.area_chart(meter_chart, color=["#002D62", "#FF9F1C"])
+
+        # ── Chart 2 — Daily Consumption Breakdown ───────────────────────────
+        st.markdown('<div class="sec-title">⚡ Daily Consumption Breakdown (kWh)</div>', unsafe_allow_html=True)
+        st.bar_chart(
+            p.set_index('Date')[['Dunkin Daily', 'CLC Daily', 'Deep Daily']].fillna(0),
+            color=["#002D62", "#FF9F1C", "#10B981"]
+        )
+
+        # ── Chart 3 — Daily Savings ─────────────────────────────────────────
+        st.markdown('<div class="sec-title">💰 Daily Recovery Realized (₹)</div>', unsafe_allow_html=True)
+        st.bar_chart(p.set_index('Date')['Total Savings'].fillna(0), color="#16A34A")
+
+        # ── Daily Summary Table ─────────────────────────────────────────────
+        st.markdown('<div class="sec-title">📋 Daily Energy & Savings Data</div>', unsafe_allow_html=True)
+        table_df = p[['Date', 'Dunkin Daily', 'CLC Daily', 'Deep Daily', 'Combined Load', 'Total Savings']].copy()
+        table_df.columns = ['Date', 'Dunkin Blast (kWh)', 'CLC Blast (kWh)', 'Deep Storage (kWh)', 'Combined Load (kWh)', 'Total Savings (₹)']
+        table_df['Date'] = table_df['Date'].dt.strftime('%d-%b-%Y')
+        st.dataframe(table_df, use_container_width=True, hide_index=True)
+
+        # ── Savings Breakdown Table ─────────────────────────────────────────
+        st.markdown('<div class="sec-title">🔍 Savings Breakdown by Section</div>', unsafe_allow_html=True)
+        breakdown_df = p[['Date'] + sav_cols_present].fillna(0).copy()
+        rename_map   = {COL_SAV_DUNKIN: 'Dunkin (₹)', COL_SAV_CLC: 'CLC (₹)',
+                        COL_SAV_BMC: 'BMC (₹)', COL_SAV_DEEP: 'Deep (₹)'}
+        breakdown_df = breakdown_df.rename(columns=rename_map)
+        breakdown_df['Date'] = breakdown_df['Date'].dt.strftime('%d-%b-%Y')
+        st.dataframe(breakdown_df, use_container_width=True, hide_index=True)
+
+        # ── Raw Data Inspector & Export ─────────────────────────────────────
+        st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
+        with st.expander("📂 View & Download Energy & Cost Savings Raw Sheet Data", expanded=False):
+            st.dataframe(p, use_container_width=True, hide_index=True)
+            csv_data = p.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="Download Sheet1 Cost Data as CSV",
+                data=csv_data,
+                file_name="freon_sheet1_energy_savings.csv",
+                mime="text/csv",
+                key="btn_download_power"
+            )
     else:
-        st.markdown('<div class="alert-info">Power consumption analytical worksheet missing from repo root.</div>', unsafe_allow_html=True)
-# ==============================================================================
+        st.markdown('<div class="alert-info">Power consumption analytical worksheet missing from repo root.</div>', unsafe_allow_html=True)# ==============================================================================
 #  TAB 4 — ASSET DUTY CYCLES
 # ==============================================================================
 with tab_runtime:
