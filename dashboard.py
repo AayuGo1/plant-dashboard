@@ -220,8 +220,6 @@ def load_processed_energy_data():
         
     except Exception as e:
         st.sidebar.error(f"Failed parsing processed energy file {name}: {e}")
-        import traceback
-        st.sidebar.text(traceback.format_exc())
         return None
 
 # ─────────────────────────────────────────────────────────────
@@ -346,18 +344,12 @@ def load_excel_sheet(sheet_name, fallback_header_row):
 
     except Exception as e:
         st.warning(f"Unexpected error loading sheet {sheet_name}: {e}")
-        import traceback
-        st.sidebar.text(traceback.format_exc())
         return None
 
 # ==============================================================================
 # HELPER FUNCTIONS FOR COMPRESSOR TAB (TAB 5)
 # ==============================================================================
 def detect_compressors(columns):
-    """
-    Automatically detect compressor-related columns using flexible pattern matching.
-    Returns: dict {compressor_id: {'stop': col_name, 'start': col_name, 'off': col_name, ...}}
-    """
     compressors = {}
     if columns is None:
         return compressors
@@ -370,7 +362,7 @@ def detect_compressors(columns):
         id_match = re.search(r'comp(?:ressor)?[\s\-_]*(\w+)', col_str)
         if not id_match:
             continue
-        comp_id = id_match.group(1)
+        comp_id = f"Compressor-{id_match.group(1)}"
 
         if any(k in col_str for k in ['off', 'down', 'downtime', 'rest', 'shutdown']):
             action = 'off'
@@ -388,10 +380,6 @@ def detect_compressors(columns):
     return compressors
 
 def parse_time_string(time_str):
-    """
-    Robustly parse a time string into a datetime.time object.
-    Handles: "11.30.00 PM", "23:30:00", "1:30 AM", NaN, empty strings.
-    """
     if pd.isna(time_str):
         return None
     s = str(time_str).strip()
@@ -399,7 +387,6 @@ def parse_time_string(time_str):
         return None
 
     normalized = s.replace('.', ':')
-
     formats = [
         '%I:%M:%S %p',   
         '%I:%M %p',      
@@ -411,25 +398,9 @@ def parse_time_string(time_str):
             return datetime.strptime(normalized, fmt).time()
         except ValueError:
             continue
-
-    try:
-        clean = normalized.upper().replace('AM', '').replace('PM', '').strip()
-        parts = clean.split(':')
-        h, m = int(parts[0]), int(parts[1])
-        sec = int(parts[2]) if len(parts) > 2 else 0
-        
-        if 'PM' in s.upper() and h < 12: h += 12
-        elif 'AM' in s.upper() and h == 12: h = 0
-        
-        return datetime(2000, 1, 1, h, m, sec).time()
-    except Exception:
-        return None
+    return None
 
 def calculate_off_hours(stop_time, start_time):
-    """
-    Duration (hours) between a stop event and the next start event.
-    Correctly handles overnight crossovers (e.g. 23:30 → 01:30 = 2 h).
-    """
     if stop_time is None or start_time is None:
         return 0.0
     try:
@@ -766,10 +737,10 @@ with tab_energy:
                 else:
                     container.metric(label, "N/A")
             
-            with ec1: render_delta_metric(ec1, dunkin_col, "#002D62", "Dunkin' Daily")
-            with ec2: render_delta_metric(ec2, clc_col, "#FF9F1C", "CLC Daily")
-            with ec3: render_delta_metric(ec3, bmc_col, "#16A34A", "BMC Daily")
-            with ec4: render_delta_metric(ec4, deep_col, "#E01934", "Deep Daily")
+            render_delta_metric(ec1, dunkin_col, "#002D62", "Dunkin' Daily")
+            render_delta_metric(ec2, clc_col, "#FF9F1C", "CLC Daily")
+            render_delta_metric(ec3, bmc_col, "#16A34A", "BMC Daily")
+            render_delta_metric(ec4, deep_col, "#E01934", "Deep Daily")
             
             st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
             
@@ -877,13 +848,6 @@ with tab_energy:
             )
     else:
         st.markdown('<div class="alert-info"><strong>⚠️ No active energy data captured matching the current file window constraints.</strong></div>', unsafe_allow_html=True)
-        st.markdown("""
-        **Troubleshooting Steps:**
-        1. Verify that PROCESSED_DAILY_VARS_Active_Energy_Report files exist in the GitHub repository
-        2. Check that the date range in the files matches the expected window
-        3. Ensure the file format is either .xlsx or .csv
-        4. Click '🔄 Refresh Data Now' in the sidebar to reload data
-        """)
 
 # ==============================================================================
 #  TAB 2 — COLD STORAGE TEMPERATURES
@@ -904,7 +868,7 @@ with tab_temp:
             total_exc  = sum((temp_df[s] > THRESHOLD).sum() for s in sensors)
             compliance = (1 - total_exc / (total_logs * len(sensors))) * 100
             st.metric("Thermal Compliance Index", f"{compliance:.1f}%",
-                      delta=f"{total_exc} critical violations", delta_color="inverse")
+                     delta=f"{total_exc} critical violations", delta_color="inverse")
 
         st.markdown('<div class="sec-title">Real-Time Temperature Stream</div>', unsafe_allow_html=True)
         st.line_chart(temp_df.set_index('Time')[sensors], color=["#002D62","#0EA5E9","#E01934"])
@@ -1210,18 +1174,8 @@ with tab_runtime:
 # ==============================================================================
 #  TAB 5 — COMPRESSOR OPTIMISATION (REFACTORED INDUSTRIAL CORE)
 # ==============================================================================
-import pandas as pd
-import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-import streamlit as st
-
 with tab_comp:
     try:
-        # ------------------------------------------------------------------
-        # 1. LOAD & SANITIZE RAW DATA (Targeting Sheet3 Structure)
-        # ------------------------------------------------------------------
-        # Sheet3 has multi-level headers. Fallback parsing reads data row-wise.
         raw_comp_df = load_excel_sheet('Sheet3', fallback_header_row=3)
 
         if raw_comp_df is None or raw_comp_df.empty:
@@ -1230,66 +1184,49 @@ with tab_comp:
                 unsafe_allow_html=True
             )
         else:
-            # Clean and normalize header columns
             c = raw_comp_df.copy()
             c.columns = [str(col).strip() for col in c.columns]
             
-            # Filter out metadata blocks or leaking structural row texts
             c = c[~c.iloc[:, 0].astype(str).str.strip().str.lower().str.fullmatch(
                 r'date|total|from|sr\.?\s*no\.?|stop|start|compressor.*', na=False
             )]
             
-            # Process Core Datetime Index cleanly
             c.iloc[:, 0] = pd.to_datetime(c.iloc[:, 0], errors='coerce')
             c = c.dropna(subset=[c.columns[0]]).sort_values(c.columns[0]).reset_index(drop=True)
             date_col = c.columns[0]
-            
-            # Extract month identifier for summary layers
             c['Year_Month'] = c[date_col].dt.to_period('M').astype(str)
 
-            # ------------------------------------------------------------------
-            # 2. DYNAMIC COMPRESSOR CONFIGURATION PARSING
-            # ------------------------------------------------------------------
-            # Identify columns associated with each compressor unit
-            # Based on layout: Column index pairs or names starting with Compressor-X
+            # --------------------------------------------------------------
+            # AUTO-DETECTION MATRIX ENGINE (REPLACES MANUAL MAPPING)
+            # --------------------------------------------------------------
             compressor_map = {}
             for idx, col_name in enumerate(c.columns):
                 if "compressor" in col_name.lower():
-                    # Parse out unit identifiers like 'Compressor-1'
                     parts = col_name.split()
                     comp_id = parts[0]
                     if comp_id not in compressor_map:
                         compressor_map[comp_id] = {}
                     
-                    # Map the relative roles of adjacent attributes
                     if "stop" in col_name.lower() or "stop" in str(c.iloc[0, idx]).lower():
                         compressor_map[comp_id]['stop_idx'] = idx
                     elif "start" in col_name.lower() or "start" in str(c.iloc[0, idx]).lower():
                         compressor_map[comp_id]['start_idx'] = idx
 
-            # Clean compressor mappings that lack matching pairs
             compressor_map = {k: v for k, v in compressor_map.items() if 'stop_idx' in v}
 
-            # ------------------------------------------------------------------
-            # 3. VECTORIZED ANALYTIC METRIC PROCESSING LOOP
-            # ------------------------------------------------------------------
             daily_records = []
             validation_warnings = []
 
             for comp_name, idx_config in compressor_map.items():
                 stop_col = c.columns[idx_config['stop_idx']]
-                
-                # Extract time entries
                 stop_series = c[stop_col].astype(str).str.strip()
                 
-                # Check for an accompanying Start column or compute fixed shift variations
                 if 'start_idx' in idx_config:
                     start_col = c.columns[idx_config['start_idx']]
                     start_series = c[start_col].astype(str).str.strip()
                 else:
                     start_series = pd.Series("23:59:59", index=c.index)
 
-                # Process row-by-row deltas dynamically
                 for i in range(len(c)):
                     row_date = c.loc[i, date_col]
                     row_month = c.loc[i, 'Year_Month']
@@ -1297,32 +1234,28 @@ with tab_comp:
                     raw_stop = stop_series.iloc[i]
                     raw_start = start_series.iloc[i]
 
-                    # Condition checking for empty operational blocks
                     if raw_stop in ['nan', '', 'None', 'NAT'] or pd.isna(c.iloc[i, idx_config['stop_idx']]):
                         downtime = 0.0
                         cycles = 0
                     else:
                         try:
-                            # Convert delta parsing safely
                             t_stop = pd.to_timedelta(raw_stop if ':' in raw_stop else f"{raw_stop}:00")
                             t_start = pd.to_timedelta(raw_start if ':' in raw_start else f"{raw_start}:00")
                             
                             if t_start >= t_stop:
                                 downtime = (t_start - t_stop).total_seconds() / 3600.0
                             else:
-                                # Midnight cross logic override boundary adjustment
                                 downtime = ((t_start + pd.to_timedelta('1D')) - t_stop).total_seconds() / 3600.0
                             cycles = 1
                         except Exception:
                             downtime = 0.0
                             cycles = 0
 
-                    # Clamp downtime limits to standard mathematical day lengths
                     downtime = min(max(downtime, 0.0), 24.0)
                     working_hours = 24.0 - downtime
                     utilization = (working_hours / 24.0) * 100.0
 
-                    # Industrial Validation Checker
+                    # Mass Balance Validation Line Check
                     total_time_check = working_hours + downtime
                     if abs(total_time_check - 24.0) > 1e-4:
                         validation_warnings.append(
@@ -1340,16 +1273,11 @@ with tab_comp:
                         'Stop Count': cycles
                     })
 
-            # Form unified structured processing dataframe
             analytics_df = pd.DataFrame(daily_records)
 
             if analytics_df.empty:
                 st.warning("No structured compressor status records found or computed.")
             else:
-                # --------------------------------------------------------------
-                # 4. AGGREGATIONS & SUMMARY TABLES
-                # --------------------------------------------------------------
-                # A. Core Asset Table Aggregation
                 compressor_summary = analytics_df.groupby('Compressor').agg({
                     'Working Hours': 'sum',
                     'Non-Working Hours': 'sum',
@@ -1358,44 +1286,30 @@ with tab_comp:
                     'Utilization %': 'mean'
                 }).reset_index()
 
-                # B. Daily Summary Table
                 daily_summary = analytics_df.groupby(['Date', 'Compressor']).agg({
                     'Working Hours': 'sum',
                     'Non-Working Hours': 'sum',
                     'Utilization %': 'mean'
                 }).reset_index()
 
-                # C. Monthly Summary Table
                 monthly_summary = analytics_df.groupby(['Month', 'Compressor']).agg({
                     'Working Hours': 'sum',
                     'Non-Working Hours': 'sum',
                     'Utilization %': 'mean'
                 }).reset_index()
 
-                # --------------------------------------------------------------
-                # 5. DASHBOARD DISPLAY PANELS & METRICS
-                # --------------------------------------------------------------
-                # UI Summary Metrics
+                # Visual Panels Rendering Row
                 m1, m2, m3, m4 = st.columns(4)
-                with m1:
-                    st.metric("Monitored Compressors", f"{len(compressor_summary)}")
-                with m2:
-                    avg_util = compressor_summary['Utilization %'].mean()
-                    st.metric("Avg System Utilization", f"{avg_util:.1f}%")
-                with m3:
-                    total_downtime = compressor_summary['Non-Working Hours'].sum()
-                    st.metric("Total Cumulative Downtime", f"{total_downtime:,.1f} hrs")
-                with m4:
-                    total_cycles = compressor_summary['Start Count'].sum()
-                    st.metric("Total System Events", f"{int(total_cycles)}")
+                with m1: st.metric("Monitored Compressors", f"{len(compressor_summary)}")
+                with m2: st.metric("Avg System Utilization", f"{compressor_summary['Utilization %'].mean():.1f}%")
+                with m3: st.metric("Total Cumulative Downtime", f"{compressor_summary['Non-Working Hours'].sum():,.1f} hrs")
+                with m4: st.metric("Total System Events", f"{int(compressor_summary['Start Count'].sum())}")
 
-                # Validation Warnings Section Container
                 if validation_warnings:
                     with st.expander("⚠️ System Calculations Consistency Warnings", expanded=False):
-                        for warn in validation_warnings[:10]:  # Limit output loop logs
+                        for warn in validation_warnings[:10]:
                             st.write(warn)
 
-                # Core Aggregated Metric Matrix UI Table Output
                 st.markdown('### 📊 Asset Summary Metrics')
                 st.dataframe(
                     compressor_summary.style.format({
@@ -1407,11 +1321,7 @@ with tab_comp:
                     }), use_container_width=True, hide_index=True
                 )
 
-                # --------------------------------------------------------------
-                # 6. INTERACTIVE DYNAMIC VISUALIZATIONS
-                # --------------------------------------------------------------
                 st.markdown('### 📈 Optimization Performance & Downtime Charts')
-                
                 v_col1, v_col2 = st.columns(2)
                 
                 with v_col1:
@@ -1456,7 +1366,7 @@ with tab_comp:
                     )
                     st.plotly_chart(fig2, use_container_width=True)
 
-                    # 4. Downtime Analysis
+                    # 4. Downtime Analysis (Sorted Descending)
                     downtime_sorted = compressor_summary.sort_values(by='Non-Working Hours', ascending=False)
                     fig4 = px.bar(
                         downtime_sorted, 
@@ -1493,11 +1403,8 @@ with tab_comp:
                     )
                     st.plotly_chart(fig5, use_container_width=True)
                 except Exception as heatmap_err:
-                    st.info(f"Heatmap structural grouping skipped: {heatmap_err}")
+                    st.info(f"Heatmap matrix render skipped: {heatmap_err}")
 
-                # --------------------------------------------------------------
-                # 7. TIME-SERIES CONSOLIDATED DATA TABLES PORTAL
-                # --------------------------------------------------------------
                 st.markdown('### 📅 Historical Summary Registers')
                 t_col1, t_col2 = st.columns(2)
                 
