@@ -1217,29 +1217,37 @@ with tab_comp:
     
     # ─────────────────────────────────────────────────────────────
     #  HELPER: ROBUST TIME NORMALIZATION ENGINE
-    #  Handles: datetime, Timestamp, time, Excel serial, 
-    #           "11.30.00 PM", "23:30:00", "1:30 AM", etc.
+    #  Handles: "11.30.00 PM", "23:30:00", datetime objects, NaT
     # ─────────────────────────────────────────────────────────────
     def normalize_to_time(val):
-        """Convert any time representation to datetime.time object."""
-        if val is None or (isinstance(val, float) and pd.isna(val)):
+        """Convert any time representation to datetime.time object safely."""
+        if val is None:
             return None
         
+        # Handle Pandas NaT or NaN
+        if isinstance(val, float) and pd.isna(val):
+            return None
+        if isinstance(val, pd.Timestamp) and pd.isna(val):
+            return None
+            
         # Already a time object
         if isinstance(val, dt_time):
             return val
         
-        # datetime or Timestamp
+        # datetime or Timestamp (valid)
         if isinstance(val, (datetime, pd.Timestamp)):
-            return val.time()
+            try:
+                return val.time()
+            except:
+                return None
         
         val_str = str(val).strip()
         if not val_str or val_str.lower() in ['nan', 'nat', 'none', '', '0:00']:
             return None
         
-        # Try standard library parsing (no pandas dependency)
+        # Specific formats found in Sheet3 (e.g., "11.30.00 PM")
         formats_to_try = [
-            '%I.%M.%S %p',    # 11.30.00 PM  (Sheet3 primary format)
+            '%I.%M.%S %p',    # 11.30.00 PM
             '%I:%M:%S %p',    # 11:30:00 PM
             '%I:%M %p',       # 11:30 PM
             '%I.%M %p',       # 11.30 PM
@@ -1275,11 +1283,15 @@ with tab_comp:
         # Clean column names
         c_df.columns = [str(col).strip() for col in c_df.columns]
         
-        # Remove structural/header/footer rows
-        c_df = c_df[~c_df.iloc[:, 0].astype(str).str.strip().str.lower().str.contains(
-            'date|total|from|sr\\.?\\s*no\\.?|running|stop time|start time', 
-            case=False, na=False
-        )]
+        # Remove structural/header/footer rows dynamically
+        # We look for rows where the first column contains 'date' or 'total' or 'sr'
+        if not c_df.empty:
+            first_col = c_df.columns[0]
+            mask = ~c_df[first_col].astype(str).str.strip().str.lower().str.contains(
+                'date|total|from|sr\\.?\\s*no\\.?|running|stop time|start time', 
+                case=False, na=False
+            )
+            c_df = c_df[mask].reset_index(drop=True)
         
         # Parse dates from first column
         c_df['Parsed_Date'] = pd.to_datetime(c_df.iloc[:, 0], errors='coerce')
@@ -1305,19 +1317,16 @@ with tab_comp:
             # ─────────────────────────────────────────────────────────────
             compressor_config = {}
             
+            # Try to find columns by name pattern first
             for i in range(1, 6):
                 comp_name = f"Compressor-{i}"
                 stop_col = None
                 start_col = None
                 
-                # Search for matching columns by name pattern
                 for col in c_df.columns:
                     col_lower = col.lower()
-                    # Match "compressor-1", "compressor 1", "comp-1", etc.
-                    comp_patterns = [
-                        f'compressor-{i}', f'compressor {i}', 
-                        f'comp-{i}', f'comp {i}', f'comp{i}'
-                    ]
+                    # Match patterns like "compressor-1", "comp 1", etc.
+                    comp_patterns = [f'compressor-{i}', f'compressor {i}', f'comp-{i}', f'comp {i}']
                     
                     if any(p in col_lower for p in comp_patterns):
                         if 'stop' in col_lower and 'start' not in col_lower:
@@ -1328,7 +1337,8 @@ with tab_comp:
                 if stop_col and start_col:
                     compressor_config[comp_name] = {'stop': stop_col, 'start': start_col}
             
-            # Fallback: positional mapping if dynamic detection finds < 5 compressors
+            # Fallback: Positional mapping if dynamic detection fails (< 5 compressors found)
+            # Based on Sheet3 structure: Date, C1-Stop, C1-Start, C2-Stop, C2-Start...
             if len(compressor_config) < 5 and len(c_df.columns) >= 11:
                 compressor_config = {}
                 for i in range(1, 6):
@@ -1376,6 +1386,7 @@ with tab_comp:
                                     start_mins = t_start.hour * 60 + t_start.minute + t_start.second / 60.0
                                     
                                     # Midnight crossover handling
+                                    # If Start < Stop, it means it crossed midnight (e.g., Stop 23:00, Start 03:00)
                                     if start_mins < stop_mins:
                                         delta_mins = (1440.0 - stop_mins) + start_mins
                                     else:
@@ -1412,6 +1423,14 @@ with tab_comp:
                 
                 df_daily = pd.DataFrame(daily_records)
                 df_summary = pd.DataFrame(summary_records)
+                
+                # Ensure numeric types for safety
+                for col in ['Working Hours', 'Non Working Hours', 'Utilization %', 'Downtime %']:
+                    df_daily[col] = pd.to_numeric(df_daily[col], errors='coerce')
+                    df_summary[col] = pd.to_numeric(df_summary[col], errors='coerce')
+                
+                # Drop any rows that became NaN due to conversion errors
+                df_daily.dropna(subset=['Working Hours', 'Non Working Hours'], inplace=True)
                 
                 # ─────────────────────────────────────────────────────────────
                 #  VALIDATION: Working + Non Working = 24 for EVERY day
