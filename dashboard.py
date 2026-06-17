@@ -3,14 +3,11 @@ import glob
 import warnings
 import requests
 import io
-import re
-from datetime import datetime
 import streamlit as st
 import pandas as pd
-import numpy as np
 import plotly.graph_objects as go
-import plotly.express as px
 from plotly.subplots import make_subplots
+import numpy as np
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
@@ -181,17 +178,26 @@ def load_processed_energy_data():
             return None
 
         # Identify Register Columns (V1 - V9) and Consumption Columns
+        # Based on the sample data, V1-V9 are cumulative registers
         register_cols = []
+        consump_cols_map = {} # Map register to its consumption column if it exists
         
         for i in range(1, 10):
             v_col = f"V{i}"
+            # Check for exact match or close match in columns
             matched_v = next((c for c in df.columns if c.upper() == v_col.upper() or c.startswith(f"V{i} ")), None)
             if matched_v:
                 register_cols.append(matched_v)
                 
+        # Calculate Consumption from Registers if consumption columns are empty/missing
+        # We will create standardized consumption columns: 'calc_consump_v1' ... 'calc_consump_v9'
+        
         calculated_consumption = {}
         
         for reg_col in register_cols:
+            # Extract the index number from column name e.g. "V1 - DUNKIN BLAST" -> 1
+            # Or just use the order if naming is inconsistent. 
+            # Let's rely on the column name containing V1, V2 etc.
             v_num = None
             for i in range(1, 10):
                 if f"V{i}" in reg_col.upper():
@@ -199,13 +205,22 @@ def load_processed_energy_data():
                     break
             
             if v_num:
+                # Calculate Diff
                 diffs = df[reg_col].diff()
-                diffs = diffs.where(diffs >= 0, other=np.nan)
+                # Handle negative diffs (meter reset) or NaNs
+                diffs = diffs.where(diffs >= 0, other=np.nan) # Simple check, might need more complex logic for resets
                 calculated_consumption[f'calc_consump_v{v_num}'] = diffs.fillna(0)
                 
+        # Add calculated columns to DF
         for col_name, series in calculated_consumption.items():
             df[col_name] = series
             
+        # Define Zone Mappings based on standard JFL naming conventions found in sample
+        # V1: Dunkin Blast, V6: Dunkin Rack -> Dunkin
+        # V3: CLC Blast, V8: CLC Rack -> CLC
+        # V2: BMC Blast, V7: BMC Rack -> BMC
+        # V4: Deep1, V5: Deep2, V9: Deep Rack -> Deep
+        
         def get_zone_consumption(v_nums):
             total = pd.Series(np.zeros(len(df)), index=df.index)
             for v in v_nums:
@@ -219,6 +234,7 @@ def load_processed_energy_data():
         df['BMC Consumption'] = get_zone_consumption([2, 7])
         df['Deep Consumption'] = get_zone_consumption([4, 5, 9])
         
+        # Also keep individual V channels for detailed view
         df['V1_Consumption'] = df.get('calc_consump_v1', pd.Series(0, index=df.index))
         df['V2_Consumption'] = df.get('calc_consump_v2', pd.Series(0, index=df.index))
         df['V3_Consumption'] = df.get('calc_consump_v3', pd.Series(0, index=df.index))
@@ -297,15 +313,24 @@ def load_temperature_data():
     return combined
 
 # ─────────────────────────────────────────────────────────────
+#  EXCEL SHEET LOADER
+# ─────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 #  EXCEL SHEET LOADER - FIXED & ROBUST
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_excel_sheet(sheet_name, fallback_header_row):
+    """
+    Loads a specific sheet from the Freon Excel workbook found in GitHub.
+    Includes dynamic header detection and defensive error handling.
+    """
     try:
+        # 1. Fetch the files list
         all_files = list_github_files()
         if not all_files:
             return None
         
+        # 2. Find the freon file correctly by unpacking both name (n) and url (u)
         match_url = None
         for n, u in all_files:
             if "freon" in n.lower() and n.endswith(".xlsx"):
@@ -315,20 +340,24 @@ def load_excel_sheet(sheet_name, fallback_header_row):
         if not match_url:
             return None
 
+        # 3. Read a preview to detect the actual header row dynamically
         try:
             preview = read_excel_from_github(match_url, sheet_name=sheet_name, header=None, engine='openpyxl')
         except Exception as e:
             st.warning(f"Could not preview sheet '{sheet_name}' from Freon file: {e}")
             return None
 
+        # Determine header row index
         hdr = fallback_header_row
         if not preview.empty:
             for i in range(min(15, len(preview))):
+                # Convert row to string list, handling NaNs
                 row_vals = [str(x).lower() for x in preview.iloc[i] if pd.notna(x)]
                 if any('date' in x or 'stop time' in x or 'start time' in x or 'sr' in x for x in row_vals):
                     hdr = i
                     break
         
+        # 4. Read the actual data with the detected header
         try:
             df = read_excel_from_github(match_url, sheet_name=sheet_name, header=hdr, engine='openpyxl')
         except Exception as e:
@@ -338,20 +367,26 @@ def load_excel_sheet(sheet_name, fallback_header_row):
         if df.empty:
             return None
             
+        # 5. Clean Column Names
         df.columns = [str(c).strip() for c in df.columns]
         df = df.dropna(axis=1, how='all')
         
+        # 6. Specific Logic for Sheet3 (Compressor Optimization)
         if sheet_name == 'Sheet3':
             if len(df.columns) >= 12:
+                # Ensure the 12th column is named correctly if it exists
                 if 'Saving in hrs' not in df.columns:
                      df.columns.values[11] = 'Saving in hrs'
             else:
+                # Fallback: check last column for unnamed
                 last = df.columns[-1]
                 if 'unnamed' in str(last).lower():
                     df = df.rename(columns={last: 'Saving in hrs'})
                 
+        # 7. Filter out 'Total' rows if they exist in the first column
         if not df.empty:
             fc = df.columns[0]
+            # Keep rows where the first column is NOT 'total' (case-insensitive)
             mask = df[fc].astype(str).str.strip().str.lower() != 'total'
             df = df[mask]
             
@@ -362,98 +397,6 @@ def load_excel_sheet(sheet_name, fallback_header_row):
         import traceback
         st.sidebar.text(traceback.format_exc())
         return None
-
-# ==============================================================================
-# HELPER FUNCTIONS FOR COMPRESSOR TAB
-# ==============================================================================
-def detect_compressors(columns):
-    """
-    Automatically detect compressor-related columns using flexible pattern matching.
-    Returns: dict {compressor_id: {'stop': col_name, 'start': col_name, 'run': col_name}}
-    """
-    compressors = {}
-    if columns is None:
-        return compressors
-
-    for col in columns:
-        col_str = str(col).lower().strip()
-        if 'comp' not in col_str:
-            continue
-        
-        id_match = re.search(r'comp(?:ressor)?[\s\-_]*(\w+)', col_str)
-        if not id_match:
-            continue
-        comp_id = id_match.group(1)
-
-        if 'stop' in col_str:
-            action = 'stop'
-        elif 'start' in col_str:
-            action = 'start'
-        elif 'run' in col_str:
-            action = 'run'
-        else:
-            continue
-            
-        compressors.setdefault(comp_id, {})[action] = col
-        
-    return compressors
-
-def parse_time_string(time_str):
-    """
-    Robustly parse time strings like '11.30.00 PM', '23:30', etc.
-    Returns datetime.time object or None.
-    """
-    if pd.isna(time_str):
-        return None
-    s = str(time_str).strip()
-    if s == '' or s.lower() in ('nan', 'none', 'nat'):
-        return None
-    
-    normalized = s.replace('.', ':')
-    
-    formats = [
-        '%I:%M:%S %p',   
-        '%I:%M %p',      
-        '%H:%M:%S',      
-        '%H:%M',         
-    ]
-    
-    for fmt in formats:
-        try:
-            return datetime.strptime(normalized, fmt).time()
-        except ValueError:
-            continue
-            
-    try:
-        clean = normalized.upper().replace('AM', '').replace('PM', '').strip()
-        parts = clean.split(':')
-        h, m = int(parts[0]), int(parts[1])
-        sec = int(parts[2]) if len(parts) > 2 else 0
-        
-        if 'PM' in s.upper() and h < 12: h += 12
-        elif 'AM' in s.upper() and h == 12: h = 0
-        
-        return datetime(2000, 1, 1, h, m, sec).time()
-    except Exception:
-        return None
-
-def calculate_off_duration_hours(stop_time, start_time):
-    """
-    Calculates hours between Stop and Start. Handles overnight spans.
-    """
-    if stop_time is None or start_time is None:
-        return 0.0
-    try:
-        stop_min = stop_time.hour * 60 + stop_time.minute + stop_time.second / 60.0
-        start_min = start_time.hour * 60 + start_time.minute + start_time.second / 60.0
-        
-        if start_min < stop_min: 
-            start_min += 24 * 60
-            
-        return max(0.0, (start_min - stop_min) / 60.0)
-    except Exception:
-        return 0.0
-
 # ─────────────────────────────────────────────────────────────
 #  SIDEBAR
 # ─────────────────────────────────────────────────────────────
@@ -570,6 +513,7 @@ with tab_energy:
         with col_q4:
             st.metric("Coverage", f"{total_days} days")
         
+        # Define Zone Columns
         dunkin_col = 'Dunkin Consumption'
         clc_col = 'CLC Consumption'
         bmc_col = 'BMC Consumption'
@@ -615,6 +559,7 @@ with tab_energy:
             st.metric("Grand Total", f"{total_all:,.1f} kWh",
                      delta=f"{total_days} days")
         
+        # Individual V Channels Plot
         v_channels = [f'V{i}_Consumption' for i in range(1, 10)]
         existing_v_channels = [c for c in v_channels if c in e_df.columns]
         
@@ -681,6 +626,7 @@ with tab_energy:
             )
             st.plotly_chart(fig, use_container_width=True)
         
+        # Zone Distribution Plot
         st.markdown('<div class="sec-title">🏭 Process Zone Daily Energy Distribution</div>', unsafe_allow_html=True)
         
         fig_zone = go.Figure()
@@ -736,6 +682,25 @@ with tab_energy:
         
         st.markdown('<div class="sec-title">📉 Day-over-Day Consumption Change (Δ vs Previous Day)</div>', unsafe_allow_html=True)
         
+        # Filter out rows with zero or invalid consumption data
+        valid_data_mask = (e_df[eq_cols].sum(axis=1) > 0)
+        e_df_valid = e_df[valid_data_mask].copy()
+        
+        diff_energy = pd.DataFrame()
+        diff_energy['ChartDate'] = e_df_valid[date_col].dt.strftime('%d-%b').tolist()
+        diff_energy['DateObj'] = e_df_valid[date_col]
+        diff_cols = []
+        
+        for col in eq_cols:
+            col_label = f"{col} Δ"
+            diff_series = e_df_valid[col].diff().fillna(0)
+            # Ensure no negative values
+            diff_series = diff_series.clip(lower=0)
+            diff_energy[col_label] = diff_series.values
+            diff_cols.append(col_label)
+        st.markdown('<div class="sec-title">📉 Day-over-Day Consumption Change (Δ vs Previous Day)</div>', unsafe_allow_html=True)
+        
+        # Filter out rows with zero consumption (like June 15)
         valid_data_mask = (e_df[eq_cols].sum(axis=1) > 0)
         e_df_valid = e_df[valid_data_mask].copy()
         
@@ -826,7 +791,7 @@ with tab_energy:
                 paper_bgcolor='rgba(0,0,0,0)',
                 shapes=[dict(type='line', xref='paper', yref='y', x0=0, y0=0, x1=1, y1=0, line=dict(color='red', width=2, dash='dash'))]
             )
-            st.plotly_chart(fig_delta, use_container_width=True)
+        st.plotly_chart(fig_delta, use_container_width=True)
         
         st.markdown('<div class="sec-title">📋 Statistical Summary by Zone</div>', unsafe_allow_html=True)
         summary_data = []
@@ -1002,641 +967,166 @@ with tab_temp:
         st.markdown('<div class="alert-info">No environment logs could be successfully loaded.</div>', unsafe_allow_html=True)
 
 # ==============================================================================
-#  TAB 3 — ENERGY CONSUMPTION ANALYTICS MODULE (REFACTORED)
+#  TAB 3 — ENERGY & COST SAVINGS
 # ==============================================================================
-# 
-# CALCULATION METHODOLOGY:
-# A. Daily Energy Consumption = Last Reading of Day - First Reading of Day
-#    (Uses actual meter readings, not averages)
-#
-# B. Savings Analytics with Intelligent Fallback:
-#    Method 1: Compare against overall average consumption
-#    Method 2: Compare against first week's average
-#    Method 3: Use savings column if available
-#
-# C. Tariff Configuration: ₹8.50/kWh (configurable)
-#
-# D. Data Cleaning:
-#    - Handles merged cells, blank rows, text values
-#    - Detects and handles missing dates
-#    - Removes duplicate timestamps
-#    - Excludes meter reset anomalies (>10000 kWh jump)
-#
-# ==============================================================================
-
 with tab_power:
-    st.markdown('<div class="sec-title">⚡ Energy Consumption Analytics</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-title">💡 Energy & Cost Savings Dashboard</div>', unsafe_allow_html=True)
     
-    # ==========================================================================
-    # 1. DATA LOADING & COLUMN DETECTION
-    # ==========================================================================
+    # Load Sheet1 specifically
+    power_df = load_excel_sheet('Sheet1', fallback_header_row=1)
     
-    @st.cache_data
-    def load_and_process_energy_data():
-        """Load and process energy data with automatic column detection"""
+    if power_df is not None and not power_df.empty:
+        p = power_df.copy()
         
-        def detect_energy_columns(df):
-            """Automatically detect energy-related columns using fuzzy matching"""
-            energy_patterns = [
-                'active energy', 'energy reading', 'kwh', 'meter reading',
-                'consumption', 'total energy', 'energy value', 'reading',
-                'active', 'import', 'delivered', 'received'
-            ]
+        # --- Auto-Detection Logic ---
+        def detect_col(df, keywords, fallback_idx=0):
+            cols = [str(c) for c in df.columns]
+            for kw in keywords:
+                for c in cols:
+                    if kw in c.lower():
+                        return c
+            return cols[fallback_idx] if fallback_idx < len(cols) else None
+
+        # Detect Columns based on file structure
+        date_col = detect_col(p, ['date'], 0)
+        dunkin_meter_col = detect_col(p, ['dunkin blast'], 1) 
+        clc_meter_col = detect_col(p, ['clc blast'], 6)       
+        deep_meter_col = detect_col(p, ['deep-total'], 21)    
+        savings_col = detect_col(p, ['saving'], 5)            
+
+        if date_col and dunkin_meter_col and clc_meter_col and savings_col:
+            st.success(f"✅ Auto-detected: **Date**=`{date_col}`, **Dunkin Meter**=`{dunkin_meter_col}`, **CLC Meter**=`{clc_meter_col}`, **Raw Savings**=`{savings_col}`")
             
-            energy_cols = []
-            date_cols = []
+            # --- Data Cleaning ---
+            p[date_col] = fast_parse_dates(p[date_col])
+            p = p.dropna(subset=[date_col])
             
-            for col in df.columns:
-                col_lower = str(col).lower().strip()
+            if not p.empty:
+                # ─────────────────────────────────────────────────────────────
+                #  DUPLICATE DATE HANDLING - DEFENSIVE CHECKS
+                # ─────────────────────────────────────────────────────────────
+                if 'Date' not in p.columns:
+                    st.error("❌ Date column missing after parsing.")
+                    st.stop()
                 
-                # Detect date columns
-                if any(keyword in col_lower for keyword in ['date', 'day', 'time', 'timestamp']):
-                    date_cols.append(col)
-                    continue
+                total_rows = len(p)
+                unique_dates = p['Date'].nunique()
+                duplicate_count = total_rows - unique_dates
                 
-                # Detect energy columns
-                if any(pattern in col_lower for pattern in energy_patterns):
-                    energy_cols.append(col)
-                    continue
+                st.write(f"**Data Quality Check:** {total_rows} total rows, {unique_dates} unique dates")
                 
-                # Check data type for numeric columns that might be energy readings
-                if pd.api.types.is_numeric_dtype(df[col]):
-                    # If column has reasonable energy values (0-10000 kWh)
-                    if df[col].notna().sum() > 0:
-                        col_min = df[col].min()
-                        col_max = df[col].max()
-                        if col_max < 100000 and col_min >= 0:  # Reasonable energy range
-                            energy_cols.append(col)
-            
-            # If no energy columns found, use all numeric columns
-            if not energy_cols:
-                energy_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-            
-            # If no date columns found, try to convert any object/string column
-            if not date_cols:
-                for col in df.columns:
-                    if pd.api.types.is_string_dtype(df[col]) or pd.api.types.is_object_dtype(df[col]):
-                        # Try to parse as date
-                        try:
-                            pd.to_datetime(df[col], errors='raise')
-                            date_cols.append(col)
-                            break
-                        except:
-                            continue
-            
-            return date_cols, energy_cols
-        
-        def parse_dates_robust(date_series):
-            """Parse dates with multiple format support"""
-            parsed_dates = []
-            
-            for date_val in date_series:
-                if pd.isna(date_val):
-                    parsed_dates.append(pd.NaT)
-                    continue
+                if duplicate_count > 0:
+                    st.warning(f"⚠️ Found **{duplicate_count} duplicate date(s)**. Consolidating...")
+                    
+                    # Show which dates are duplicated
+                    duplicate_dates = p[p['Date'].duplicated(keep=False)]['Date'].unique()
+                    st.write(f"**Duplicate dates found:** {', '.join([d.strftime('%d-%b-%Y') for d in duplicate_dates[:10]])}")
+                    if len(duplicate_dates) > 10:
+                        st.write(f"... and {len(duplicate_dates) - 10} more")
+                    
+                    # Consolidate duplicates by summing numeric columns
+                    numeric_cols = p.select_dtypes(include=[np.number]).columns.tolist()
+                    p = (
+                        p.groupby('Date', as_index=False)[numeric_cols]
+                        .sum(numeric_only=True)
+                    )
+                    
+                    # Verify duplicates are removed
+                    if p['Date'].duplicated().any():
+                        st.error("❌ Duplicate dates still exist after consolidation!")
+                    else:
+                        st.success(f"✓ Duplicates removed. Now {len(p)} unique date rows.")
                 
-                # If already datetime
-                if isinstance(date_val, (datetime, pd.Timestamp)):
-                    parsed_dates.append(date_val)
-                    continue
+                # Final verification
+                assert not p['Date'].duplicated().any(), "Duplicate dates detected after cleaning!"
                 
-                # Try parsing as string
-                try:
-                    # Try DD/MM/YYYY first
-                    parsed = pd.to_datetime(str(date_val), dayfirst=True, errors='coerce')
-                    if pd.isna(parsed):
-                        # Try MM/DD/YYYY
-                        parsed = pd.to_datetime(str(date_val), dayfirst=False, errors='coerce')
-                    parsed_dates.append(parsed)
-                except:
-                    parsed_dates.append(pd.NaT)
-            
-            return pd.Series(parsed_dates, index=date_series.index)
-        
-        def clean_energy_data(df):
-            """Clean and prepare energy data"""
-            df = df.copy()
-            
-            # Remove completely empty rows
-            df = df.dropna(how='all')
-            
-            # Remove rows where all numeric columns are NaN
-            numeric_cols = df.select_dtypes(include=[np.number]).columns
-            if len(numeric_cols) > 0:
-                df = df.dropna(subset=numeric_cols, how='all')
-            
-            # Reset index after cleaning
-            df = df.reset_index(drop=True)
-            
-            return df
-        
-        # Load data
-        power_df = load_excel_sheet('Sheet1', fallback_header_row=1)
-        
-        if power_df is None or power_df.empty:
-            return None, None, None, None, None
-        
-        # Clean data
-        df = clean_energy_data(power_df)
-        
-        # Detect columns
-        date_cols, energy_cols = detect_energy_columns(df)
-        
-        if not date_cols or not energy_cols:
-            st.error("❌ Could not detect date or energy columns in the data.")
-            return None, None, None, None, None
-        
-        # Use first detected date column and energy columns
-        date_col = date_cols[0]
-        
-        # Parse dates
-        df['Parsed_Date'] = parse_dates_robust(df[date_col])
-        df = df.dropna(subset=['Parsed_Date'])
-        df = df.sort_values('Parsed_Date').reset_index(drop=True)
-        
-        # Check for duplicate dates and keep first occurrence
-        df = df.drop_duplicates(subset=['Parsed_Date'], keep='first')
-        
-        # Create a consolidated 'Energy Reading' column (using first available energy column)
-        energy_col = energy_cols[0] if energy_cols else None
-        
-        if energy_col is None:
-            return None, None, None, None, None
-        
-        # Convert to numeric, coercing errors
-        df['Energy_Reading'] = pd.to_numeric(df[energy_col], errors='coerce')
-        
-        # Remove invalid readings
-        df = df[df['Energy_Reading'].notna()]
-        df = df[df['Energy_Reading'] >= 0]  # Remove negative readings
-        
-        return df, date_col, energy_col, energy_cols, date_cols
-    
-    # ==========================================================================
-    # 2. DAILY CONSUMPTION CALCULATION
-    # ==========================================================================
-    
-    def calculate_daily_consumption(df):
-        """Calculate daily consumption from meter readings"""
-        if df is None or df.empty:
-            return None
-        
-        df = df.copy()
-        
-        # Group by date and get first and last readings
-        daily_data = df.groupby('Parsed_Date').agg({
-            'Energy_Reading': ['first', 'last', 'count']
-        }).reset_index()
-        
-        daily_data.columns = ['Date', 'First_Reading', 'Last_Reading', 'Reading_Count']
-        
-        # Calculate daily consumption
-        daily_data['Daily_Consumption'] = daily_data['Last_Reading'] - daily_data['First_Reading']
-        
-        # Remove negative consumption (meter resets)
-        daily_data = daily_data[daily_data['Daily_Consumption'] >= 0]
-        
-        # Handle consumption anomalies (>10000 kWh)
-        anomaly_mask = daily_data['Daily_Consumption'] > 10000
-        if anomaly_mask.any():
-            daily_data.loc[anomaly_mask, 'Daily_Consumption'] = np.nan
-        
-        # Sort by date
-        daily_data = daily_data.sort_values('Date').reset_index(drop=True)
-        
-        return daily_data
-    
-    # ==========================================================================
-    # 3. SAVINGS ANALYTICS
-    # ==========================================================================
-    
-    def calculate_savings(daily_data, method='auto'):
-        """Calculate savings with intelligent fallback"""
-        if daily_data is None or daily_data.empty:
-            return None
-        
-        df = daily_data.copy()
-        
-        # Method 1: Compare against overall average
-        avg_consumption = df['Daily_Consumption'].mean()
-        
-        # Method 2: Compare against first week's average
-        first_week = df.head(7)
-        first_week_avg = first_week['Daily_Consumption'].mean() if len(first_week) > 0 else avg_consumption
-        
-        # Method 3: Try to detect savings column in original data
-        # (This would be implemented if we had access to original data)
-        
-        # Intelligent fallback: Use first week average if available, otherwise overall average
-        if len(first_week) >= 3:  # At least 3 days in first week
-            baseline = first_week_avg
-            method_used = "First Week Average"
+                # Sort by date
+                p = p.sort_values(by='Date').reset_index(drop=True)
+                
+                # ─────────────────────────────────────────────────────────────
+                #  REINDEX TO CONTINUOUS DATE RANGE
+                # ─────────────────────────────────────────────────────────────
+                date_range = pd.date_range(start=p['Date'].min(), end=p['Date'].max(), freq='D')
+                p = p.set_index('Date').reindex(date_range).rename_axis('Date').reset_index()
+                
+                # Convert meter columns to numeric
+                for col in [dunkin_meter_col, clc_meter_col, deep_meter_col, savings_col]:
+                    if col and col in p.columns:
+                        p[col] = pd.to_numeric(p[col], errors='coerce')
+                
+                # Function to calculate daily consumption safely
+                def calc_daily_consumption(series):
+                    diff = series.diff()
+                    # If current or previous is NaN, diff is NaN. Fill with 0.
+                    # Clip negative values to 0 (handles meter resets)
+                    return diff.fillna(0).clip(lower=0)
+                
+                # Calculate daily consumption
+                p['Dunkin Daily'] = calc_daily_consumption(p[dunkin_meter_col])
+                p['CLC Daily'] = calc_daily_consumption(p[clc_meter_col])
+                if deep_meter_col and deep_meter_col in p.columns:
+                    p['Deep Daily'] = calc_daily_consumption(p[deep_meter_col])
+                else:
+                    p['Deep Daily'] = 0.0
+                    
+                p['Combined Load'] = p['Dunkin Daily'] + p['CLC Daily'] + p['Deep Daily']
+                
+                # Handle Savings (Raw values, no modification)
+                if savings_col and savings_col in p.columns:
+                    # Sum all savings columns. Fill NaN with 0 for missing dates.
+                    p['Total Raw Savings'] = p[savings_col].fillna(0)
+                else:
+                    p['Total Raw Savings'] = 0.0
+                    
+                p['Optimized Value'] = p['Total Raw Savings'] * 7
+
+                # B. KPI Cards
+                st.markdown('<div class="sec-title">⚡ Key Performance Indicators</div>', unsafe_allow_html=True)
+                k1, k2, k3, k4, k5, k6 = st.columns(6)
+                with k1: st.metric("Total Dunkin Blast (kWh)", f"{p['Dunkin Daily'].sum():,.0f}")
+                with k2: st.metric("Total CLC Blast (kWh)", f"{p['CLC Daily'].sum():,.0f}")
+                with k3: st.metric("Total Deep Consumption (kWh)", f"{p['Deep Daily'].sum():,.0f}")
+                with k4: st.metric("Combined Load (kWh)", f"{p['Combined Load'].sum():,.0f}")
+                with k5: st.metric("Total Savings (₹)", f"₹ {p['Total Raw Savings'].sum():,.2f}")
+                with k6: st.metric("Optimized Value (₹)", f"₹ {(p['Total Raw Savings'].sum() * 7):,.2f}")
+                
+                st.markdown("---")
+
+                # 1. Keep original graphs exactly as they appear
+                st.markdown('<div class="sec-title">Daily Power Grid Footprint (kWh)</div>', unsafe_allow_html=True)
+                # Original logic filtered out rows where dunkin_col >= 500_000
+                # We use the cumulative columns for the original graph
+                p_graph = p[p[dunkin_meter_col] < 500_000].copy()
+                if not p_graph.empty:
+                    st.area_chart(p_graph.set_index('Date')[[dunkin_meter_col, clc_meter_col]], color=["#002D62","#FF9F1C"])
+                
+                if savings_col and savings_col in p.columns:
+                    st.markdown('<div class="sec-title">Daily Recovery Realized (₹)</div>', unsafe_allow_html=True)
+                    st.bar_chart(p.set_index('Date')[savings_col], color="#16A34A")
+
+                # A. Daily Data Table
+                st.markdown('<div class="sec-title">📋 Daily Energy & Savings Data</div>', unsafe_allow_html=True)
+                table_df = p[['Date', 'Dunkin Daily', 'CLC Daily', 'Deep Daily', 'Combined Load', 'Total Raw Savings', 'Optimized Value']].copy()
+                table_df.columns = ['Date', 'Dunkin Blast', 'CLC Blast', 'Deep Consumption', 'Combined Load', 'Savings', 'Optimized Value']
+                st.dataframe(table_df, use_container_width=True, hide_index=True)
+
+                # Raw Data Inspector
+                st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
+                with st.expander("📂 View & Download Energy & Cost Savings Raw Sheet Data", expanded=False):
+                    st.dataframe(p, use_container_width=True, hide_index=True)
+                    csv_data = p.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="Download Sheet1 Cost Data as CSV",
+                        data=csv_data,
+                        file_name="freon_sheet1_energy_savings.csv",
+                        mime="text/csv",
+                        key="btn_download_power"
+                    )
         else:
-            baseline = avg_consumption
-            method_used = "Overall Average"
-        
-        # Calculate baseline
-        df['Baseline'] = baseline
-        
-        # Calculate savings
-        df['Savings'] = df['Baseline'] - df['Daily_Consumption']
-        
-        # Only count positive savings (actual reduction)
-        df['Savings'] = df['Savings'].clip(lower=0)
-        
-        # Calculate savings percentage
-        df['Savings_Percentage'] = (df['Savings'] / df['Baseline']) * 100
-        df['Savings_Percentage'] = df['Savings_Percentage'].clip(lower=0, upper=100)
-        
-        # Calculate cumulative savings
-        df['Cumulative_Savings'] = df['Savings'].cumsum()
-        
-        # Track method used
-        df['Method'] = method_used
-        
-        return df
-    
-    # ==========================================================================
-    # 4. MAIN PROCESSING PIPELINE
-    # ==========================================================================
-    
-    # Load and process data
-    df, date_col, energy_col, energy_cols, date_cols = load_and_process_energy_data()
-    
-    if df is not None and not df.empty:
-        
-        # Calculate daily consumption
-        daily_data = calculate_daily_consumption(df)
-        
-        if daily_data is None or daily_data.empty:
-            st.error("❌ No valid daily consumption data could be calculated.")
-            st.stop()
-        
-        # Calculate savings
-        savings_data = calculate_savings(daily_data)
-        
-        if savings_data is None or savings_data.empty:
-            st.error("❌ No savings data could be calculated.")
-            st.stop()
-        
-        # ======================================================================
-        # 5. DISPLAY SECTION
-        # ======================================================================
-        
-        # Tariff configuration
-        tariff_rate = st.number_input(
-            "💰 Tariff Rate (₹/kWh)",
-            min_value=0.0,
-            value=8.5,
-            step=0.5,
-            format="%.2f",
-            help="Configure the cost per unit of energy"
-        )
-        
-        # Calculate cost savings
-        savings_data['Cost_Savings'] = savings_data['Savings'] * tariff_rate
-        savings_data['Cumulative_Cost_Savings'] = savings_data['Cost_Savings'].cumsum()
-        
-        # ======================================================================
-        # A. DAILY CONSUMPTION TABLE
-        # ======================================================================
-        
-        st.markdown('<div class="sec-title">📊 Daily Energy Consumption</div>', unsafe_allow_html=True)
-        
-        # Display table
-        display_cols = ['Date', 'First_Reading', 'Last_Reading', 'Daily_Consumption']
-        consumption_table = daily_data[display_cols].copy()
-        consumption_table.columns = ['Date', 'Start Reading (kWh)', 'End Reading (kWh)', 'Daily Consumption (kWh)']
-        
-        # Format numbers
-        for col in consumption_table.columns:
-            if col != 'Date':
-                consumption_table[col] = consumption_table[col].round(2)
-        
-        st.dataframe(
-            consumption_table,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                'Date': st.column_config.DateColumn('Date'),
-                'Start Reading (kWh)': st.column_config.NumberColumn('Start Reading (kWh)', format='%.2f'),
-                'End Reading (kWh)': st.column_config.NumberColumn('End Reading (kWh)', format='%.2f'),
-                'Daily Consumption (kWh)': st.column_config.NumberColumn('Daily Consumption (kWh)', format='%.2f')
-            }
-        )
-        
-        # ======================================================================
-        # B. ENERGY KPI CARDS
-        # ======================================================================
-        
-        st.markdown('<div class="sec-title">🎯 Energy KPIs</div>', unsafe_allow_html=True)
-        
-        total_energy = daily_data['Daily_Consumption'].sum()
-        avg_daily = daily_data['Daily_Consumption'].mean()
-        max_daily = daily_data['Daily_Consumption'].max()
-        min_daily = daily_data['Daily_Consumption'].min()
-        reporting_days = len(daily_data)
-        
-        k1, k2, k3, k4, k5 = st.columns(5)
-        
-        with k1:
-            st.metric(
-                "Total Energy Consumed",
-                f"{total_energy:,.2f} kWh",
-                help="Sum of all daily consumption"
-            )
-        with k2:
-            st.metric(
-                "Average Daily Consumption",
-                f"{avg_daily:.2f} kWh",
-                help="Mean daily consumption"
-            )
-        with k3:
-            st.metric(
-                "Highest Daily Consumption",
-                f"{max_daily:.2f} kWh",
-                help="Maximum daily consumption"
-            )
-        with k4:
-            st.metric(
-                "Lowest Daily Consumption",
-                f"{min_daily:.2f} kWh",
-                help="Minimum daily consumption"
-            )
-        with k5:
-            st.metric(
-                "Reporting Days",
-                f"{reporting_days}",
-                help="Number of days with valid data"
-            )
-        
-        st.markdown("---")
-        
-        # ======================================================================
-        # C. DAILY ENERGY CONSUMPTION CHART
-        # ======================================================================
-        
-        st.markdown('<div class="sec-title">📈 Daily Consumption Trends</div>', unsafe_allow_html=True)
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Bar Chart
-            st.markdown("**Daily Consumption Bar Chart**")
-            chart_data = daily_data.set_index('Date')[['Daily_Consumption']]
-            chart_data.columns = ['Consumption (kWh)']
-            st.bar_chart(chart_data, color="#002D62")
-        
-        with col2:
-            # Trend Line
-            st.markdown("**Consumption Trend Line**")
-            st.line_chart(chart_data, color="#FF9F1C")
-        
-        # Cumulative Energy Curve
-        st.markdown("**Cumulative Energy Consumption**")
-        daily_data['Cumulative_Energy'] = daily_data['Daily_Consumption'].cumsum()
-        cumulative_data = daily_data.set_index('Date')[['Cumulative_Energy']]
-        cumulative_data.columns = ['Cumulative Energy (kWh)']
-        st.area_chart(cumulative_data, color="#2EC4B6")
-        
-        st.markdown("---")
-        
-        # ======================================================================
-        # D. SAVINGS ANALYTICS DISPLAY
-        # ======================================================================
-        
-        st.markdown('<div class="sec-title">💎 Savings Analytics</div>', unsafe_allow_html=True)
-        
-        # Show method used
-        method_used = savings_data['Method'].iloc[0] if not savings_data.empty else "Unknown"
-        st.info(f"📌 Savings Calculation Method: **{method_used}**")
-        
-        # Savings Table
-        savings_display = savings_data[['Date', 'Daily_Consumption', 'Baseline', 'Savings', 'Savings_Percentage']].copy()
-        savings_display.columns = ['Date', 'Consumption (kWh)', 'Baseline (kWh)', 'Savings (kWh)', 'Savings (%)']
-        
-        for col in savings_display.columns:
-            if col != 'Date':
-                savings_display[col] = savings_display[col].round(2)
-        
-        st.dataframe(
-            savings_display,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                'Date': st.column_config.DateColumn('Date'),
-                'Consumption (kWh)': st.column_config.NumberColumn('Consumption (kWh)', format='%.2f'),
-                'Baseline (kWh)': st.column_config.NumberColumn('Baseline (kWh)', format='%.2f'),
-                'Savings (kWh)': st.column_config.NumberColumn('Savings (kWh)', format='%.2f'),
-                'Savings (%)': st.column_config.NumberColumn('Savings (%)', format='%.1f%%')
-            }
-        )
-        
-        # ======================================================================
-        # E. SAVINGS KPI CARDS
-        # ======================================================================
-        
-        st.markdown('<div class="sec-title">💰 Savings KPIs</div>', unsafe_allow_html=True)
-        
-        total_savings = savings_data['Savings'].sum()
-        avg_savings = savings_data['Savings'].mean()
-        max_savings = savings_data['Savings'].max()
-        savings_percentage = (total_savings / savings_data['Baseline'].sum()) * 100 if savings_data['Baseline'].sum() > 0 else 0
-        total_cost_saved = savings_data['Cost_Savings'].sum()
-        
-        s1, s2, s3, s4, s5 = st.columns(5)
-        
-        with s1:
-            st.metric(
-                "Total Units Saved",
-                f"{total_savings:,.2f} kWh",
-                help="Sum of all daily savings"
-            )
-        with s2:
-            st.metric(
-                "Average Daily Savings",
-                f"{avg_savings:.2f} kWh",
-                help="Mean daily savings"
-            )
-        with s3:
-            st.metric(
-                "Maximum Daily Savings",
-                f"{max_savings:.2f} kWh",
-                help="Best single day savings"
-            )
-        with s4:
-            st.metric(
-                "Savings Percentage",
-                f"{savings_percentage:.1f}%",
-                help="Total savings as percentage of baseline"
-            )
-        with s5:
-            st.metric(
-                f"Estimated Cost Saved (₹{tariff_rate}/kWh)",
-                f"₹{total_cost_saved:,.2f}",
-                help="Total cost savings at current tariff"
-            )
-        
-        st.markdown("---")
-        
-        # ======================================================================
-        # F. ADVANCED VISUALS
-        # ======================================================================
-        
-        st.markdown('<div class="sec-title">📊 Advanced Analytics Visuals</div>', unsafe_allow_html=True)
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Daily Savings Bar Chart
-            st.markdown("**Daily Savings Bar Chart**")
-            savings_chart = savings_data.set_index('Date')[['Savings']]
-            savings_chart.columns = ['Savings (kWh)']
-            st.bar_chart(savings_chart, color="#16A34A")
-        
-        with col2:
-            # Consumption vs Baseline Comparison
-            st.markdown("**Consumption vs Baseline**")
-            comparison_data = savings_data.set_index('Date')[['Daily_Consumption', 'Baseline']]
-            comparison_data.columns = ['Actual Consumption', 'Baseline']
-            st.line_chart(comparison_data, color=["#E71D36", "#002D62"])
-        
-        col3, col4 = st.columns(2)
-        
-        with col3:
-            # Savings Percentage Trend
-            st.markdown("**Savings Percentage Trend**")
-            pct_data = savings_data.set_index('Date')[['Savings_Percentage']]
-            pct_data.columns = ['Savings (%)']
-            st.line_chart(pct_data, color="#FF9F1C")
-        
-        with col4:
-            # Cumulative Savings Curve
-            st.markdown("**Cumulative Savings Curve**")
-            cum_savings = savings_data.set_index('Date')[['Cumulative_Savings']]
-            cum_savings.columns = ['Cumulative Savings (kWh)']
-            st.area_chart(cum_savings, color="#2EC4B6")
-        
-        # Cumulative Cost Savings
-        st.markdown("**Cumulative Cost Savings**")
-        cum_cost = savings_data.set_index('Date')[['Cumulative_Cost_Savings']]
-        cum_cost.columns = [f'Cumulative Cost Savings (₹{tariff_rate}/kWh)']
-        st.area_chart(cum_cost, color="#16A34A")
-        
-        st.markdown("---")
-        
-        # ======================================================================
-        # I. RAW DATA AUDIT
-        # ======================================================================
-        
-        st.markdown('<div class="sec-title">📁 Data Audit & Export</div>', unsafe_allow_html=True)
-        
-        with st.expander("📂 Raw Data Inspector & Export Portal", expanded=False):
-            
-            tab1, tab2, tab3, tab4 = st.tabs([
-                "Raw Data",
-                "Processed Data",
-                "Daily Consumption",
-                "Savings Data"
-            ])
-            
-            with tab1:
-                st.subheader("Raw Meter Readings")
-                raw_display = df[['Parsed_Date', 'Energy_Reading']].copy()
-                raw_display.columns = ['Date', 'Meter Reading (kWh)']
-                st.dataframe(raw_display, use_container_width=True, hide_index=True)
-                
-                csv_raw = raw_display.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="⬇️ Download Raw Data (CSV)",
-                    data=csv_raw,
-                    file_name="raw_meter_readings.csv",
-                    mime="text/csv"
-                )
-            
-            with tab2:
-                st.subheader("Processed Daily Data")
-                st.dataframe(daily_data, use_container_width=True, hide_index=True)
-                
-                csv_processed = daily_data.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="⬇️ Download Processed Data (CSV)",
-                    data=csv_processed,
-                    file_name="processed_daily_data.csv",
-                    mime="text/csv"
-                )
-            
-            with tab3:
-                st.subheader("Daily Consumption Table")
-                st.dataframe(consumption_table, use_container_width=True, hide_index=True)
-                
-                csv_consumption = consumption_table.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="⬇️ Download Consumption Data (CSV)",
-                    data=csv_consumption,
-                    file_name="daily_consumption.csv",
-                    mime="text/csv"
-                )
-            
-            with tab4:
-                st.subheader("Savings Data")
-                savings_export = savings_data[['Date', 'Daily_Consumption', 'Baseline', 'Savings', 'Savings_Percentage', 'Cost_Savings']].copy()
-                savings_export.columns = ['Date', 'Consumption (kWh)', 'Baseline (kWh)', 'Savings (kWh)', 'Savings (%)', f'Cost Savings (₹{tariff_rate}/kWh)']
-                st.dataframe(savings_export, use_container_width=True, hide_index=True)
-                
-                csv_savings = savings_export.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="⬇️ Download Savings Data (CSV)",
-                    data=csv_savings,
-                    file_name="savings_analytics.csv",
-                    mime="text/csv"
-                )
-        
-        # ======================================================================
-        # J. CALCULATION SUMMARY
-        # ======================================================================
-        
-        with st.expander("📖 Calculation Methodology & Assumptions", expanded=False):
-            st.markdown("""
-            ### 📐 Calculation Methodology
-            
-            **Daily Energy Consumption:**
-            - Consumption = Last Reading of Day - First Reading of Day
-            - Uses actual meter readings, not averages
-            - Handles meter resets and anomalies automatically
-            
-            **Savings Analytics:**
-            - **Method 1**: Compare against overall average consumption
-            - **Method 2**: Compare against first week's average (preferred if data available)
-            - **Method 3**: Uses savings column if detected in source data
-            - Intelligent fallback ensures reliable results
-            
-            **Cost Savings:**
-            - Cost Saved = Units Saved × Tariff Rate (₹/kWh)
-            - Tariff configurable via UI
-            
-            ### 🔍 Data Cleaning & Validation
-            
-            - Handles merged cells and blank rows
-            - Detects and excludes meter reset anomalies (>10000 kWh)
-            - Removes duplicate timestamps
-            - Handles missing dates gracefully
-            - Automatic column detection using fuzzy matching
-            
-            ### 📊 KPI Definitions
-            
-            - **Total Energy**: Sum of daily consumption
-            - **Average Daily**: Mean of daily consumption
-            - **Highest/Lowest**: Max/min daily consumption
-            - **Reporting Days**: Days with valid data
-            - **Savings Percentage**: (Total Savings / Total Baseline) × 100
-            """)
-        
+            st.error("Expected Blast column labels could not be parsed from Sheet1.")
     else:
-        st.markdown(
-            '<div class="alert-info">⚠️ No energy consumption data available. Please ensure Sheet1 contains meter reading data.</div>',
-            unsafe_allow_html=True
-        )
+        st.markdown('<div class="alert-info">Power consumption analytical worksheet missing from repo root.</div>', unsafe_allow_html=True)
+# ==============================================================================
 #  TAB 4 — ASSET DUTY CYCLES
 # ==============================================================================
 with tab_runtime:
@@ -1722,256 +1212,132 @@ with tab_runtime:
 
 
 # ==============================================================================
-#  TAB 5 — COMPRESSOR OPTIMISATION (REFACTORED)
+#  TAB 5 — COMPRESSOR OPTIMISATION
 # ==============================================================================
 with tab_comp:
-    try:
-        # ------------------------------------------------------------------
-        # 1. LOAD & SANITIZE RAW SHEET
-        # ------------------------------------------------------------------
-        comp_df = load_excel_sheet('Sheet3', fallback_header_row=3)
-
-        if comp_df is None or comp_df.empty:
-            st.markdown(
-                '<div class="alert-info">Compressor analytical tracking components not parsed.</div>',
-                unsafe_allow_html=True
-            )
+    comp_df = load_excel_sheet('Sheet3', fallback_header_row=3)
+    if comp_df is not None and not comp_df.empty:
+        c  = comp_df.copy()
+        
+        # Clean column names to remove hidden characters/spaces
+        c.columns = [str(col).strip() for col in c.columns]
+        
+        # Print detected columns for debugging
+        st.write("Available Columns in Sheet3:", list(c.columns))
+        
+        c  = c[~c.iloc[:,0].astype(str).str.strip().str.lower().str.fullmatch(r'date|total|from|sr\.?\s*no\.?|stop|start', na=False)]
+        c.iloc[:,0] = fast_parse_dates(c.iloc[:,0])
+        c  = c.dropna(subset=[c.columns[0]]).sort_values(c.columns[0])
+        
+        # Detect Savings column safely
+        possible_saving_cols = [
+            col for col in c.columns
+            if "saving" in str(col).lower()
+        ]
+        
+        if len(possible_saving_cols) == 0:
+            st.warning("Savings column not found in Sheet3. Continuing without savings metrics.")
+            sav_col = None
         else:
-            c = comp_df.copy()
-            # Clean column names to remove hidden characters/spaces
-            c.columns = [str(col).strip() for col in c.columns]
-            
-            st.write("Available Columns in Sheet3:", list(c.columns))
-            
-            # Drop metadata/header rows that leaked into data body
-            c = c[~c.iloc[:,0].astype(str).str.strip().str.lower().str.fullmatch(
-                r'date|total|from|sr\.?\s*no\.?|stop|start', na=False
-            )]
-            
-            # Parse dates defensively
-            c.iloc[:, 0] = fast_parse_dates(c.iloc[:, 0])
-            c = c.dropna(subset=[c.columns[0]]).sort_values(c.columns[0]).reset_index(drop=True)
-            date_col = c.columns[0]
+            sav_col = possible_saving_cols[0]
+            st.info(f"Detected Savings Column: `{sav_col}`")
 
-            # ------------------------------------------------------------------
-            # 2. SAVINGS COLUMN DETECTION (Existing Logic Preserved)
-            # ------------------------------------------------------------------
-            possible_saving_cols = [col for col in c.columns if "saving" in str(col).lower()]
-            if not possible_saving_cols:
-                st.warning("Savings column not found in Sheet3. Continuing without savings metrics.")
-                sav_col = None
-            else:
-                sav_col = possible_saving_cols[0]
-                st.info(f"Detected Savings Column: `{sav_col}`")
+        # Safely process savings column
+        if sav_col and sav_col in c.columns:
+            c[sav_col] = pd.to_numeric(c[sav_col], errors='coerce').fillna(0)
+            c['Cumulative Savings'] = c[sav_col].cumsum()
+        else:
+            c['Cumulative Savings'] = 0
+            sav_col = None # Ensure it's None if not found
 
+        date_col = c.columns[0]
+
+        k1, k2, k3, k4 = st.columns(4)
+        if sav_col and sav_col in c.columns:
+            with k1: st.metric("Relief Window Saved", f"{c[sav_col].sum():,.1f} hrs")
+            with k2: st.metric("Mean Daily Dampening", f"{c[sav_col].mean():.1f} hrs")
+            with k3: st.metric("Peak Single Window Stop", f"{c[sav_col].max():.1f} hrs")
+        else:
+            with k1: st.metric("Relief Window Saved", "N/A")
+            with k2: st.metric("Mean Daily Dampening", "N/A")
+            with k3: st.metric("Peak Single Window Stop", "N/A")
+        with k4: st.metric("Audited Shift Blocks",     f"{len(c)}")
+
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown('<div class="sec-title">Daily Rest Allocations (hrs)</div>', unsafe_allow_html=True)
             if sav_col and sav_col in c.columns:
-                c[sav_col] = pd.to_numeric(c[sav_col], errors='coerce').fillna(0)
-                c['Cumulative Savings'] = c[sav_col].cumsum()
+                st.line_chart(c.set_index(date_col)[sav_col], color="#002D62")
             else:
-                c['Cumulative Savings'] = 0
-                sav_col = None
-
-            # ------------------------------------------------------------------
-            # 3. KPI METRICS (Existing)
-            # ------------------------------------------------------------------
-            k1, k2, k3, k4 = st.columns(4)
+                st.info("No savings data available to plot.")
+        with col2:
+            st.markdown('<div class="sec-title">Cumulative Rest Curve Metrics</div>', unsafe_allow_html=True)
             if sav_col and sav_col in c.columns:
-                with k1: st.metric("Relief Window Saved", f"{c[sav_col].sum():,.1f} hrs")
-                with k2: st.metric("Mean Daily Dampening", f"{c[sav_col].mean():.1f} hrs")
-                with k3: st.metric("Peak Single Window Stop", f"{c[sav_col].max():.1f} hrs")
+                st.area_chart(c.set_index(date_col)['Cumulative Savings'], color="#FF9F1C")
             else:
-                with k1: st.metric("Relief Window Saved", "N/A")
-                with k2: st.metric("Mean Daily Dampening", "N/A")
-                with k3: st.metric("Peak Single Window Stop", "N/A")
-            with k4: st.metric("Audited Shift Blocks", f"{len(c)}")
+                st.info("No cumulative savings data available to plot.")
 
-            # ------------------------------------------------------------------
-            # 4. DAILY REST & CUMULATIVE CURVE (Existing)
-            # ------------------------------------------------------------------
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown('<div class="sec-title">Daily Rest Allocations (hrs)</div>', unsafe_allow_html=True)
-                if sav_col and sav_col in c.columns:
-                    st.line_chart(c.set_index(date_col)[sav_col], color="#002D62")
-                else:
-                    st.info("No savings data available to plot.")
-            with col2:
-                st.markdown('<div class="sec-title">Cumulative Rest Curve Metrics</div>', unsafe_allow_html=True)
-                if sav_col and sav_col in c.columns:
-                    st.area_chart(c.set_index(date_col)['Cumulative Savings'], color="#FF9F1C")
-                else:
-                    st.info("No cumulative savings data available to plot.")
-
-            # ------------------------------------------------------------------
-            # 5. THERMODYNAMIC DRIFT (Existing, Guarded)
-            # ------------------------------------------------------------------
-            try:
-                if temp_df is not None and not temp_df.empty:
-                    st.markdown(
-                        '<div class="sec-title">Thermodynamic Drift vs. System Optimization Rest Cycles</div>',
-                        unsafe_allow_html=True
-                    )
-                    if sav_col and sav_col in c.columns:
-                        daily_rest_agg = c.groupby(c[date_col].dt.date)[sav_col].sum().reset_index()
-                        daily_rest_agg.columns = ['Date', 'Rest_Hours']
-                        daily_rest_agg['Date'] = pd.to_datetime(daily_rest_agg['Date'])
-                        
-                        t_clean = temp_df.copy()
-                        t_clean['Date_Key'] = pd.to_datetime(t_clean['Time']).dt.date
-                        
-                        dough1_col = next((col for col in t_clean.columns if 'cooler1' in col.lower().replace(" ", "")), None)
-                        
-                        if dough1_col:
-                            daily_thermal_mean = t_clean.groupby('Date_Key')[dough1_col].mean().reset_index()
-                            daily_thermal_mean.columns = ['Date', 'Mean_Temp']
-                            daily_thermal_mean['Date'] = pd.to_datetime(daily_thermal_mean['Date'])
-                            
-                            diagnostic_matrix = pd.merge(daily_rest_agg, daily_thermal_mean, on='Date', how='inner')
-                            
-                            if not diagnostic_matrix.empty:
-                                fig_diag = make_subplots(specs=[[{"secondary_y": True}]])
-                                x_labels = diagnostic_matrix['Date'].dt.strftime('%d-%b').tolist()
-                                
-                                fig_diag.add_trace(
-                                    go.Bar(x=x_labels, y=diagnostic_matrix['Rest_Hours'].tolist(), name="Rest Window (Hrs)", marker_color='#002D62', opacity=0.75),
-                                    secondary_y=False
-                                )
-                                fig_diag.add_trace(
-                                    go.Scatter(x=x_labels, y=diagnostic_matrix['Mean_Temp'].tolist(), mode='lines+markers', name="Dough 1 Mean Temp (°C)", line=dict(color='#E01934', width=2.5)),
-                                    secondary_y=True
-                                )
-                                fig_diag.update_layout(hovermode="x unified", margin=dict(l=20, r=20, t=10, b=10), height=350, legend=dict(orientation="h", y=1.15))
-                                fig_diag.update_yaxes(title_text="Rest Profile (Hrs)", secondary_y=False)
-                                fig_diag.update_yaxes(title_text="Thermal State (°C)", secondary_y=True)
-                                st.plotly_chart(fig_diag, use_container_width=True)
-                    else:
-                        st.info("No savings data available for thermodynamic drift analysis.")
-            except NameError:
-                pass # temp_df not defined in this runtime
-            except Exception as e:
-                st.warning(f"Thermodynamic drift analysis skipped: {e}")
-
-            # ==================================================================
-            # 6. NEW — AUTOMATIC COMPRESSOR DETECTION & WORKING-HOURS ANALYTICS
-            # ==================================================================
-            st.markdown('<div class="sec-title">🔧 Compressor Working Hours Analysis</div>', unsafe_allow_html=True)
-
-            try:
-                compressors = detect_compressors(c.columns)
-
-                if not compressors:
-                    st.warning("No compressor columns detected. Expected patterns like `Compressor-1 Stop time`.")
-                else:
-                    st.success(f"Detected **{len(compressors)}** compressor(s): {', '.join(sorted(compressors.keys()))}")
-
-                    # 6a. Build per-row working-hours dataframe
-                    # Working hrs = 24 - OFF duration (stop -> start)
-                    wh_df = pd.DataFrame({date_col: c[date_col].values})
+        if temp_df is not None and not temp_df.empty:
+            st.markdown('<div class="sec-title">Thermodynamic Drift vs. System Optimization Rest Cycles</div>', unsafe_allow_html=True)
+            
+            if sav_col and sav_col in c.columns:
+                daily_rest_agg = c.groupby(c[date_col].dt.date)[sav_col].sum().reset_index()
+                daily_rest_agg.columns = ['Date', 'Rest_Hours']
+                daily_rest_agg['Date'] = pd.to_datetime(daily_rest_agg['Date'])
+                
+                t_clean = temp_df.copy()
+                t_clean['Date_Key'] = pd.to_datetime(t_clean['Time']).dt.date
+                
+                dough1_col = next((col for col in t_clean.columns if 'cooler1' in col.lower().replace(" ", "")), None)
+                
+                if dough1_col:
+                    daily_thermal_mean = t_clean.groupby('Date_Key')[dough1_col].mean().reset_index()
+                    daily_thermal_mean.columns = ['Date', 'Mean_Temp']
+                    daily_thermal_mean['Date'] = pd.to_datetime(daily_thermal_mean['Date'])
                     
-                    for comp_id, cols in compressors.items():
-                        comp_name = f"Compressor {comp_id}"
+                    diagnostic_matrix = pd.merge(daily_rest_agg, daily_thermal_mean, on='Date', how='inner')
+                    
+                    if not diagnostic_matrix.empty:
+                        fig_diag = make_subplots(specs=[[{"secondary_y": True}]])
+                        x_labels = diagnostic_matrix['Date'].dt.strftime('%d-%b').tolist()
                         
-                        if 'stop' in cols and 'start' in cols:
-                            stop_col, start_col = cols['stop'], cols['start']
-                            
-                            def _calc_wh(row, _sc=stop_col, _tc=start_col):
-                                try:
-                                    stop_t = parse_time_string(row[_sc])
-                                    start_t = parse_time_string(row[_tc])
-                                    if stop_t and start_t:
-                                        off_h = calculate_off_duration_hours(stop_t, start_t)
-                                        return round(max(0.0, 24.0 - off_h), 2)
-                                except Exception:
-                                    pass
-                                return None
-                            
-                            wh_df[comp_name] = c.apply(_calc_wh, axis=1)
-                            
-                        elif 'run' in cols:
-                            # Direct numeric duration column
-                            wh_df[comp_name] = pd.to_numeric(c[cols['run']], errors='coerce')
+                        fig_diag.add_trace(
+                            go.Bar(x=x_labels, y=diagnostic_matrix['Rest_Hours'].tolist(), name="Rest Window (Hrs)", marker_color='#002D62', opacity=0.75),
+                            secondary_y=False
+                        )
+                        fig_diag.add_trace(
+                            go.Scatter(x=x_labels, y=diagnostic_matrix['Mean_Temp'].tolist(), mode='lines+markers', name="Dough 1 Mean Temp (°C)", line=dict(color='#E01934', width=2.5)),
+                            secondary_y=True
+                        )
+                        fig_diag.update_layout(hovermode="x unified", margin=dict(l=20, r=20, t=10, b=10), height=350, legend=dict(orientation="h", y=1.15))
+                        fig_diag.update_yaxes(title_text="Rest Profile (Hrs)", secondary_y=False)
+                        fig_diag.update_yaxes(title_text="Thermal State (°C)", secondary_y=True)
+                        st.plotly_chart(fig_diag, use_container_width=True)
+            else:
+                st.info("No savings data available for thermodynamic drift analysis.")
 
-                    # Drop rows where every compressor is NaN
-                    comp_cols = [col for col in wh_df.columns if col != date_col]
-                    if comp_cols:
-                        wh_df = wh_df.dropna(subset=comp_cols, how='all').reset_index(drop=True)
+        st.markdown('<div class="sec-title">Compressor Structural Load Activation Cycles</div>', unsafe_allow_html=True)
+        comp_metrics = {}
+        run_cols = [col for col in c.columns if any(phrase in str(col).lower() for phrase in ['stop', 'start', 'run', 'comp'])]
+        
+        for idx, col_name in enumerate(run_cols[:5], 1):
+            active_logs = c[c[col_name].astype(str).str.strip().str.len() > 0]
+            comp_metrics[f"Compressor Component {idx}"] = len(active_logs)
+            
+        if comp_metrics:
+            cm_df = pd.DataFrame(list(comp_metrics.items()), columns=["Component", "Cycle Count"]).sort_values("Cycle Count", ascending=False)
+            st.bar_chart(cm_df.set_index("Component")["Cycle Count"], color="#E01934")
 
-                    if wh_df.empty or not comp_cols:
-                        st.warning("No valid compressor working-hours data could be calculated.")
-                    else:
-                        # 6b. Summary statistics table
-                        summary_rows = []
-                        for cc in comp_cols:
-                            valid = wh_df[cc].dropna()
-                            if valid.empty: continue
-                            summary_rows.append({
-                                'Compressor': cc,
-                                'Total Hours': round(valid.sum(), 2),
-                                'Avg Daily Hours': round(valid.mean(), 2),
-                                'Max Daily Hours': round(valid.max(), 2),
-                                'Days Active': int(len(valid))
-                            })
-
-                        if not summary_rows:
-                            st.warning("All compressor records were invalid or empty.")
-                        else:
-                            summary_df = pd.DataFrame(summary_rows)
-                            
-                            st.markdown('<div class="sec-title">📊 Compressor Performance Summary</div>', unsafe_allow_html=True)
-                            st.dataframe(
-                                summary_df.style.format({'Total Hours': '{:,.2f}', 'Avg Daily Hours': '{:,.2f}', 'Max Daily Hours': '{:,.2f}'}),
-                                use_container_width=True, hide_index=True
-                            )
-
-                            # 6c. Melt once for efficient charting
-                            melted = wh_df.melt(id_vars=[date_col], var_name='Compressor', value_name='Working Hours').dropna(subset=['Working Hours'])
-
-                            # CHART 1: Bar Chart
-                            st.markdown('<div class="sec-title">Total Working Hours by Compressor</div>', unsafe_allow_html=True)
-                            fig_bar = px.bar(summary_df, x='Compressor', y='Total Hours', color='Compressor', text='Total Hours')
-                            fig_bar.update_layout(showlegend=False, height=400, margin=dict(l=20, r=20, t=40, b=20))
-                            fig_bar.update_traces(texttemplate='%{text:.1f}', textposition='outside')
-                            st.plotly_chart(fig_bar, use_container_width=True)
-
-                            # CHART 2: Daily Trend Line
-                            st.markdown('<div class="sec-title">Daily Working Hours Trend</div>', unsafe_allow_html=True)
-                            fig_line = px.line(melted, x=date_col, y='Working Hours', color='Compressor', markers=True)
-                            fig_line.update_layout(height=400, hovermode='x unified', margin=dict(l=20, r=20, t=40, b=20))
-                            st.plotly_chart(fig_line, use_container_width=True)
-
-                            # CHART 3: Stacked Area
-                            st.markdown('<div class="sec-title">Daily Compressor Contribution (Stacked Area)</div>', unsafe_allow_html=True)
-                            fig_area = px.area(melted, x=date_col, y='Working Hours', color='Compressor')
-                            fig_area.update_layout(height=400, hovermode='x unified', margin=dict(l=20, r=20, t=40, b=20))
-                            st.plotly_chart(fig_area, use_container_width=True)
-
-                            # CHART 4: Pie Chart
-                            st.markdown('<div class="sec-title">Compressor Usage Distribution</div>', unsafe_allow_html=True)
-                            fig_pie = px.pie(summary_df, values='Total Hours', names='Compressor', hole=0.3)
-                            fig_pie.update_layout(height=400, margin=dict(l=20, r=20, t=40, b=20))
-                            fig_pie.update_traces(textposition='inside', textinfo='percent+label')
-                            st.plotly_chart(fig_pie, use_container_width=True)
-
-            except Exception as e:
-                st.error(f"Compressor analysis failed: {e}")
-                st.info("Verify that compressor columns follow patterns like `Compressor-1 Stop time`.")
-
-            # ------------------------------------------------------------------
-            # 7. RAW DATA INSPECTOR & CSV EXPORT (Existing)
-            # ------------------------------------------------------------------
-            st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
-            with st.expander("📂 View & Download Compressor Optimization Raw Sheet Data", expanded=False):
-                st.dataframe(c, use_container_width=True, hide_index=True)
-                csv_data = c.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="Download Sheet3 Optimisation Data as CSV",
-                    data=csv_data,
-                    file_name="freon_sheet3_compressor_optimization.csv",
-                    mime="text/csv",
-                    key="btn_download_comp"
-                )
-
-    except Exception as e:
-        # Outer safety net
-        st.error(f"Compressor Optimisation tab encountered an error: {e}")
-        st.info("The rest of the dashboard remains fully functional.")
+        st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
+        with st.expander("📂 View & Download Compressor Optimization Raw Sheet Data", expanded=False):
+            st.dataframe(c, use_container_width=True, hide_index=True)
+            csv_data = c.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="Download Sheet3 Optimisation Data as CSV",
+                data=csv_data,
+                file_name="freon_sheet3_compressor_optimization.csv",
+                mime="text/csv",
+                key="btn_download_comp"
+            )
+    else:
+        st.markdown('<div class="alert-info">Compressor analytical tracking components not parsed.</div>', unsafe_allow_html=True)
