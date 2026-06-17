@@ -1395,15 +1395,15 @@ st.markdown(
 )
 
 # ============================================================================
-# SECTION 13: KPI CARDS (RESPONSIVE, NO OVERLAP)
+# SECTION 13: KPI CARDS
 # ============================================================================
 
-st.markdown(
-    '<div class="sec-title">Key Performance Indicators</div>',
-    unsafe_allow_html=True,
-)
+st.markdown('<div class="sec-title">Key Performance Indicators</div>', unsafe_allow_html=True)
 
-kpi_data = [
+# Create KPI cards using Streamlit columns instead of HTML
+kpi_cols = st.columns(6)
+
+kpi_items = [
     ("Energy Consumption", f"{energy_consumption:,.0f}", "kWh", BRAND["primary"]),
     ("Thermal Compliance", f"{thermal_compliance:.1f}", "%", BRAND["secondary"]),
     ("Compressor Availability", f"{compressor_availability:.1f}", "%", BRAND["accent_green"]),
@@ -1412,26 +1412,20 @@ kpi_data = [
     ("Data Quality Score", f"{data_quality_score:.1f}", "%", BRAND["accent_cyan"]),
 ]
 
-# Build KPI cards HTML properly
-kpi_html_parts = ['<div class="kpi-grid">']
-
-for title, value, unit, color in kpi_data:
-    card_html = f'''
-    <div class="kpi-card" style="border-left-color: {color};">
-        <div class="kpi-title">{title}</div>
-        <div>
-            <div class="kpi-value">{value}</div>
-            <div class="kpi-unit">{unit}</div>
-        </div>
-    </div>
-    '''
-    kpi_html_parts.append(card_html)
-
-kpi_html_parts.append('</div>')
-kpi_cards_html = ''.join(kpi_html_parts)
-
-# IMPORTANT: Must have unsafe_allow_html=True
-st.markdown(kpi_cards_html, unsafe_allow_html=True)
+for i, (title, value, unit, color) in enumerate(kpi_items):
+    with kpi_cols[i]:
+        st.markdown(
+            f"""
+            <div class="kpi-card" style="border-left-color: {color}; height: 100%;">
+                <div class="kpi-title">{title}</div>
+                <div style="margin-top: auto;">
+                    <div class="kpi-value">{value}</div>
+                    <div class="kpi-unit">{unit}</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 # ============================================================================
 # SECTION 14: ENERGY PERFORMANCE
 # ============================================================================
