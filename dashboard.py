@@ -774,7 +774,7 @@ with tab_runtime:
         st.markdown('<div class="alert-info">Asset duty-cycle log metrics are not active.</div>', unsafe_allow_html=True)
 
 # ==============================================================================
-#  TAB 5 — COMPRESSOR OPTIMISATION (REFACTORED INDUSTRIAL CORE)
+#  TAB 5 — COMPRESSOR OPTIMISATION (INVERTED INDUSTRIAL RUNTIME ENGINE)
 # ==============================================================================
 with tab_comp:
     try:
@@ -795,51 +795,30 @@ with tab_comp:
             date_col = c.columns[0]
             c['Year_Month'] = c[date_col].dt.to_period('M').astype(str)
 
-            # --------------------------------------------------------------
-            # STAGE-GATE COMPRESSOR STRUCTURE AUTOMATION
-            # --------------------------------------------------------------
+            # Map the exact layout schema of sequential columns positionally
             compressor_map = {}
-            for idx, col_name in enumerate(c.columns):
-                if "compressor" in col_name.lower():
-                    parts = col_name.split()
-                    comp_id = parts[0] if parts else "Compressor"
-                    if comp_id not in compressor_map:
-                        compressor_map[comp_id] = {}
-                    
-                    if "stop" in col_name.lower() or "stop" in str(c.iloc[0, idx]).lower():
-                        compressor_map[comp_id]['stop_idx'] = idx
-                    elif "start" in col_name.lower() or "start" in str(c.iloc[0, idx]).lower():
-                        compressor_map[comp_id]['start_idx'] = idx
-
-            # FIX FOR IMAGE_97EEB6.PNG: Fallback to sequence positioning if columns were parsed without "compressor" text labels
-            if not compressor_map:
-                comp_num = 1
-                for idx in range(1, len(c.columns) - 1, 2):
-                    if idx + 1 < len(c.columns):
-                        col_left = str(c.columns[idx]).lower()
-                        if "saving" in col_left:
-                            break
-                        comp_id = f"Compressor-{comp_num}"
-                        compressor_map[comp_id] = {
-                            'stop_idx': idx,
-                            'start_idx': idx + 1
-                        }
-                        comp_num += 1
-
-            compressor_map = {k: v for k, v in compressor_map.items() if 'stop_idx' in v}
+            comp_num = 1
+            for idx in range(1, len(c.columns) - 1, 2):
+                if idx + 1 < len(c.columns):
+                    col_left = str(c.columns[idx]).lower()
+                    if "saving" in col_left:
+                        break
+                    comp_id = f"Compressor-{comp_num}"
+                    compressor_map[comp_id] = {
+                        'stop_idx': idx,
+                        'start_idx': idx + 1
+                    }
+                    comp_num += 1
 
             daily_records = []
             validation_warnings = []
 
             for comp_name, idx_config in compressor_map.items():
                 stop_col = c.columns[idx_config['stop_idx']]
-                stop_series = c[stop_col].astype(str).str.strip()
+                start_col = c.columns[idx_config['start_idx']]
                 
-                if 'start_idx' in idx_config:
-                    start_col = c.columns[idx_config['start_idx']]
-                    start_series = c[start_col].astype(str).str.strip()
-                else:
-                    start_series = pd.Series("23:59:59", index=c.index)
+                stop_series = c[stop_col].astype(str).str.strip()
+                start_series = c[start_col].astype(str).str.strip()
 
                 for i in range(len(c)):
                     row_date = c.loc[i, date_col]
@@ -847,31 +826,38 @@ with tab_comp:
                     raw_stop = stop_series.iloc[i]
                     raw_start = start_series.iloc[i]
 
-                    if raw_stop in ['nan', '', 'None', 'NAT'] or pd.isna(c.iloc[i, idx_config['stop_idx']]):
-                        downtime = 0.0
+                    # INVERSION LOGIC: If cell values are empty, the compressor was shut down (0 Working Hours)
+                    if raw_stop in ['nan', '', 'None', 'NAT', '0', '0.0'] or pd.isna(c.iloc[i, idx_config['stop_idx']]):
+                        working_hours = 0.0
+                        downtime = 24.0
                         cycles = 0
                     else:
                         try:
                             t_stop = pd.to_timedelta(raw_stop if ':' in raw_stop else f"{raw_stop}:00")
                             t_start = pd.to_timedelta(raw_start if ':' in raw_start else f"{raw_start}:00")
                             
+                            # Shift timing calculations
                             if t_start >= t_stop:
-                                downtime = (t_start - t_stop).total_seconds() / 3600.0
+                                working_hours = (t_start - t_stop).total_seconds() / 3600.0
                             else:
-                                downtime = ((t_start + pd.to_timedelta('1D')) - t_stop).total_seconds() / 3600.0
+                                # Overnight shift correction handling (e.g. 11:30 PM to 1:30 AM = 2 hours)
+                                working_hours = ((t_start + pd.to_timedelta('1D')) - t_stop).total_seconds() / 3600.0
+                            
+                            working_hours = min(max(working_hours, 0.0), 24.0)
+                            downtime = 24.0 - working_hours
                             cycles = 1
                         except Exception:
-                            downtime = 0.0
+                            working_hours = 0.0
+                            downtime = 24.0
                             cycles = 0
 
-                    downtime = min(max(downtime, 0.0), 24.0)
-                    working_hours = 24.0 - downtime
                     utilization = (working_hours / 24.0) * 100.0
 
+                    # Balanced Timeline Verification
                     total_time_check = working_hours + downtime
                     if abs(total_time_check - 24.0) > 1e-4:
                         validation_warnings.append(
-                            f"Validation Warning: {row_date.strftime('%Y-%m-%d')} | {comp_name} total equals {total_time_check:.2f} hrs instead of 24.0."
+                            f"Validation Warning: {row_date.strftime('%Y-%m-%d')} | {comp_name} sum equals {total_time_check:.2f} hrs instead of 24.0."
                         )
 
                     daily_records.append({
@@ -885,6 +871,7 @@ with tab_comp:
             if analytics_df.empty:
                 st.warning("No structured compressor status records found or computed.")
             else:
+                # Group metrics records
                 compressor_summary = analytics_df.groupby('Compressor').agg({
                     'Working Hours': 'sum', 'Non-Working Hours': 'sum',
                     'Start Count': 'sum', 'Stop Count': 'sum', 'Utilization %': 'mean'
@@ -898,14 +885,15 @@ with tab_comp:
                     'Working Hours': 'sum', 'Non-Working Hours': 'sum', 'Utilization %': 'mean'
                 }).reset_index()
 
+                # Metric Interface Panels Row
                 m1, m2, m3, m4 = st.columns(4)
                 with m1: st.metric("Monitored Compressors", f"{len(compressor_summary)}")
                 with m2: st.metric("Avg System Utilization", f"{compressor_summary['Utilization %'].mean():.1f}%")
-                with m3: st.metric("Total Downtime Tracked", f"{compressor_summary['Non-Working Hours'].sum():,.1f} hrs")
-                with m4: st.metric("Total Cycle Events", f"{int(compressor_summary['Start Count'].sum())}")
+                with m3: st.metric("Total System Working Hours", f"{compressor_summary['Working Hours'].sum():,.1f} hrs")
+                with m4: st.metric("Total Cumulative Downtime", f"{compressor_summary['Non-Working Hours'].sum():,.1f} hrs")
 
                 if validation_warnings:
-                    with st.expander("⚠️ System Calculations Consistency Warnings"):
+                    with st.expander("⚠️ Calculations Verification Log"):
                         for warn in validation_warnings[:5]: st.write(warn)
 
                 st.markdown('### 📊 Compressor Asset Summary Metrics')
@@ -920,30 +908,35 @@ with tab_comp:
                 v_col1, v_col2 = st.columns(2)
                 
                 with v_col1:
+                    # 1. Compressor Utilization Comparison
                     fig1 = px.bar(compressor_summary, x='Utilization %', y='Compressor', orientation='h',
-                                  title='Compressor Utilization Comparison', color='Compressor',
+                                  title='Compressor Utilization Profile Comparison', color='Compressor',
                                   color_discrete_sequence=px.colors.qualitative.Prism)
                     st.plotly_chart(fig1, use_container_width=True)
 
+                    # 3. Daily Trend Line Chart
                     fig3 = px.line(daily_summary, x='Date', y='Working Hours', color='Compressor',
-                                   title='Daily Machine Asset Working Trends')
+                                   title='Daily Compressor Working Hours Trend')
                     st.plotly_chart(fig3, use_container_width=True)
 
                 with v_col2:
+                    # 2. Working vs Non-Working Hours Split Chart
                     melted_hours = compressor_summary.melt(id_vars=['Compressor'], value_vars=['Working Hours', 'Non-Working Hours'],
                                                            var_name='Operating State', value_name='Hours')
                     fig2 = px.bar(melted_hours, x='Compressor', y='Hours', color='Operating State',
-                                  title='Working vs Non-Working Hours Stacked Distribution', barmode='stack',
+                                  title='Working vs Non-Working Hours Split Matrix', barmode='stack',
                                   color_discrete_map={'Working Hours': '#1E3A8A', 'Non-Working Hours': '#EF4444'})
                     st.plotly_chart(fig2, use_container_width=True)
 
+                    # 4. Downtime Analysis Chart
                     downtime_sorted = compressor_summary.sort_values(by='Non-Working Hours', ascending=False)
                     fig4 = px.bar(downtime_sorted, x='Compressor', y='Non-Working Hours',
-                                  title='Top Compressors by Downtime Analysis', color='Non-Working Hours',
+                                  title='Total Cumulative Asset Downtime Impact (Sorted Desc)', color='Non-Working Hours',
                                   color_continuous_scale='Reds')
                     st.plotly_chart(fig4, use_container_width=True)
 
-                st.markdown('#### 📅 Heatmap Profile: System Utilization over Time')
+                # 5. Asset Date Utilization Heatmap
+                st.markdown('#### 📅 Heatmap Profile: Compressor Utilization Matrix over Time')
                 try:
                     daily_summary['Date_Str'] = daily_summary['Date'].dt.strftime('%d-%b-%Y')
                     pivot_heatmap = daily_summary.pivot(index='Compressor', columns='Date_Str', values='Utilization %').fillna(0.0)
@@ -959,10 +952,10 @@ with tab_comp:
                 st.markdown('### 📅 Historical Summary Registers')
                 t_col1, t_col2 = st.columns(2)
                 with t_col1:
-                    st.markdown('#### 📋 Daily Consolidated Table')
+                    st.markdown('#### 📋 Daily Summary Table')
                     st.dataframe(daily_summary.style.format({'Working Hours': '{:.2f}', 'Non-Working Hours': '{:.2f}', 'Utilization %': '{:.2f}%'}), use_container_width=True, hide_index=True)
                 with t_col2:
-                    st.markdown('#### 📋 Monthly Operational Summary')
+                    st.markdown('#### 📋 Monthly Summary Table')
                     st.dataframe(monthly_summary.style.format({'Working Hours': '{:.2f}', 'Non-Working Hours': '{:.2f}', 'Utilization %': '{:.2f}%'}), use_container_width=True, hide_index=True)
 
     except Exception as e:
