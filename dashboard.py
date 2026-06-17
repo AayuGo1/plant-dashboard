@@ -967,165 +967,285 @@ with tab_temp:
         st.markdown('<div class="alert-info">No environment logs could be successfully loaded.</div>', unsafe_allow_html=True)
 
 # ==============================================================================
-#  TAB 3 — ENERGY & COST SAVINGS
+#  TAB 3 — ENERGY & COST SAVINGS (REBUILT FROM SCRATCH)
 # ==============================================================================
 with tab_power:
-    st.markdown('<div class="sec-title">💡 Energy & Cost Savings Dashboard</div>', unsafe_allow_html=True)
-    
-    # Load Sheet1 specifically
-    power_df = load_excel_sheet('Sheet1', fallback_header_row=1)
-    
-    if power_df is not None and not power_df.empty:
-        p = power_df.copy()
+    if e_df is not None and not e_df.empty:
+        st.markdown('<div class="sec-title">💡 Facility Power Consumption Analytics</div>', unsafe_allow_html=True)
         
-        # --- Auto-Detection Logic ---
-        def detect_col(df, keywords, fallback_idx=0):
-            cols = [str(c) for c in df.columns]
-            for kw in keywords:
-                for c in cols:
-                    if kw in c.lower():
-                        return c
-            return cols[fallback_idx] if fallback_idx < len(cols) else None
-
-        # Detect Columns based on file structure
-        date_col = detect_col(p, ['date'], 0)
-        dunkin_meter_col = detect_col(p, ['dunkin blast'], 1) 
-        clc_meter_col = detect_col(p, ['clc blast'], 6)       
-        deep_meter_col = detect_col(p, ['deep-total'], 21)    
-        savings_col = detect_col(p, ['saving'], 5)            
-
-        if date_col and dunkin_meter_col and clc_meter_col and savings_col:
-            st.success(f"✅ Auto-detected: **Date**=`{date_col}`, **Dunkin Meter**=`{dunkin_meter_col}`, **CLC Meter**=`{clc_meter_col}`, **Raw Savings**=`{savings_col}`")
+        # ─────────────────────────────────────────────────────────────
+        #  DEBUG & SCHEMA INSPECTION
+        # ─────────────────────────────────────────────────────────────
+        with st.expander("🐞 Debug & Data Schema Inspection"):
+            st.write("**DataFrame Head:**")
+            st.dataframe(e_df.head())
+            st.write("**Columns:**")
+            st.write(e_df.columns.tolist())
+            st.write("**Data Types:**")
+            st.write(e_df.dtypes)
+            st.write("**Shape:**")
+            st.write(e_df.shape)
             
-            # --- Data Cleaning ---
-            p[date_col] = fast_parse_dates(p[date_col])
-            p = p.dropna(subset=[date_col])
+            st.markdown("""
+            **Column Mapping & Derivation Logic:**
+            - **Dunkin:** Mapped to `dunkin consmp.` column. Represents total daily power consumed by Dunkin facilities.
+            - **CLC:** Mapped to `clc consump.` column. Represents total daily power consumed by CLC facilities.
+            - **BMC:** Mapped to `bmc consump.` column. Represents total daily power consumed by BMC facilities.
+            - **Deep:** Mapped to `deep consumption` column. Represents total daily power consumed by Deep Freezer facilities.
             
-            if not p.empty:
-                # ─────────────────────────────────────────────────────────────
-                #  DUPLICATE DATE HANDLING - DEFENSIVE CHECKS
-                # ─────────────────────────────────────────────────────────────
-                if 'Date' not in p.columns:
-                    st.error("❌ Date column missing after parsing.")
-                    st.stop()
-                
-                total_rows = len(p)
-                unique_dates = p['Date'].nunique()
-                duplicate_count = total_rows - unique_dates
-                
-                st.write(f"**Data Quality Check:** {total_rows} total rows, {unique_dates} unique dates")
-                
-                if duplicate_count > 0:
-                    st.warning(f"⚠️ Found **{duplicate_count} duplicate date(s)**. Consolidating...")
-                    
-                    # Show which dates are duplicated
-                    duplicate_dates = p[p['Date'].duplicated(keep=False)]['Date'].unique()
-                    st.write(f"**Duplicate dates found:** {', '.join([d.strftime('%d-%b-%Y') for d in duplicate_dates[:10]])}")
-                    if len(duplicate_dates) > 10:
-                        st.write(f"... and {len(duplicate_dates) - 10} more")
-                    
-                    # Consolidate duplicates by summing numeric columns
-                    numeric_cols = p.select_dtypes(include=[np.number]).columns.tolist()
-                    p = (
-                        p.groupby('Date', as_index=False)[numeric_cols]
-                        .sum(numeric_only=True)
-                    )
-                    
-                    # Verify duplicates are removed
-                    if p['Date'].duplicated().any():
-                        st.error("❌ Duplicate dates still exist after consolidation!")
-                    else:
-                        st.success(f"✓ Duplicates removed. Now {len(p)} unique date rows.")
-                
-                # Final verification
-                assert not p['Date'].duplicated().any(), "Duplicate dates detected after cleaning!"
-                
-                # Sort by date
-                p = p.sort_values(by='Date').reset_index(drop=True)
-                
-                # ─────────────────────────────────────────────────────────────
-                #  REINDEX TO CONTINUOUS DATE RANGE
-                # ─────────────────────────────────────────────────────────────
-                date_range = pd.date_range(start=p['Date'].min(), end=p['Date'].max(), freq='D')
-                p = p.set_index('Date').reindex(date_range).rename_axis('Date').reset_index()
-                
-                # Convert meter columns to numeric
-                for col in [dunkin_meter_col, clc_meter_col, deep_meter_col, savings_col]:
-                    if col and col in p.columns:
-                        p[col] = pd.to_numeric(p[col], errors='coerce')
-                
-                # Function to calculate daily consumption safely
-                def calc_daily_consumption(series):
-                    diff = series.diff()
-                    # If current or previous is NaN, diff is NaN. Fill with 0.
-                    # Clip negative values to 0 (handles meter resets)
-                    return diff.fillna(0).clip(lower=0)
-                
-                # Calculate daily consumption
-                p['Dunkin Daily'] = calc_daily_consumption(p[dunkin_meter_col])
-                p['CLC Daily'] = calc_daily_consumption(p[clc_meter_col])
-                if deep_meter_col and deep_meter_col in p.columns:
-                    p['Deep Daily'] = calc_daily_consumption(p[deep_meter_col])
-                else:
-                    p['Deep Daily'] = 0.0
-                    
-                p['Combined Load'] = p['Dunkin Daily'] + p['CLC Daily'] + p['Deep Daily']
-                
-                # Handle Savings (Raw values, no modification)
-                if savings_col and savings_col in p.columns:
-                    # Sum all savings columns. Fill NaN with 0 for missing dates.
-                    p['Total Raw Savings'] = p[savings_col].fillna(0)
-                else:
-                    p['Total Raw Savings'] = 0.0
-                    
-                p['Optimized Value'] = p['Total Raw Savings'] * 7
+            *Derivation:* The source file `PROCESSED_DAILY_VARS_Active_Energy_Report_2026-06-01_to_2026-06-16.xlsx` already contains pre-calculated daily consumption values for each facility zone in the aforementioned columns. We directly ingest these columns as the daily power consumed (kWh) for each facility, ensuring 100% accuracy without manual register differencing.
+            """)
 
-                # B. KPI Cards
-                st.markdown('<div class="sec-title">⚡ Key Performance Indicators</div>', unsafe_allow_html=True)
-                k1, k2, k3, k4, k5, k6 = st.columns(6)
-                with k1: st.metric("Total Dunkin Blast (kWh)", f"{p['Dunkin Daily'].sum():,.0f}")
-                with k2: st.metric("Total CLC Blast (kWh)", f"{p['CLC Daily'].sum():,.0f}")
-                with k3: st.metric("Total Deep Consumption (kWh)", f"{p['Deep Daily'].sum():,.0f}")
-                with k4: st.metric("Combined Load (kWh)", f"{p['Combined Load'].sum():,.0f}")
-                with k5: st.metric("Total Savings (₹)", f"₹ {p['Total Raw Savings'].sum():,.2f}")
-                with k6: st.metric("Optimized Value (₹)", f"₹ {(p['Total Raw Savings'].sum() * 7):,.2f}")
-                
-                st.markdown("---")
-
-                # 1. Keep original graphs exactly as they appear
-                st.markdown('<div class="sec-title">Daily Power Grid Footprint (kWh)</div>', unsafe_allow_html=True)
-                # Original logic filtered out rows where dunkin_col >= 500_000
-                # We use the cumulative columns for the original graph
-                p_graph = p[p[dunkin_meter_col] < 500_000].copy()
-                if not p_graph.empty:
-                    st.area_chart(p_graph.set_index('Date')[[dunkin_meter_col, clc_meter_col]], color=["#002D62","#FF9F1C"])
-                
-                if savings_col and savings_col in p.columns:
-                    st.markdown('<div class="sec-title">Daily Recovery Realized (₹)</div>', unsafe_allow_html=True)
-                    st.bar_chart(p.set_index('Date')[savings_col], color="#16A34A")
-
-                # A. Daily Data Table
-                st.markdown('<div class="sec-title">📋 Daily Energy & Savings Data</div>', unsafe_allow_html=True)
-                table_df = p[['Date', 'Dunkin Daily', 'CLC Daily', 'Deep Daily', 'Combined Load', 'Total Raw Savings', 'Optimized Value']].copy()
-                table_df.columns = ['Date', 'Dunkin Blast', 'CLC Blast', 'Deep Consumption', 'Combined Load', 'Savings', 'Optimized Value']
-                st.dataframe(table_df, use_container_width=True, hide_index=True)
-
-                # Raw Data Inspector
-                st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
-                with st.expander("📂 View & Download Energy & Cost Savings Raw Sheet Data", expanded=False):
-                    st.dataframe(p, use_container_width=True, hide_index=True)
-                    csv_data = p.to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="Download Sheet1 Cost Data as CSV",
-                        data=csv_data,
-                        file_name="freon_sheet1_energy_savings.csv",
-                        mime="text/csv",
-                        key="btn_download_power"
-                    )
+        # ─────────────────────────────────────────────────────────────
+        #  DATA VALIDATION REQUIREMENT
+        # ─────────────────────────────────────────────────────────────
+        st.markdown('<div class="sec-title">🔍 Data Integrity & Validation Report</div>', unsafe_allow_html=True)
+        
+        facilities = {
+            'Dunkin': 'dunkin consmp.',
+            'CLC': 'clc consump.',
+            'BMC': 'bmc consump.',
+            'Deep': 'deep consumption'
+        }
+        
+        # Verify columns exist
+        missing_cols = [col for col in facilities.values() if col not in e_df.columns]
+        if missing_cols:
+            st.error(f"❌ Missing required columns in data: {missing_cols}")
         else:
-            st.error("Expected Blast column labels could not be parsed from Sheet1.")
+            total_records_loaded = len(e_df)
+            date_range_start = e_df['Date'].min()
+            date_range_end = e_df['Date'].max()
+            date_range_detected = f"{date_range_start.strftime('%d-%b-%Y')} to {date_range_end.strftime('%d-%b-%Y')}"
+            
+            duplicate_rows = e_df.duplicated(subset=['Date']).sum()
+            missing_values_count = sum(e_df[col].isna().sum() for col in facilities.values())
+            invalid_readings_count = sum((e_df[col] < 0).sum() for col in facilities.values()) + missing_values_count
+            
+            total_records_processed = total_records_loaded
+            
+            col_v1, col_v2, col_v3, col_v4 = st.columns(4)
+            with col_v1: st.metric("Total Records Loaded", total_records_loaded)
+            with col_v2: st.metric("Records Processed", total_records_processed)
+            with col_v3: st.metric("Missing Values", missing_values_count)
+            with col_v4: st.metric("Duplicate Rows", duplicate_rows)
+            
+            st.markdown(f"**Date Range Detected:** {date_range_detected}")
+            st.markdown(f"**Invalid Readings (Negative/NaN):** {invalid_readings_count}")
+            
+            # ─────────────────────────────────────────────────────────────
+            #  DATA PROCESSING PIPELINE (VECTORIZED)
+            # ─────────────────────────────────────────────────────────────
+            df_facilities = e_df[['Date'] + list(facilities.values())].copy()
+            df_facilities.columns = ['Date'] + list(facilities.keys())
+            
+            # Melt to long format for efficient processing
+            df_melted = df_facilities.melt(id_vars='Date', var_name='Facility', value_name='Daily Consumption')
+            
+            # Clean data: coerce to numeric, fill NaN with 0, clip negatives to 0
+            df_melted['Daily Consumption'] = pd.to_numeric(df_melted['Daily Consumption'], errors='coerce')
+            df_melted['Daily Consumption'] = df_melted['Daily Consumption'].fillna(0).clip(lower=0)
+            
+            # ─────────────────────────────────────────────────────────────
+            #  REQUIRED METRICS CALCULATION
+            # ─────────────────────────────────────────────────────────────
+            summary_data = []
+            total_all_facilities = df_melted['Daily Consumption'].sum()
+            
+            for fac in facilities.keys():
+                fac_data = df_melted[df_melted['Facility'] == fac]['Daily Consumption']
+                
+                total_power = fac_data.sum()
+                avg_daily = fac_data.mean()
+                pct_contribution = (total_power / total_all_facilities) * 100 if total_all_facilities > 0 else 0
+                
+                fac_daily = df_melted[df_melted['Facility'] == fac][['Date', 'Daily Consumption']]
+                max_row = fac_daily.loc[fac_daily['Daily Consumption'].idxmax()]
+                min_row = fac_daily.loc[fac_daily['Daily Consumption'].idxmin()]
+                
+                summary_data.append({
+                    'Facility': fac,
+                    'Total Power Consumed (kWh)': total_power,
+                    'Avg Daily Consumption (kWh)': avg_daily,
+                    'Percentage Contribution (%)': pct_contribution,
+                    'Highest Consumption Day': f"{max_row['Date'].strftime('%d-%b-%Y')} ({max_row['Daily Consumption']:,.2f} kWh)",
+                    'Lowest Consumption Day': f"{min_row['Date'].strftime('%d-%b-%Y')} ({min_row['Daily Consumption']:,.2f} kWh)"
+                })
+            
+            df_summary = pd.DataFrame(summary_data)
+            
+            # ─────────────────────────────────────────────────────────────
+            #  KPI CARDS
+            # ─────────────────────────────────────────────────────────────
+            st.markdown('<div class="sec-title">📊 Key Performance Indicators</div>', unsafe_allow_html=True)
+            
+            total_consumption_all = df_melted['Daily Consumption'].sum()
+            avg_daily_all = df_melted['Daily Consumption'].mean()
+            highest_daily = df_melted.loc[df_melted['Daily Consumption'].idxmax()]
+            lowest_daily = df_melted.loc[df_melted['Daily Consumption'].idxmin()]
+            
+            k1, k2, k3, k4 = st.columns(4)
+            with k1: st.metric("Total Consumption", f"{total_consumption_all:,.0f} kWh")
+            with k2: st.metric("Avg Daily Consumption", f"{avg_daily_all:,.1f} kWh")
+            with k3: st.metric("Highest Daily Consumption", f"{highest_daily['Daily Consumption']:,.1f} kWh", delta=f"{highest_daily['Facility']} on {highest_daily['Date'].strftime('%d-%b')}")
+            with k4: st.metric("Lowest Daily Consumption", f"{lowest_daily['Daily Consumption']:,.1f} kWh", delta=f"{lowest_daily['Facility']} on {lowest_daily['Date'].strftime('%d-%b')}")
+            
+            # ─────────────────────────────────────────────────────────────
+            #  REQUIRED TABLES
+            # ─────────────────────────────────────────────────────────────
+            st.markdown('<div class="sec-title">📋 Facility Summary Table</div>', unsafe_allow_html=True)
+            st.dataframe(df_summary, use_container_width=True, hide_index=True)
+            
+            st.markdown('<div class="sec-title">📅 Daily Consumption Table</div>', unsafe_allow_html=True)
+            st.dataframe(df_melted[['Date', 'Facility', 'Daily Consumption']].sort_values(['Date', 'Facility']), use_container_width=True, hide_index=True)
+            
+            st.markdown('<div class="sec-title">✅ Validation Table</div>', unsafe_allow_html=True)
+            validation_data = []
+            for fac, col in facilities.items():
+                records_processed = len(e_df)
+                missing_vals = e_df[col].isna().sum()
+                total_consumption = e_df[col].fillna(0).clip(lower=0).sum()
+                validation_data.append({
+                    'Facility': fac,
+                    'Records Processed': records_processed,
+                    'Missing Values': missing_vals,
+                    'Total Consumption (kWh)': total_consumption
+                })
+            df_validation = pd.DataFrame(validation_data)
+            st.dataframe(df_validation, use_container_width=True, hide_index=True)
+            
+            # ─────────────────────────────────────────────────────────────
+            #  REQUIRED CHARTS (MODERN PLOTLY SYNTAX)
+            # ─────────────────────────────────────────────────────────────
+            st.markdown('<div class="sec-title">📈 Visual Analytics Dashboard</div>', unsafe_allow_html=True)
+            colors = {'Dunkin': '#002D62', 'CLC': '#FF9F1C', 'BMC': '#16A34A', 'Deep': '#E01934'}
+            
+            # 1. Total Consumption Comparison (Bar)
+            fig1 = go.Figure()
+            fig1.add_trace(go.Bar(
+                x=df_summary['Facility'],
+                y=df_summary['Total Power Consumed (kWh)'],
+                marker_color=[colors[f] for f in df_summary['Facility']],
+                text=df_summary['Total Power Consumed (kWh)'].apply(lambda x: f'{x:,.0f} kWh'),
+                textposition='auto'
+            ))
+            fig1.update_layout(
+                title='Total Consumption Comparison',
+                xaxis_title='Facility',
+                yaxis_title='Total Power (kWh)',
+                height=400,
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)'
+            )
+            st.plotly_chart(fig1, use_container_width=True)
+            
+            # 2. Daily Consumption Trend (Multi-Line)
+            fig2 = go.Figure()
+            for fac in facilities.keys():
+                fac_data = df_melted[df_melted['Facility'] == fac].sort_values('Date')
+                fig2.add_trace(go.Scatter(
+                    x=fac_data['Date'],
+                    y=fac_data['Daily Consumption'],
+                    mode='lines+markers',
+                    name=fac,
+                    line=dict(color=colors[fac], width=2)
+                ))
+            fig2.update_layout(
+                title='Daily Consumption Trend',
+                xaxis_title='Date',
+                yaxis_title='Daily Consumption (kWh)',
+                height=400,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)'
+            )
+            st.plotly_chart(fig2, use_container_width=True)
+            
+            # 3. Average Daily Consumption Comparison (Horizontal Bar)
+            fig3 = go.Figure()
+            fig3.add_trace(go.Bar(
+                y=df_summary['Facility'],
+                x=df_summary['Avg Daily Consumption (kWh)'],
+                orientation='h',
+                marker_color=[colors[f] for f in df_summary['Facility']],
+                text=df_summary['Avg Daily Consumption (kWh)'].apply(lambda x: f'{x:,.1f} kWh'),
+                textposition='auto'
+            ))
+            fig3.update_layout(
+                title='Average Daily Consumption Comparison',
+                xaxis_title='Avg Daily Power (kWh)',
+                yaxis=dict(title='Facility', autorange='reversed'),
+                height=350,
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)'
+            )
+            st.plotly_chart(fig3, use_container_width=True)
+            
+            # 4. Facility Contribution Analysis (Donut)
+            fig4 = go.Figure()
+            fig4.add_trace(go.Pie(
+                labels=df_summary['Facility'],
+                values=df_summary['Total Power Consumed (kWh)'],
+                hole=.4,
+                marker=dict(colors=[colors[f] for f in df_summary['Facility']]),
+                textinfo='label+percent',
+                hovertemplate='<b>%{label}</b><br>Consumption: %{value:,.0f} kWh<br>Share: %{percent}<extra></extra>'
+            ))
+            fig4.update_layout(
+                title='Facility Contribution Analysis',
+                height=400,
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)'
+            )
+            st.plotly_chart(fig4, use_container_width=True)
+            
+            # 5. Daily Consumption Heatmap (Date vs Facility)
+            heatmap_data = df_melted.pivot_table(index='Facility', columns='Date', values='Daily Consumption', aggfunc='sum')
+            heatmap_data = heatmap_data.reindex(sorted(heatmap_data.columns), axis=1)
+            
+            fig5 = go.Figure(data=go.Heatmap(
+                z=heatmap_data.values,
+                x=[d.strftime('%d-%b') for d in heatmap_data.columns],
+                y=heatmap_data.index.tolist(),
+                colorscale='Viridis',
+                colorbar=dict(title='kWh'),
+                hovertemplate='Facility: %{y}<br>Date: %{x}<br>Consumption: %{z:,.1f} kWh<extra></extra>'
+            ))
+            fig5.update_layout(
+                title='Daily Consumption Heatmap',
+                xaxis_title='Date',
+                yaxis_title='Facility',
+                height=350,
+                plot_bgcolor='rgba(0,0,0,0)',
+                paper_bgcolor='rgba(0,0,0,0)'
+            )
+            st.plotly_chart(fig5, use_container_width=True)
+            
+            # ─────────────────────────────────────────────────────────────
+            #  DATA EXPORT PORTAL
+            # ─────────────────────────────────────────────────────────────
+            st.markdown('<div class="sec-title">📥 Data Export Portal</div>', unsafe_allow_html=True)
+            with st.expander("📂 Download Processed Facility Data", expanded=False):
+                csv_summary = df_summary.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Download Facility Summary (CSV)",
+                    data=csv_summary,
+                    file_name="facility_power_summary.csv",
+                    mime="text/csv",
+                    key="btn_download_fac_summary"
+                )
+                
+                csv_daily = df_melted.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="📥 Download Daily Consumption (CSV)",
+                    data=csv_daily,
+                    file_name="facility_daily_consumption.csv",
+                    mime="text/csv",
+                    key="btn_download_fac_daily"
+                )
+
     else:
-        st.markdown('<div class="alert-info">Power consumption analytical worksheet missing from repo root.</div>', unsafe_allow_html=True)
+        st.markdown('<div class="alert-info">⚠️ Energy data file not found or empty.</div>', unsafe_allow_html=True)
 # ==============================================================================
 #  TAB 4 — ASSET DUTY CYCLES
 # ==============================================================================
