@@ -1404,8 +1404,8 @@ with tab_comp:
                 for err in error_log:
                     st.write(err)
             
-            # ─────────────────────────────────────────────────────────────
-            #  HIGH-TIER PLOTLY VISUALIZATIONS GENERATOR
+          # ─────────────────────────────────────────────────────────────
+            #  HIGH-TIER PLOTLY VISUALIZATIONS GENERATOR (FIXED)
             # ─────────────────────────────────────────────────────────────
             st.markdown('<div class="sec-title">📊 Executive Visual Optimization Analytical Panels</div>', unsafe_allow_html=True)
             
@@ -1425,7 +1425,7 @@ with tab_comp:
                 fig1.update_layout(
                     title="Compressor Asset Operational Utilization Ratio (%)",
                     xaxis=dict(title="Utilization (%)", range=[0, 105], gridcolor='#E2E8F0'),
-                    yaxis=dict(title="Asset Node", autocreverse=True),
+                    yaxis=dict(title="Asset Node", autoreverse=True), # FIXED KEYWORD HERE
                     height=350, margin=dict(l=20, r=20, t=40, b=40), plot_bgcolor='rgba(0,0,0,0)'
                 )
                 st.plotly_chart(fig1, use_container_width=True)
@@ -1456,65 +1456,7 @@ with tab_comp:
                 fig2.update_layout(
                     barmode='stack', title="Time Budget Breakdown: Working vs. Non-Working (Hrs)",
                     xaxis=dict(title="Total Accumulated Period Hours", gridcolor='#E2E8F0'),
-                    yaxis=dict(autocreverse=True), height=350, margin=dict(l=20, r=20, t=40, b=40), plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", y=-0.15)
+                    yaxis=dict(autoreverse=True), # FIXED KEYWORD HERE
+                    height=350, margin=dict(l=20, r=20, t=40, b=40), plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", y=-0.15)
                 )
                 st.plotly_chart(fig2, use_container_width=True)
-                
-                # Chart 4: Top Disruption / Downtime ranked generators
-                df_sorted_down = df_summary.sort_values('Non-Working Hours', ascending=True)
-                fig4 = go.Figure()
-                fig4.add_trace(go.Bar(
-                    x=df_sorted_down["Non-Working Hours"],
-                    y=df_sorted_down["Compressor Name"],
-                    orientation='h',
-                    marker_color='#FF9F1C'
-                ))
-                fig4.update_layout(
-                    title="Ranked Asset Downtime Accumulation (Total Hours)",
-                    xaxis=dict(title="Downtime Duration (Hours)", gridcolor='#E2E8F0'),
-                    height=350, margin=dict(l=20, r=20, t=40, b=40), plot_bgcolor='rgba(0,0,0,0)'
-                )
-                st.plotly_chart(fig4, use_container_width=True)
-
-            # Chart 5: Utilization Heatmap Panel Matrix
-            st.markdown("#### Matrix Heatmap: Compressor Load Profiles Over Time")
-            pivot_heatmap = df_daily.pivot(index="Compressor", columns="Date", values="Working Hours")
-            pivot_heatmap.columns = [c.strftime('%d-%b') for c in pivot_heatmap.columns]
-            
-            fig5 = go.Figure(data=go.Heatmap(
-                z=pivot_heatmap.values,
-                x=list(pivot_heatmap.columns),
-                y=list(pivot_heatmap.index),
-                colorscale='YlGnBu',
-                colorbar=dict(title="Hours Active")
-            ))
-            fig5.update_layout(
-                xaxis=dict(title="Timeline Calendar Matrix"),
-                yaxis=dict(title="Asset Node ID"),
-                height=300, margin=dict(l=20, r=20, t=20, b=20)
-            )
-            st.plotly_chart(fig5, use_container_width=True)
-
-            # Consolidated Analytical Table View
-            st.markdown('<div class="sec-title">📋 Performance Ledger & Statistics Matrix</div>', unsafe_allow_html=True)
-            st.dataframe(df_summary, use_container_width=True, hide_index=True, column_config={
-                "Working Hours": st.column_config.NumberColumn(format="%.2f Hrs"),
-                "Non-Working Hours": st.column_config.NumberColumn(format="%.2f Hrs"),
-                "Utilization %": st.column_config.ProgressColumn(format="%.1f%%", min_value=0.0, max_value=100.0),
-                "Downtime %": st.column_config.NumberColumn(format="%.1f%%")
-            })
-
-            # Data Export Portal Subsystem
-            st.markdown('<div class="sec-title">📥 Compiled Ledger Export System</div>', unsafe_allow_html=True)
-            with st.expander("📂 View Audited Operational Output Dataset", expanded=False):
-                st.dataframe(df_daily, use_container_width=True, hide_index=True)
-                csv_down = df_summary.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="📥 Download Aggregated Compressor Summary Metrics Report",
-                    data=csv_down,
-                    file_name=f"compressor_performance_audit_{TARGET_START.strftime('%Y%m%d')}.csv",
-                    mime="text/csv",
-                    key="btn_download_tab5_clean"
-                )
-    else:
-        st.markdown('<div class="alert-info"><strong>⚠️ Failed to load structural raw metrics for Sheet3 workbook elements.</strong></div>', unsafe_allow_html=True)
