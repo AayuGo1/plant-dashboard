@@ -1065,16 +1065,15 @@ with tab_power:
 
         p['Date'] = p['Date'].apply(safe_dayfirst_parse)
         p = p.dropna(subset=['Date']).sort_values('Date').reset_index(drop=True)
-
-        # Validate monotonic increasing dates with no gaps
-        p['Date'] = pd.to_datetime(p['Date'])
-        expected_dates = pd.date_range(start=p['Date'].min(), end=p['Date'].max(), freq='D')
-        if not p['Date'].equals(expected_dates):
-            missing_dates = expected_dates.difference(p['Date'])
-            extra_dates = p['Date'].difference(expected_dates)
-            if not missing_dates.empty or not extra_dates.empty:
-                st.warning(f"⚠️ Date sequence has gaps or duplicates. Found {len(p)} rows from {p['Date'].min().date()} to {p['Date'].max().date()}. Proceeding without filling.")
-
+# Validate monotonic increasing dates with no gaps
+p['Date'] = pd.to_datetime(p['Date'])
+expected_dates = pd.date_range(start=p['Date'].min(), end=p['Date'].max(), freq='D')
+actual_dates = pd.Index(p['Date'].unique())
+if not set(actual_dates) == set(expected_dates):
+    missing_dates = expected_dates.difference(actual_dates)
+    extra_dates = actual_dates.difference(expected_dates)
+    if not missing_dates.empty or not extra_dates.empty:
+        st.warning(f"⚠️ Date sequence has gaps or duplicates. Found {len(p)} rows from {p['Date'].min().date()} to {p['Date'].max().date()}. Proceeding without filling.")
         # --- ALIGNMENT: Shift Dunkin/CLC/BMC down by 1 row to match Deep convention ---
         # Consumption on Date X should reflect usage during that calendar day.
         # Currently, Dunkin/CLC/BMC values are reported as ending on NEXT day.
