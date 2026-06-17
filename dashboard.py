@@ -1404,8 +1404,8 @@ with tab_comp:
                 for err in error_log:
                     st.write(err)
             
-          # ─────────────────────────────────────────────────────────────
-            #  HIGH-TIER PLOTLY VISUALIZATIONS GENERATOR (FIXED)
+       # ─────────────────────────────────────────────────────────────
+            #  HARDENED & FIXED PLOTLY VISUALIZATIONS GENERATOR
             # ─────────────────────────────────────────────────────────────
             st.markdown('<div class="sec-title">📊 Executive Visual Optimization Analytical Panels</div>', unsafe_allow_html=True)
             
@@ -1422,13 +1422,20 @@ with tab_comp:
                     text=df_summary["Utilization %"].astype(str) + "%",
                     textposition='auto'
                 ))
-                fig1.update_layout(
-                    title="Compressor Asset Operational Utilization Ratio (%)",
-                    xaxis=dict(title="Utilization (%)", range=[0, 105], gridcolor='#E2E8F0'),
-                    yaxis=dict(title="Asset Node", autoreverse=True), # FIXED KEYWORD HERE
-                    height=350, margin=dict(l=20, r=20, t=40, b=40), plot_bgcolor='rgba(0,0,0,0)'
-                )
-                st.plotly_chart(fig1, use_container_width=True)
+                
+                # STEP 4: Defensive Hardening Validation Checks
+                if fig1 is not None and len(fig1.data) > 0:
+                    fig1.update_layout(
+                        title="Compressor Asset Operational Utilization Ratio (%)",
+                        xaxis=dict(title="Utilization (%)", range=[0, 105], gridcolor='#E2E8F0'),
+                        yaxis=dict(title="Asset Node", autoreverse=True), # FIXED: Changed 'autocreverse' to 'autoreverse'
+                        height=350, 
+                        margin=dict(l=20, r=20, t=40, b=40), 
+                        plot_bgcolor='rgba(0,0,0,0)'
+                    )
+                    st.plotly_chart(fig1, use_container_width=True)
+                else:
+                    st.warning("⚠️ High Horizon Utilization comparison data stream is empty.")
                 
                 # Chart 3: Daily Runtime Trend Dynamic Stream
                 fig3 = go.Figure()
@@ -1440,23 +1447,50 @@ with tab_comp:
                         mode='lines+markers',
                         name=c_name
                     ))
-                fig3.update_layout(
-                    title="Daily Runtime Distribution Trends (Working Hours/Day)",
-                    xaxis=dict(title="Timeline Axis", tickangle=45),
-                    yaxis=dict(title="Runtime (Hours)", range=[0, 25], gridcolor='#E2E8F0'),
-                    height=350, margin=dict(l=20, r=20, t=40, b=40), plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", y=-0.2)
-                )
-                st.plotly_chart(fig3, use_container_width=True)
+                    
+                if fig3 is not None and len(fig3.data) > 0:
+                    fig3.update_layout(
+                        title="Daily Runtime Distribution Trends (Working Hours/Day)",
+                        xaxis=dict(title="Timeline Axis", tickangle=45),
+                        yaxis=dict(title="Runtime (Hours)", range=[0, 25], gridcolor='#E2E8F0'),
+                        height=350, margin=dict(l=20, r=20, t=40, b=40), plot_bgcolor='rgba(0,0,0,0)', 
+                        legend=dict(orientation="h", y=-0.2)
+                    )
+                    st.plotly_chart(fig3, use_container_width=True)
                 
             with vis_col2:
                 # Chart 2: Stacked Working vs Non-Working Hours Breakdown
                 fig2 = go.Figure()
                 fig2.add_trace(go.Bar(name='Working Run Duration', y=df_summary["Compressor Name"], x=df_summary["Working Hours"], orientation='h', marker_color='#16A34A'))
                 fig2.add_trace(go.Bar(name='Downtime Rest Duration', y=df_summary["Compressor Name"], x=df_summary["Non-Working Hours"], orientation='h', marker_color='#E01934'))
-                fig2.update_layout(
-                    barmode='stack', title="Time Budget Breakdown: Working vs. Non-Working (Hrs)",
-                    xaxis=dict(title="Total Accumulated Period Hours", gridcolor='#E2E8F0'),
-                    yaxis=dict(autoreverse=True), # FIXED KEYWORD HERE
-                    height=350, margin=dict(l=20, r=20, t=40, b=40), plot_bgcolor='rgba(0,0,0,0)', legend=dict(orientation="h", y=-0.15)
-                )
-                st.plotly_chart(fig2, use_container_width=True)
+                
+                if fig2 is not None and len(fig2.data) > 0:
+                    fig2.update_layout(
+                        barmode='stack', 
+                        title="Time Budget Breakdown: Working vs. Non-Working (Hrs)",
+                        xaxis=dict(title="Total Accumulated Period Hours", gridcolor='#E2E8F0'),
+                        yaxis=dict(autoreverse=True), # FIXED: Changed 'autocreverse' to 'autoreverse'
+                        height=350, margin=dict(l=20, r=20, t=40, b=40), plot_bgcolor='rgba(0,0,0,0)', 
+                        legend=dict(orientation="h", y=-0.15)
+                    )
+                    st.plotly_chart(fig2, use_container_width=True)
+                else:
+                    st.warning("⚠️ Time Budget matrix components could not be rendered.")
+                
+                # Chart 4: Top Disruption / Downtime ranked generators
+                df_sorted_down = df_summary.sort_values('Non-Working Hours', ascending=True)
+                fig4 = go.Figure()
+                fig4.add_trace(go.Bar(
+                    x=df_sorted_down["Non-Working Hours"],
+                    y=df_sorted_down["Compressor Name"],
+                    orientation='h',
+                    marker_color='#FF9F1C'
+                ))
+                
+                if fig4 is not None and len(fig4.data) > 0:
+                    fig4.update_layout(
+                        title="Ranked Asset Downtime Accumulation (Total Hours)",
+                        xaxis=dict(title="Downtime Duration (Hours)", gridcolor='#E2E8F0'),
+                        height=350, margin=dict(l=20, r=20, t=40, b=40), plot_bgcolor='rgba(0,0,0,0)'
+                    )
+                    st.plotly_chart(fig4, use_container_width=True)
