@@ -1211,65 +1211,39 @@ with tab_runtime:
         st.markdown('<div class="alert-info">Asset duty-cycle log metrics are not active.</div>', unsafe_allow_html=True)
 # ==============================================================================
 #  TAB 5 — COMPRESSOR OPTIMISATION (REBUILT — PRODUCTION READY)
+#  LOGIC CORRECTION APPLIED: Runtime = (Start - Stop), Downtime = 24 - Runtime
 # ==============================================================================
 with tab_comp:
     from datetime import datetime, timedelta, time as dt_time
     
     # ─────────────────────────────────────────────────────────────
     #  HELPER: ROBUST TIME NORMALIZATION ENGINE
-    #  Handles: "11.30.00 PM", "23:30:00", datetime objects, NaT
     # ─────────────────────────────────────────────────────────────
     def normalize_to_time(val):
         """Convert any time representation to datetime.time object safely."""
-        if val is None:
-            return None
-        
-        # Handle Pandas NaT or NaN
-        if isinstance(val, float) and pd.isna(val):
-            return None
-        if isinstance(val, pd.Timestamp) and pd.isna(val):
-            return None
-            
-        # Already a time object
-        if isinstance(val, dt_time):
-            return val
-        
-        # datetime or Timestamp (valid)
+        if val is None: return None
+        if isinstance(val, float) and pd.isna(val): return None
+        if isinstance(val, pd.Timestamp) and pd.isna(val): return None
+        if isinstance(val, dt_time): return val
         if isinstance(val, (datetime, pd.Timestamp)):
-            try:
-                return val.time()
-            except:
-                return None
+            try: return val.time()
+            except: return None
         
         val_str = str(val).strip()
-        if not val_str or val_str.lower() in ['nan', 'nat', 'none', '', '0:00']:
-            return None
+        if not val_str or val_str.lower() in ['nan', 'nat', 'none', '', '0:00']: return None
         
-        # Specific formats found in Sheet3 (e.g., "11.30.00 PM")
         formats_to_try = [
-            '%I.%M.%S %p',    # 11.30.00 PM
-            '%I:%M:%S %p',    # 11:30:00 PM
-            '%I:%M %p',       # 11:30 PM
-            '%I.%M %p',       # 11.30 PM
-            '%H:%M:%S',       # 23:30:00
-            '%H:%M',          # 23:30
-            '%H.%M.%S',       # 23.30.00
+            '%I.%M.%S %p', '%I:%M:%S %p', '%I:%M %p', '%I.%M %p',
+            '%H:%M:%S', '%H:%M', '%H.%M.%S'
         ]
-        
         for fmt in formats_to_try:
-            try:
-                return datetime.strptime(val_str, fmt).time()
-            except (ValueError, TypeError):
-                continue
+            try: return datetime.strptime(val_str, fmt).time()
+            except (ValueError, TypeError): continue
         
-        # Fallback: pandas for complex/ambiguous formats
         try:
             parsed = pd.to_datetime(val_str, errors='coerce')
-            if pd.notna(parsed):
-                return parsed.time()
-        except Exception:
-            pass
-        
+            if pd.notna(parsed): return parsed.time()
+        except Exception: pass
         return None
 
     # ─────────────────────────────────────────────────────────────
@@ -1279,11 +1253,8 @@ with tab_comp:
     
     if comp_raw is not None and not comp_raw.empty:
         c_df = comp_raw.copy()
-        
-        # Clean column names
         c_df.columns = [str(col).strip() for col in c_df.columns]
         
-        # Remove structural/header/footer rows dynamically
         if not c_df.empty:
             first_col = c_df.columns[0]
             mask = ~c_df[first_col].astype(str).str.strip().str.lower().str.contains(
@@ -1292,7 +1263,6 @@ with tab_comp:
             )
             c_df = c_df[mask].reset_index(drop=True)
         
-        # Parse dates from first column
         c_df['Parsed_Date'] = pd.to_datetime(c_df.iloc[:, 0], errors='coerce')
         c_df = c_df.dropna(subset=['Parsed_Date'])
         
@@ -1315,35 +1285,24 @@ with tab_comp:
             #  DYNAMIC COMPRESSOR COLUMN DETECTION
             # ─────────────────────────────────────────────────────────────
             compressor_config = {}
-            
-            # Try to find columns by name pattern first
             for i in range(1, 6):
                 comp_name = f"Compressor-{i}"
-                stop_col = None
-                start_col = None
-                
+                stop_col = start_col = None
                 for col in c_df.columns:
                     col_lower = col.lower()
-                    # Match patterns like "compressor-1", "comp 1", etc.
                     comp_patterns = [f'compressor-{i}', f'compressor {i}', f'comp-{i}', f'comp {i}']
-                    
                     if any(p in col_lower for p in comp_patterns):
-                        if 'stop' in col_lower and 'start' not in col_lower:
-                            stop_col = col
-                        elif 'start' in col_lower and 'stop' not in col_lower:
-                            start_col = col
-                
+                        if 'stop' in col_lower and 'start' not in col_lower: stop_col = col
+                        elif 'start' in col_lower and 'stop' not in col_lower: start_col = col
                 if stop_col and start_col:
                     compressor_config[comp_name] = {'stop': stop_col, 'start': start_col}
             
-            # Fallback: Positional mapping if dynamic detection fails (< 5 compressors found)
-            # Based on Sheet3 structure: Date, C1-Stop, C1-Start, C2-Stop, C2-Start...
             if len(compressor_config) < 5 and len(c_df.columns) >= 11:
                 compressor_config = {}
                 for i in range(1, 6):
                     comp_name = f"Compressor-{i}"
-                    stop_idx = 2 * i - 1   # columns 1, 3, 5, 7, 9
-                    start_idx = 2 * i      # columns 2, 4, 6, 8, 10
+                    stop_idx = 2 * i - 1
+                    start_idx = 2 * i
                     if stop_idx < len(c_df.columns) and start_idx < len(c_df.columns):
                         compressor_config[comp_name] = {
                             'stop': c_df.columns[stop_idx],
@@ -1354,12 +1313,14 @@ with tab_comp:
                 st.markdown('<div class="alert-warn">⚠️ <strong>Configuration Error:</strong> Could not detect compressor columns.</div>', unsafe_allow_html=True)
             else:
                 # ─────────────────────────────────────────────────────────────
-                #  MATHEMATICAL CORE: DOWNTIME WINDOW PROCESSING
+                #  MATHEMATICAL CORE: CORRECTED BUSINESS LOGIC
+                #  RUNTIME = (Start - Stop)
+                #  DOWNTIME = 24 - RUNTIME
+                #  BLANK = 0 Runtime, 24 Downtime
                 # ─────────────────────────────────────────────────────────────
                 total_days = (TARGET_END - TARGET_START).days + 1
                 all_dates = pd.date_range(start=TARGET_START, end=TARGET_END, freq='D')
                 
-                # Initialize lists
                 daily_records = []
                 summary_records = []
                 
@@ -1367,71 +1328,65 @@ with tab_comp:
                     stop_col = cols['stop']
                     start_col = cols['start']
                     
-                    total_working_hrs = 0.0
+                    total_runtime_hrs = 0.0
                     total_downtime_hrs = 0.0
-                    total_stop_events = 0
                     
                     for target_date in all_dates:
                         day_rows = c_df[c_df['Parsed_Date'].dt.date == target_date.date()]
-                        day_downtime_hrs = 0.0
+                        
+                        # DEFAULT: Blank or missing means 0 Runtime, 24 Downtime
+                        runtime_hrs = 0.0 
                         
                         if not day_rows.empty:
-                            for _, row in day_rows.iterrows():
-                                t_stop = normalize_to_time(row[stop_col])
-                                t_start = normalize_to_time(row[start_col])
+                            row = day_rows.iloc[0]
+                            t_stop = normalize_to_time(row[stop_col])
+                            t_start = normalize_to_time(row[start_col])
+                            
+                            # If BOTH Stop and Start are present, calculate RUNTIME
+                            if t_stop is not None and t_start is not None:
+                                stop_mins = t_stop.hour * 60 + t_stop.minute + t_stop.second / 60.0
+                                start_mins = t_start.hour * 60 + t_start.minute + t_start.second / 60.0
                                 
-                                if t_stop is not None and t_start is not None:
-                                    # Convert to minutes since midnight
-                                    stop_mins = t_stop.hour * 60 + t_stop.minute + t_stop.second / 60.0
-                                    start_mins = t_start.hour * 60 + t_start.minute + t_start.second / 60.0
+                                if start_mins < stop_mins:
+                                    delta_mins = (1440.0 - stop_mins) + start_mins
+                                else:
+                                    delta_mins = start_mins - stop_mins
                                     
-                                    # Midnight crossover handling
-                                    # If Start < Stop, it means it crossed midnight (e.g., Stop 23:00, Start 03:00)
-                                    if start_mins < stop_mins:
-                                        delta_mins = (1440.0 - stop_mins) + start_mins
-                                    else:
-                                        delta_mins = start_mins - stop_mins
-                                    
-                                    day_downtime_hrs += max(0.0, delta_mins / 60.0)
-                                    total_stop_events += 1
+                                runtime_hrs = max(0.0, delta_mins / 60.0)
+                            else:
+                                runtime_hrs = 0.0
                         
-                        # Cap at 24 hours maximum
-                        day_downtime_hrs = min(24.0, day_downtime_hrs)
-                        day_working_hrs = 24.0 - day_downtime_hrs
+                        runtime_hrs = min(24.0, runtime_hrs)
+                        downtime_hrs = 24.0 - runtime_hrs
                         
-                        total_working_hrs += day_working_hrs
-                        total_downtime_hrs += day_downtime_hrs
+                        total_runtime_hrs += runtime_hrs
+                        total_downtime_hrs += downtime_hrs
                         
                         daily_records.append({
                             'Date': target_date,
                             'Compressor': comp_name,
-                            'Working Hours': round(day_working_hrs, 2),
-                            'Non Working Hours': round(day_downtime_hrs, 2),
-                            'Utilization %': round((day_working_hrs / 24.0) * 100.0, 1)
+                            'Working Hours': round(runtime_hrs, 2),
+                            'Non Working Hours': round(downtime_hrs, 2),
+                            'Utilization %': round((runtime_hrs / 24.0) * 100.0, 1)
                         })
                     
-                    # Summary aggregation
                     total_available_hrs = total_days * 24.0
                     summary_records.append({
                         'Compressor': comp_name,
-                        'Working Hours': round(total_working_hrs, 2),
+                        'Working Hours': round(total_runtime_hrs, 2),
                         'Non Working Hours': round(total_downtime_hrs, 2),
-                        'Utilization %': round((total_working_hrs / total_available_hrs) * 100.0, 1),
-                        'Downtime %': round((total_downtime_hrs / total_available_hrs) * 100.0, 1),
-                        'Total Stops': int(total_stop_events)
+                        'Utilization %': round((total_runtime_hrs / total_available_hrs) * 100.0, 1),
+                        'Downtime %': round((total_downtime_hrs / total_available_hrs) * 100.0, 1)
                     })
                 
-                # Create DataFrames explicitly to ensure columns exist
                 df_daily = pd.DataFrame(daily_records, columns=['Date', 'Compressor', 'Working Hours', 'Non Working Hours', 'Utilization %'])
-                df_summary = pd.DataFrame(summary_records, columns=['Compressor', 'Working Hours', 'Non Working Hours', 'Utilization %', 'Downtime %', 'Total Stops'])
+                df_summary = pd.DataFrame(summary_records, columns=['Compressor', 'Working Hours', 'Non Working Hours', 'Utilization %', 'Downtime %'])
                 
-                # Ensure numeric types for safety
                 for col in ['Working Hours', 'Non Working Hours', 'Utilization %']:
                     df_daily[col] = pd.to_numeric(df_daily[col], errors='coerce')
                 for col in ['Working Hours', 'Non Working Hours', 'Utilization %', 'Downtime %']:
                     df_summary[col] = pd.to_numeric(df_summary[col], errors='coerce')
                 
-                # Drop any rows that became NaN due to conversion errors
                 df_daily.dropna(subset=['Working Hours', 'Non Working Hours'], inplace=True)
                 
                 # ─────────────────────────────────────────────────────────────
@@ -1451,30 +1406,21 @@ with tab_comp:
                 #  KPI METRICS
                 # ─────────────────────────────────────────────────────────────
                 st.markdown('<div class="sec-title">📊 Compressor Performance Overview</div>', unsafe_allow_html=True)
-                
                 avg_util = df_summary['Utilization %'].mean()
                 avg_downtime = df_summary['Downtime %'].mean()
-                total_stops_all = df_summary['Total Stops'].sum()
                 best_comp = df_summary.loc[df_summary['Utilization %'].idxmax(), 'Compressor']
                 worst_comp = df_summary.loc[df_summary['Downtime %'].idxmax(), 'Compressor']
                 
-                k1, k2, k3, k4, k5 = st.columns(5)
-                with k1:
-                    st.metric("Avg Utilization", f"{avg_util:.1f}%")
-                with k2:
-                    st.metric("Avg Downtime", f"{avg_downtime:.1f}%")
-                with k3:
-                    st.metric("Total Stop Events", f"{total_stops_all}")
-                with k4:
-                    st.metric("Best Performer", best_comp)
-                with k5:
-                    st.metric("Highest Downtime", worst_comp)
+                k1, k2, k3, k4 = st.columns(4)
+                with k1: st.metric("Avg Utilization", f"{avg_util:.1f}%")
+                with k2: st.metric("Avg Downtime", f"{avg_downtime:.1f}%")
+                with k3: st.metric("Best Performer", best_comp)
+                with k4: st.metric("Highest Downtime", worst_comp)
                 
                 # ─────────────────────────────────────────────────────────────
                 #  REQUIRED TABLE 1: Daily Compressor Table
                 # ─────────────────────────────────────────────────────────────
                 st.markdown('<div class="sec-title">📋 Daily Compressor Performance Table</div>', unsafe_allow_html=True)
-                
                 daily_display = df_daily[['Date', 'Compressor', 'Working Hours', 'Non Working Hours', 'Utilization %']].copy()
                 daily_display['Date'] = daily_display['Date'].dt.strftime('%d-%b-%Y')
                 st.dataframe(daily_display, use_container_width=True, hide_index=True)
@@ -1489,188 +1435,67 @@ with tab_comp:
                 #  CHARTS — ALL 6 REQUIRED VISUALIZATIONS
                 # ─────────────────────────────────────────────────────────────
                 st.markdown('<div class="sec-title">📈 Visual Analytics Dashboard</div>', unsafe_allow_html=True)
-                
                 chart_colors = ['#002D62', '#E01934', '#FF9F1C', '#16A34A', '#8B5CF6']
                 
-                # ── Chart 1: Compressor Utilization Comparison (Horizontal Bar) ──
+                # 1. Utilization Comparison
                 fig1 = go.Figure()
                 fig1.add_trace(go.Bar(
-                    y=df_summary['Compressor'],
-                    x=df_summary['Utilization %'],
-                    orientation='h',
+                    y=df_summary['Compressor'], x=df_summary['Utilization %'], orientation='h',
                     marker=dict(color='#002D62', line=dict(color='#001840', width=1)),
-                    text=df_summary['Utilization %'].apply(lambda x: f'{x:.1f}%'),
-                    textposition='auto',
-                    hovertemplate='<b>%{y}</b><br>Utilization: %{x:.1f}%<extra></extra>'
+                    text=df_summary['Utilization %'].apply(lambda x: f'{x:.1f}%'), textposition='auto'
                 ))
-                fig1.update_layout(
-                    title='Compressor Utilization Comparison',
-                    xaxis=dict(title='Utilization (%)', range=[0, 105], gridcolor='#E2E8F0'),
-                    yaxis=dict(title='Compressor', autorange='reversed'),
-                    height=350,
-                    margin=dict(l=20, r=20, t=50, b=40),
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)'
-                )
+                fig1.update_layout(title='Compressor Utilization Comparison', xaxis=dict(title='Utilization (%)', range=[0, 105], gridcolor='#E2E8F0'), yaxis=dict(title='Compressor', autorange='reversed'), height=350, margin=dict(l=20, r=20, t=50, b=40), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
                 
-                # ── Chart 2: Working vs Non Working Hours (Stacked Horizontal Bar) ──
+                # 2. Working vs Non Working
                 fig2 = go.Figure()
-                fig2.add_trace(go.Bar(
-                    name='Working Hours',
-                    y=df_summary['Compressor'],
-                    x=df_summary['Working Hours'],
-                    orientation='h',
-                    marker_color='#16A34A',
-                    hovertemplate='<b>%{y}</b><br>Working: %{x:.1f}h<extra></extra>'
-                ))
-                fig2.add_trace(go.Bar(
-                    name='Non Working Hours',
-                    y=df_summary['Compressor'],
-                    x=df_summary['Non Working Hours'],
-                    orientation='h',
-                    marker_color='#E01934',
-                    hovertemplate='<b>%{y}</b><br>Non-Working: %{x:.1f}h<extra></extra>'
-                ))
-                fig2.update_layout(
-                    barmode='stack',
-                    title='Working vs Non-Working Hours',
-                    xaxis=dict(title='Hours', gridcolor='#E2E8F0'),
-                    yaxis=dict(title='Compressor', autorange='reversed'),
-                    height=350,
-                    margin=dict(l=20, r=20, t=50, b=40),
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
-                )
+                fig2.add_trace(go.Bar(name='Working Hours', y=df_summary['Compressor'], x=df_summary['Working Hours'], orientation='h', marker_color='#16A34A'))
+                fig2.add_trace(go.Bar(name='Non Working Hours', y=df_summary['Compressor'], x=df_summary['Non Working Hours'], orientation='h', marker_color='#E01934'))
+                fig2.update_layout(barmode='stack', title='Working vs Non-Working Hours', xaxis=dict(title='Hours', gridcolor='#E2E8F0'), yaxis=dict(title='Compressor', autorange='reversed'), height=350, margin=dict(l=20, r=20, t=50, b=40), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1))
                 
                 col_c1, col_c2 = st.columns(2)
-                with col_c1:
-                    st.plotly_chart(fig1, use_container_width=True)
-                with col_c2:
-                    st.plotly_chart(fig2, use_container_width=True)
+                with col_c1: st.plotly_chart(fig1, use_container_width=True)
+                with col_c2: st.plotly_chart(fig2, use_container_width=True)
                 
-                # ── Chart 3: Daily Working Trend (Line Chart) ──
+                # 3. Daily Working Trend
                 fig3 = go.Figure()
                 for idx, comp in enumerate(df_summary['Compressor']):
                     sub = df_daily[df_daily['Compressor'] == comp].sort_values('Date')
-                    fig3.add_trace(go.Scatter(
-                        x=sub['Date'].dt.strftime('%d-%b'),
-                        y=sub['Working Hours'],
-                        mode='lines+markers',
-                        name=comp,
-                        line=dict(color=chart_colors[idx % len(chart_colors)], width=2.5),
-                        marker=dict(size=6),
-                        hovertemplate=f'<b>{comp}</b><br>Date: %{{x}}<br>Working: %{{y:.1f}}h<extra></extra>'
-                    ))
-                fig3.update_layout(
-                    title='Daily Working Hours Trend',
-                    xaxis=dict(title='Date', tickangle=45, gridcolor='#E2E8F0'),
-                    yaxis=dict(title='Working Hours', range=[0, 26], gridcolor='#E2E8F0'),
-                    height=400,
-                    margin=dict(l=20, r=20, t=50, b=60),
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
-                )
+                    fig3.add_trace(go.Scatter(x=sub['Date'].dt.strftime('%d-%b'), y=sub['Working Hours'], mode='lines+markers', name=comp, line=dict(color=chart_colors[idx % len(chart_colors)], width=2.5), marker=dict(size=6)))
+                fig3.update_layout(title='Daily Working Hours Trend', xaxis=dict(title='Date', tickangle=45, gridcolor='#E2E8F0'), yaxis=dict(title='Working Hours', range=[0, 26], gridcolor='#E2E8F0'), height=400, margin=dict(l=20, r=20, t=50, b=60), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1))
                 
-                # ── Chart 4: Daily Downtime Trend (Line Chart) ──
+                # 4. Daily Downtime Trend
                 fig4 = go.Figure()
                 for idx, comp in enumerate(df_summary['Compressor']):
                     sub = df_daily[df_daily['Compressor'] == comp].sort_values('Date')
-                    fig4.add_trace(go.Scatter(
-                        x=sub['Date'].dt.strftime('%d-%b'),
-                        y=sub['Non Working Hours'],
-                        mode='lines+markers',
-                        name=comp,
-                        line=dict(color=chart_colors[idx % len(chart_colors)], width=2.5),
-                        marker=dict(size=6),
-                        hovertemplate=f'<b>{comp}</b><br>Date: %{{x}}<br>Downtime: %{{y:.1f}}h<extra></extra>'
-                    ))
-                fig4.update_layout(
-                    title='Daily Downtime Trend',
-                    xaxis=dict(title='Date', tickangle=45, gridcolor='#E2E8F0'),
-                    yaxis=dict(title='Downtime Hours', range=[0, 26], gridcolor='#E2E8F0'),
-                    height=400,
-                    margin=dict(l=20, r=20, t=50, b=60),
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)',
-                    legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1)
-                )
+                    fig4.add_trace(go.Scatter(x=sub['Date'].dt.strftime('%d-%b'), y=sub['Non Working Hours'], mode='lines+markers', name=comp, line=dict(color=chart_colors[idx % len(chart_colors)], width=2.5), marker=dict(size=6)))
+                fig4.update_layout(title='Daily Downtime Trend', xaxis=dict(title='Date', tickangle=45, gridcolor='#E2E8F0'), yaxis=dict(title='Downtime Hours', range=[0, 26], gridcolor='#E2E8F0'), height=400, margin=dict(l=20, r=20, t=50, b=60), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)', legend=dict(orientation='h', yanchor='bottom', y=1.02, xanchor='right', x=1))
                 
                 col_c3, col_c4 = st.columns(2)
-                with col_c3:
-                    st.plotly_chart(fig3, use_container_width=True)
-                with col_c4:
-                    st.plotly_chart(fig4, use_container_width=True)
+                with col_c3: st.plotly_chart(fig3, use_container_width=True)
+                with col_c4: st.plotly_chart(fig4, use_container_width=True)
                 
-                # ── Chart 5: Downtime Ranking (Horizontal Bar) ──
+                # 5. Downtime Ranking
                 df_sorted_downtime = df_summary.sort_values('Non Working Hours', ascending=True)
                 fig5 = go.Figure()
-                fig5.add_trace(go.Bar(
-                    y=df_sorted_downtime['Compressor'],
-                    x=df_sorted_downtime['Non Working Hours'],
-                    orientation='h',
-                    marker=dict(color='#FF9F1C', line=dict(color='#E8890C', width=1)),
-                    text=df_sorted_downtime['Non Working Hours'].apply(lambda x: f'{x:.1f}h'),
-                    textposition='auto',
-                    hovertemplate='<b>%{y}</b><br>Total Downtime: %{x:.1f}h<extra></extra>'
-                ))
-                fig5.update_layout(
-                    title='Downtime Ranking (Lowest to Highest)',
-                    xaxis=dict(title='Total Downtime Hours', gridcolor='#E2E8F0'),
-                    yaxis=dict(title='Compressor', autorange='reversed'),
-                    height=350,
-                    margin=dict(l=20, r=20, t=50, b=40),
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)'
-                )
+                fig5.add_trace(go.Bar(y=df_sorted_downtime['Compressor'], x=df_sorted_downtime['Non Working Hours'], orientation='h', marker=dict(color='#FF9F1C', line=dict(color='#E8890C', width=1)), text=df_sorted_downtime['Non Working Hours'].apply(lambda x: f'{x:.1f}h'), textposition='auto'))
+                fig5.update_layout(title='Downtime Ranking (Lowest to Highest)', xaxis=dict(title='Total Downtime Hours', gridcolor='#E2E8F0'), yaxis=dict(title='Compressor', autorange='reversed'), height=350, margin=dict(l=20, r=20, t=50, b=40), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
                 
-                # ── Chart 6: Utilization Heatmap (Date vs Compressor) ──
-                heatmap_pivot = df_daily.pivot_table(
-                    index='Compressor',
-                    columns='Date',
-                    values='Utilization %',
-                    aggfunc='mean'
-                )
-                # Sort columns chronologically
-                heatmap_pivot = heatmap_pivot.reindex(sorted(heatmap_pivot.columns), axis=1)
-                heatmap_pivot = heatmap_pivot.fillna(0)
-                
-                # Format column labels
+                # 6. Utilization Heatmap
+                heatmap_pivot = df_daily.pivot_table(index='Compressor', columns='Date', values='Utilization %', aggfunc='mean')
+                heatmap_pivot = heatmap_pivot.reindex(sorted(heatmap_pivot.columns), axis=1).fillna(0)
                 date_labels = [d.strftime('%d-%b') for d in heatmap_pivot.columns]
                 
                 fig6 = go.Figure(data=go.Heatmap(
-                    z=heatmap_pivot.values,
-                    x=date_labels,
-                    y=heatmap_pivot.index.tolist(),
-                    colorscale=[
-                        [0.0, '#E01934'],    # Red = low utilization (high downtime)
-                        [0.5, '#FF9F1C'],    # Orange = medium
-                        [1.0, '#16A34A']     # Green = high utilization
-                    ],
-                    zmin=0,
-                    zmax=100,
-                    text=heatmap_pivot.values.round(1),
-                    texttemplate='%{text:.0f}%',
-                    textfont=dict(size=10, color='white'),
-                    hovertemplate='Compressor: %{y}<br>Date: %{x}<br>Utilization: %{z:.1f}%<extra></extra>',
+                    z=heatmap_pivot.values, x=date_labels, y=heatmap_pivot.index.tolist(),
+                    colorscale=[[0.0, '#E01934'], [0.5, '#FF9F1C'], [1.0, '#16A34A']],
+                    zmin=0, zmax=100, text=heatmap_pivot.values.round(1), texttemplate='%{text:.0f}%', textfont=dict(size=10, color='white'),
                     colorbar=dict(title='Utilization %', ticksuffix='%')
                 ))
-                fig6.update_layout(
-                    title='Utilization Heatmap (Date vs Compressor)',
-                    xaxis=dict(title='Date', tickangle=45, side='bottom'),
-                    yaxis=dict(title='Compressor', autorange='reversed'),
-                    height=350,
-                    margin=dict(l=20, r=20, t=50, b=60),
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)'
-                )
+                fig6.update_layout(title='Utilization Heatmap (Date vs Compressor)', xaxis=dict(title='Date', tickangle=45, side='bottom'), yaxis=dict(title='Compressor', autorange='reversed'), height=350, margin=dict(l=20, r=20, t=50, b=60), plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
                 
                 col_c5, col_c6 = st.columns(2)
-                with col_c5:
-                    st.plotly_chart(fig5, use_container_width=True)
-                with col_c6:
-                    st.plotly_chart(fig6, use_container_width=True)
+                with col_c5: st.plotly_chart(fig5, use_container_width=True)
+                with col_c6: st.plotly_chart(fig6, use_container_width=True)
                 
                 # ─────────────────────────────────────────────────────────────
                 #  DATA EXPORT PORTAL
@@ -1678,30 +1503,13 @@ with tab_comp:
                 st.markdown('<div class="sec-title">📥 Data Export Portal</div>', unsafe_allow_html=True)
                 with st.expander("📂 Download Processed Compressor Data", expanded=False):
                     col_dl1, col_dl2 = st.columns(2)
-                    
                     with col_dl1:
                         csv_daily = df_daily.to_csv(index=False).encode('utf-8')
-                        st.download_button(
-                            label="📥 Download Daily Data (CSV)",
-                            data=csv_daily,
-                            file_name=f"compressor_daily_{TARGET_START.strftime('%Y%m%d')}_to_{TARGET_END.strftime('%Y%m%d')}.csv",
-                            mime="text/csv",
-                            key="btn_download_comp_daily"
-                        )
-                    
+                        st.download_button(label="📥 Download Daily Data (CSV)", data=csv_daily, file_name=f"compressor_daily_{TARGET_START.strftime('%Y%m%d')}_to_{TARGET_END.strftime('%Y%m%d')}.csv", mime="text/csv", key="btn_download_comp_daily")
                     with col_dl2:
                         csv_summary = df_summary.to_csv(index=False).encode('utf-8')
-                        st.download_button(
-                            label="📥 Download Summary Data (CSV)",
-                            data=csv_summary,
-                            file_name=f"compressor_summary_{TARGET_START.strftime('%Y%m%d')}_to_{TARGET_END.strftime('%Y%m%d')}.csv",
-                            mime="text/csv",
-                            key="btn_download_comp_summary"
-                        )
-                    
-                    # Raw data view
+                        st.download_button(label="📥 Download Summary Data (CSV)", data=csv_summary, file_name=f"compressor_summary_{TARGET_START.strftime('%Y%m%d')}_to_{TARGET_END.strftime('%Y%m%d')}.csv", mime="text/csv", key="btn_download_comp_summary")
                     st.markdown("**Raw Parsed Data Preview:**")
                     st.dataframe(c_df, use_container_width=True, hide_index=True)
-    
     else:
         st.markdown('<div class="alert-info">⚠️ Compressor optimization data (Sheet3) not available in the repository.</div>', unsafe_allow_html=True)
