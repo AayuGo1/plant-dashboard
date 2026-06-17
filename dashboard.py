@@ -875,55 +875,57 @@ def validate_dataframe(
     issues = []
     total_cells = df.shape[0] * df.shape[1]
 
+    # Completeness check
     missing_count = df.isnull().sum().sum()
     completeness = 1.0 - (missing_count / total_cells) if total_cells > 0 else 0.0
     if missing_count > 0:
         issues.append(f"{missing_count} missing values detected")
 
+    # Required columns check
     if required_columns:
-        missing_cols = [
-            col for col in required_columns if col not in df.columns
-        ]
+        missing_cols = [col for col in required_columns if col not in df.columns]
         if missing_cols:
             issues.append(f"Missing required columns: {', '.join(missing_cols)}")
             completeness *= 0.8
 
+    # Consistency check
     duplicate_rows = df.duplicated().sum()
-    consistency = (
-        1.0 - (duplicate_rows / df.shape[0]) if df.shape[0] > 0 else 0.0
-    )
+    consistency = 1.0 - (duplicate_rows / df.shape[0]) if df.shape[0] > 0 else 0.0
     if duplicate_rows > 0:
         issues.append(f"{duplicate_rows} duplicate rows detected")
 
+    # Accuracy check - SAFE: Uses dtypes.items() to prevent KeyError on duplicate columns
     accuracy_issues = 0
-    for col in df.columns:
-        if df[col].dtype == "object":
-            types_in_col = df[col].apply(type).nunique()
-            if types_in_col > 1:
-                accuracy_issues += 1
-                issues.append(f"Column '{col}' has mixed data types")
-
-    accuracy = (
-        1.0 - (accuracy_issues / len(df.columns)) if len(df.columns) > 0 else 1.0
-    )
-
-    freshness = 1.0
-    date_cols = [
-        col for col in df.columns if "date" in col.lower() or "time" in col.lower()
-    ]
-    if date_cols:
-        latest_date = df[date_cols[0]].max()
-        if pd.notna(latest_date):
+    for col, dtype in df.dtypes.items():
+        if dtype == "object":
             try:
-                days_old = (
-                    datetime.now() - pd.to_datetime(latest_date)
-                ).days
+                col_idx = df.columns.get_loc(col)
+                # Skip if duplicate column names exist (get_loc returns slice/array)
+                if isinstance(col_idx, slice) or hasattr(col_idx, "__len__"):
+                    continue
+                types_in_col = df.iloc[:, col_idx].apply(type).nunique()
+                if types_in_col > 1:
+                    accuracy_issues += 1
+                    issues.append(f"Column '{col}' has mixed data types")
+            except Exception:
+                continue
+
+    accuracy = 1.0 - (accuracy_issues / len(df.columns)) if len(df.columns) > 0 else 1.0
+
+    # Freshness check
+    freshness = 1.0
+    date_cols = [col for col in df.columns if "date" in str(col).lower() or "time" in str(col).lower()]
+    if date_cols:
+        try:
+            latest_date = df[date_cols[0]].max()
+            if pd.notna(latest_date):
+                days_old = (datetime.now() - pd.to_datetime(latest_date)).days
                 freshness = max(0.0, 1.0 - (days_old / 365.0))
                 if days_old > 30:
                     issues.append(f"Data is {days_old} days old")
-            except Exception:
-                freshness = 0.5
-                issues.append("Unable to parse date for freshness check")
+        except Exception:
+            freshness = 0.5
+            issues.append("Unable to parse date for freshness check")
 
     weights = {
         "completeness": 0.3,
@@ -947,7 +949,6 @@ def validate_dataframe(
         "overall_score": round(overall_score * 100, 1),
         "issues": issues,
     }
-
 
 # ============================================================================
 # SECTION 7: ANALYTICS FUNCTIONS
