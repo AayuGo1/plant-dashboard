@@ -848,13 +848,20 @@ def load_excel_sheet(sheet_name, fallback_header_row):
         logger.error(f"Unexpected error loading sheet {sheet_name}: {e}")
         st.warning(f"Unexpected error loading sheet {sheet_name}: {e}")
         return None
-# ────────────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────
 #  SIDEBAR & HEADER SYSTEM
 # ─────────────────────────────────────────────────────────────
 
-# ✅ FIX: Use unique key to prevent timestamp reset on rerun
+import pytz
+
+# Define IST timezone explicitly
+ist = pytz.timezone('Asia/Kolkata')
+
+# Initialize session state for refresh timestamp ONLY on first load
 if 'dashboard_last_refresh' not in st.session_state:
-    st.session_state['dashboard_last_refresh'] = datetime.now().strftime("%d %b %Y, %H:%M IST")
+    # Get current time in IST, not server local time
+    now_ist = datetime.now(ist)
+    st.session_state['dashboard_last_refresh'] = now_ist.strftime("%d %b %Y, %H:%M IST")
 
 with st.sidebar:
     st.markdown("""
@@ -878,11 +885,10 @@ with st.sidebar:
         index=0
     )
     
-    # ✅ CRITICAL FIX: Update timestamp BEFORE cache clear/rerun
+    # ✅ FIX: Update timestamp in IST BEFORE cache clear/rerun
     if st.button("🔄 Refresh Data Now"):
-        # Capture exact click time FIRST
-        st.session_state['dashboard_last_refresh'] = datetime.now().strftime("%d %b %Y, %H:%M IST")
-        # Then clear cache and rerun
+        now_ist = datetime.now(ist)
+        st.session_state['dashboard_last_refresh'] = now_ist.strftime("%d %b %Y, %H:%M IST")
         st.cache_data.clear()
         st.rerun()
 
@@ -938,7 +944,7 @@ temp_validation = validate_dataframe(temp_df, required_columns=['Time'])
 runtime_validation = validate_dataframe(runtime_df)
 comp_validation = validate_dataframe(comp_raw)
 
-# ✅ Use preserved session state timestamp
+# ✅ Use preserved IST timestamp from session state
 last_refresh = st.session_state['dashboard_last_refresh']
 
 # Calculate data sources count
