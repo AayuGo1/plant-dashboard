@@ -848,13 +848,13 @@ def load_excel_sheet(sheet_name, fallback_header_row):
         logger.error(f"Unexpected error loading sheet {sheet_name}: {e}")
         st.warning(f"Unexpected error loading sheet {sheet_name}: {e}")
         return None
-# ─────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────
 #  SIDEBAR & HEADER SYSTEM
 # ─────────────────────────────────────────────────────────────
 
-# Initialize session state for refresh timestamp ONLY on first load
-if 'last_refresh_time' not in st.session_state:
-    st.session_state['last_refresh_time'] = datetime.now().strftime("%d %b %Y, %H:%M IST")
+# ✅ FIX: Use unique key to prevent timestamp reset on rerun
+if 'dashboard_last_refresh' not in st.session_state:
+    st.session_state['dashboard_last_refresh'] = datetime.now().strftime("%d %b %Y, %H:%M IST")
 
 with st.sidebar:
     st.markdown("""
@@ -878,9 +878,11 @@ with st.sidebar:
         index=0
     )
     
-    # ✅ FIX: Update timestamp BEFORE cache clear and rerun
+    # ✅ CRITICAL FIX: Update timestamp BEFORE cache clear/rerun
     if st.button("🔄 Refresh Data Now"):
-        st.session_state['last_refresh_time'] = datetime.now().strftime("%d %b %Y, %H:%M IST")
+        # Capture exact click time FIRST
+        st.session_state['dashboard_last_refresh'] = datetime.now().strftime("%d %b %Y, %H:%M IST")
+        # Then clear cache and rerun
         st.cache_data.clear()
         st.rerun()
 
@@ -936,8 +938,8 @@ temp_validation = validate_dataframe(temp_df, required_columns=['Time'])
 runtime_validation = validate_dataframe(runtime_df)
 comp_validation = validate_dataframe(comp_raw)
 
-# ✅ Use session state instead of recalculating current time
-last_refresh = st.session_state['last_refresh_time']
+# ✅ Use preserved session state timestamp
+last_refresh = st.session_state['dashboard_last_refresh']
 
 # Calculate data sources count
 data_sources_count = sum([
