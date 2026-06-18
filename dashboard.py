@@ -847,11 +847,12 @@ def load_excel_sheet(sheet_name, fallback_header_row):
     except Exception as e:
         logger.error(f"Unexpected error loading sheet {sheet_name}: {e}")
         st.warning(f"Unexpected error loading sheet {sheet_name}: {e}")
-        return None# ─────────────────────────────────────────────────────────────
+        return None
+# ─────────────────────────────────────────────────────────────
 #  SIDEBAR & HEADER SYSTEM
 # ─────────────────────────────────────────────────────────────
 
-# Initialize session state for refresh timestamp if not exists
+# Initialize session state for refresh timestamp ONLY on first load
 if 'last_refresh_time' not in st.session_state:
     st.session_state['last_refresh_time'] = datetime.now().strftime("%d %b %Y, %H:%M IST")
 
@@ -877,11 +878,10 @@ with st.sidebar:
         index=0
     )
     
-    # Update timestamp ONLY when button is clicked
+    # ✅ FIX: Update timestamp BEFORE cache clear and rerun
     if st.button("🔄 Refresh Data Now"):
-        st.cache_data.clear()
-        # Update the session state with the exact current time
         st.session_state['last_refresh_time'] = datetime.now().strftime("%d %b %Y, %H:%M IST")
+        st.cache_data.clear()
         st.rerun()
 
     categorized = discover_and_categorize_files()
@@ -936,7 +936,7 @@ temp_validation = validate_dataframe(temp_df, required_columns=['Time'])
 runtime_validation = validate_dataframe(runtime_df)
 comp_validation = validate_dataframe(comp_raw)
 
-# Use the session state timestamp for the header
+# ✅ Use session state instead of recalculating current time
 last_refresh = st.session_state['last_refresh_time']
 
 # Calculate data sources count
@@ -1035,7 +1035,6 @@ if runtime_df is not None and not runtime_df.empty:
     if kwh_cols:
         equipment_utilization = min(runtime_df[kwh_cols[0]].mean() / runtime_df[kwh_cols[0]].max() * 100, 100) if runtime_df[kwh_cols[0]].max() > 0 else 0
         operational_efficiency = equipment_utilization * 0.8 + thermal_compliance * 0.2
-
 # ═══════════════════════════════════════════════════════════════
 #  KPI CARDS — FIXED OVERLAP (wrapped in container with spacer)
 # ═══════════════════════════════════════════════════════════════
