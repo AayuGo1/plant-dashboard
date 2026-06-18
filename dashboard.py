@@ -848,10 +848,14 @@ def load_excel_sheet(sheet_name, fallback_header_row):
         logger.error(f"Unexpected error loading sheet {sheet_name}: {e}")
         st.warning(f"Unexpected error loading sheet {sheet_name}: {e}")
         return None
-
 # ─────────────────────────────────────────────────────────────
 #  SIDEBAR & HEADER SYSTEM
 # ─────────────────────────────────────────────────────────────
+
+# Initialize session state for refresh timestamp if not exists
+if 'last_refresh_time' not in st.session_state:
+    st.session_state['last_refresh_time'] = datetime.now().strftime("%d %b %Y, %H:%M IST")
+
 with st.sidebar:
     st.markdown("""
         <div style="padding:16px 0 20px;">
@@ -874,10 +878,11 @@ with st.sidebar:
         index=0
     )
     
-    if st.button("🔄 Refresh Data Now"):
+      if st.button("🔄 Refresh Data Now"):
         st.cache_data.clear()
+        # Update the session state with the exact current time
+        st.session_state['last_refresh_time'] = datetime.now().strftime("%d %b %Y, %H:%M IST")
         st.rerun()
-
     categorized = discover_and_categorize_files()
     processed_energy_files = categorized.get('energy', [])
     csv_files = categorized.get('temperature', [])
@@ -930,8 +935,8 @@ temp_validation = validate_dataframe(temp_df, required_columns=['Time'])
 runtime_validation = validate_dataframe(runtime_df)
 comp_validation = validate_dataframe(comp_raw)
 
-# Calculate last refresh time
-last_refresh = datetime.now().strftime("%d %b %Y, %H:%M IST")
+# Use the session state timestamp for the header
+last_refresh = st.session_state['last_refresh_time']
 
 # Calculate data sources count
 data_sources_count = sum([
