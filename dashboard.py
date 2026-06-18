@@ -847,8 +847,7 @@ def load_excel_sheet(sheet_name, fallback_header_row):
     except Exception as e:
         logger.error(f"Unexpected error loading sheet {sheet_name}: {e}")
         st.warning(f"Unexpected error loading sheet {sheet_name}: {e}")
-        return None
-# ─────────────────────────────────────────────────────────────
+        return None# ─────────────────────────────────────────────────────────────
 #  SIDEBAR & HEADER SYSTEM
 # ─────────────────────────────────────────────────────────────
 
@@ -878,11 +877,13 @@ with st.sidebar:
         index=0
     )
     
-      if st.button("🔄 Refresh Data Now"):
+    # Update timestamp ONLY when button is clicked
+    if st.button("🔄 Refresh Data Now"):
         st.cache_data.clear()
         # Update the session state with the exact current time
         st.session_state['last_refresh_time'] = datetime.now().strftime("%d %b %Y, %H:%M IST")
         st.rerun()
+
     categorized = discover_and_categorize_files()
     processed_energy_files = categorized.get('energy', [])
     csv_files = categorized.get('temperature', [])
