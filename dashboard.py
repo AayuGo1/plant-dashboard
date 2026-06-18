@@ -17,7 +17,7 @@ import traceback
 
 warnings.filterwarnings("ignore", category=UserWarning)
 
-# ─────────────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────
 #  CONFIGURATION & CONSTANTS
 # ─────────────────────────────────────────────────────────────
 GITHUB_USER   = "AayuGo1"
@@ -849,18 +849,18 @@ def load_excel_sheet(sheet_name, fallback_header_row):
         st.warning(f"Unexpected error loading sheet {sheet_name}: {e}")
         return None
 # ─────────────────────────────────────────────────────────────
-#  SIDEBAR & HEADER SYSTEM
-# ─────────────────────────────────────────────────────────────
+#  SIDEBAR & HEADER SYSTEM (NO EXTERNAL DEPENDENCIES)
+# ────────────────────────────────────────────────────────────
 
-import pytz
+from datetime import timezone, timedelta
 
-# Define IST timezone explicitly
-ist = pytz.timezone('Asia/Kolkata')
+# Define IST as UTC+5:30 using standard library
+IST = timezone(timedelta(hours=5, minutes=30))
 
 # Initialize session state for refresh timestamp ONLY on first load
 if 'dashboard_last_refresh' not in st.session_state:
-    # Get current time in IST, not server local time
-    now_ist = datetime.now(ist)
+    # Get current time explicitly in IST
+    now_ist = datetime.now(IST)
     st.session_state['dashboard_last_refresh'] = now_ist.strftime("%d %b %Y, %H:%M IST")
 
 with st.sidebar:
@@ -887,7 +887,7 @@ with st.sidebar:
     
     # ✅ FIX: Update timestamp in IST BEFORE cache clear/rerun
     if st.button("🔄 Refresh Data Now"):
-        now_ist = datetime.now(ist)
+        now_ist = datetime.now(IST)
         st.session_state['dashboard_last_refresh'] = now_ist.strftime("%d %b %Y, %H:%M IST")
         st.cache_data.clear()
         st.rerun()
