@@ -18,7 +18,7 @@ import traceback
 warnings.filterwarnings("ignore", category=UserWarning)
 warnings.filterwarnings("ignore", category=FutureWarning)
 
-# ────────────────────────────────────────────────────────────
+# ───────────────────────────────────────────────────────────
 #  CONFIGURATION & CONSTANTS
 # ─────────────────────────────────────────────────────────────
 GITHUB_USER   = "AayuGo1"
@@ -28,12 +28,13 @@ GITHUB_BRANCH = "main"
 RAW_BASE = f"https://raw.githubusercontent.com/{GITHUB_USER}/{GITHUB_REPO}/{GITHUB_BRANCH}"
 API_BASE = f"https://api.github.com/repos/{GITHUB_USER}/{GITHUB_REPO}/contents?ref={GITHUB_BRANCH}"
 
-# Dynamic File Discovery Patterns for Automatic Processing
-# Updated to be more inclusive of variations
+# Dynamic File Discovery Patterns - SEPARATED FOR FREON & AMMONIA
 FILE_PATTERNS = {
     'energy': re.compile(r'PROCESSED_DAILY_VARS.*Active_Energy|Active_Energy.*Report', re.IGNORECASE),
     'temperature': re.compile(r'Temperature_Log|DataLog.*\.csv|Temp_Log', re.IGNORECASE),
-    'freon': re.compile(r'Freon_Workbook|Freezer_Workbook|Compressor.*Log', re.IGNORECASE),
+    # Explicit separation for tracking
+    'freon': re.compile(r'Freon_Workbook|Freezer_Workbook|Freon.*Log|Compressor.*Freon', re.IGNORECASE),
+    'ammonia': re.compile(r'Ammonia.*Log|Ammonia.*Workbook|NH3.*Log|Chiller.*Ammonia', re.IGNORECASE),
     'utility': re.compile(r'Utility_Report|Utility.*Bill', re.IGNORECASE),
     'operational': re.compile(r'Operational_Report|Ops.*Daily', re.IGNORECASE)
 }
@@ -157,6 +158,7 @@ section[data-testid="stSidebar"] .stButton>button:hover {{
 .jfl-header-meta-box {{ background: var(--background-color); border: 1px solid #E2E8F0; border-radius: 7px; padding: 10px 15px; min-width: 136px; }}
 .jfl-meta-label {{ font-size: 8px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #94A3B8; margin-bottom: 3px; }}
 .jfl-meta-value {{ font-size: 12px; font-weight: 800; color: var(--primary-color); }}
+.jfl-meta-sub {{ font-size: 10px; font-weight: 600; color: #64748B; margin-top: 4px; line-height: 1.3; }}
 
 /* Tabs Styling */
 .stTabs [data-baseweb="tab-list"] {{ 
@@ -293,6 +295,49 @@ section[data-testid="stSidebar"] .stButton>button:hover {{
     line-height: 1.5;
 }}
 
+/* Data Availability Cards */
+.avail-card {{
+    background: white;
+    border-radius: 10px;
+    padding: 20px;
+    box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03);
+    border: 1px solid #E2E8F0;
+    border-top: 4px solid var(--primary-color);
+    margin-bottom: 20px;
+}}
+.avail-card.ammonia {{
+    border-top-color: #0EA5E9;
+}}
+.avail-title {{
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+}}
+.avail-row {{
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 12px;
+}}
+.avail-label {{ color: #64748B; font-weight: 600; }}
+.avail-val {{ color: var(--text-primary); font-weight: 700; }}
+.avail-status {{
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 700;
+    background: #D1FAE5;
+    color: #065F46;
+}}
+.avail-status.inactive {{
+    background: #FEE2E2;
+    color: #991B1B;
+}}
+
 /* Spacer utility */
 .spacer-sm {{ height: 12px; }}
 .spacer-md {{ height: 24px; }}
@@ -368,48 +413,10 @@ def read_csv_from_github(url: str, **kwargs):
     return pd.read_csv(io.BytesIO(fetch_file_bytes(url)), **kwargs)
 
 # ─────────────────────────────────────────────────────────────
-#  MASTER DATE RANGE ENGINE
-# ─────────────────────────────────────────────────────────────
-def get_global_date_range(e_df, temp_df, runtime_df):
-    """
-    Dynamically calculates the global start and end dates based on ALL loaded data.
-    Returns start_date, end_date, coverage_days.
-    """
-    all_dates = []
-    
-    if e_df is not None and not e_df.empty:
-        date_col = next((c for c in e_df.columns if 'date' in c.lower()), None)
-        if date_col:
-            all_dates.extend(pd.to_datetime(e_df[date_col], errors='coerce').dropna().tolist())
-            
-    if temp_df is not None and not temp_df.empty:
-        if 'Time' in temp_df.columns:
-            all_dates.extend(pd.to_datetime(temp_df['Time'], errors='coerce').dropna().tolist())
-            
-    if runtime_df is not None and not runtime_df.empty:
-        # Assume first column is date-like or find a date column
-        date_col = next((c for c in runtime_df.columns if 'date' in c.lower()), runtime_df.columns[0])
-        try:
-            all_dates.extend(pd.to_datetime(runtime_df[date_col], errors='coerce').dropna().tolist())
-        except:
-            pass
-
-    if not all_dates:
-        return None, None, 0
-        
-    min_date = min(all_dates)
-    max_date = max(all_dates)
-    coverage = (max_date - min_date).days + 1
-    
-    return min_date, max_date, coverage
-
-# ─────────────────────────────────────────────────────────────
 #  DATA VALIDATION LAYER
 # ─────────────────────────────────────────────────────────────
 def validate_dataframe(df: pd.DataFrame, required_columns: List[str] = None) -> Dict[str, Any]:
-    """
-    Validates a DataFrame and returns a data quality score along with validation details.
-    """
+    """Validates a DataFrame and returns a data quality score."""
     if df is None or df.empty:
         return {
             'is_valid': False,
@@ -443,7 +450,7 @@ def validate_dataframe(df: pd.DataFrame, required_columns: List[str] = None) -> 
     if duplicate_rows > 0:
         issues.append(f"{duplicate_rows} duplicate rows detected")
     
-    # Accuracy check - FIXED: Safe iteration
+    # Accuracy check
     accuracy_issues = 0
     for col, dtype in df.dtypes.items():
         if dtype == 'object':
@@ -604,27 +611,6 @@ def calculate_thermal_excursion_analytics(temp_df: pd.DataFrame, threshold: floa
     
     return results
 
-def calculate_asset_utilization_score(runtime_hrs: float, availability_pct: float, 
-                                    compliance_pct: float, energy_performance: float) -> float:
-    """Calculate a weighted asset utilization score."""
-    normalized_runtime = min(runtime_hrs / 720.0 * 100, 100.0)
-    
-    weights = {
-        'runtime': 0.3,
-        'availability': 0.3,
-        'compliance': 0.2,
-        'energy': 0.2
-    }
-    
-    score = (
-        normalized_runtime * weights['runtime'] +
-        availability_pct * weights['availability'] +
-        compliance_pct * weights['compliance'] +
-        energy_performance * weights['energy']
-    )
-    
-    return round(score, 2)
-
 def generate_ai_insights(e_df: pd.DataFrame, temp_df: pd.DataFrame, comp_summary: pd.DataFrame) -> List[str]:
     """Generate automated insights from the data."""
     insights = []
@@ -678,13 +664,10 @@ def generate_ai_insights(e_df: pd.DataFrame, temp_df: pd.DataFrame, comp_summary
             util_pct = comp_summary['Utilization %'].max()
             insights.append(f"**{best_comp}** is the top performer with **{util_pct:.1f}%** utilization.")
     
-    if e_df is not None and not e_df.empty and temp_df is not None and not temp_df.empty:
-        insights.append("Fleet availability remains above target thresholds across all monitored systems.")
-    
     return insights[:5]
 
 # ─────────────────────────────────────────────────────────────
-#  DATA LOADERS (CACHED & ROBUST - MERGING MULTIPLE FILES)
+#  SEPARATE DATA LOADERS FOR FREON & AMMONIA
 # ─────────────────────────────────────────────────────────────
 @st.cache_data(ttl=300)
 def load_processed_energy_data():
@@ -849,21 +832,120 @@ def load_temperature_data():
     return combined
 
 @st.cache_data(ttl=300)
+def load_freon_data():
+    """Loads and merges ALL Freon-specific workbook/log files."""
+    categorized = discover_and_categorize_files()
+    freon_files = categorized.get('freon', [])
+    if not freon_files:
+        return None
+
+    frames = []
+    processed_count = 0
+    
+    for name, url in freon_files:
+        try:
+            # Attempt to read excel
+            df = read_excel_from_github(url, header=0)
+            df.columns = [str(c).strip() for c in df.columns]
+            
+            # Find date column
+            date_col = next((c for c in df.columns if 'date' in c.lower()), None)
+            if not date_col:
+                # Fallback: check first column
+                if pd.api.types.is_datetime64_any_dtype(df.iloc[:,0]):
+                    date_col = df.columns[0]
+                    df.rename(columns={date_col: 'Date'}, inplace=True)
+                    date_col = 'Date'
+                else:
+                    continue
+                    
+            df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+            df = df.dropna(subset=[date_col])
+            
+            # Clean up non-date rows (like headers/footers repeated in merged sheets)
+            if date_col in df.columns:
+                df = df[df[date_col].dt.year > 2020] 
+                
+            frames.append(df)
+            processed_count += 1
+        except Exception as e:
+            logger.warning(f"Failed to load freon file {name}: {e}")
+            continue
+            
+    if not frames:
+        return None
+        
+    master_freon = pd.concat(frames, ignore_index=True).drop_duplicates().sort_values(by=date_col).reset_index(drop=True)
+    st.session_state['freon_files_processed'] = processed_count
+    st.session_state['freon_rows'] = len(master_freon)
+    
+    return master_freon
+
+@st.cache_data(ttl=300)
+def load_ammonia_data():
+    """Loads and merges ALL Ammonia-specific workbook/log files."""
+    categorized = discover_and_categorize_files()
+    ammonia_files = categorized.get('ammonia', [])
+    if not ammonia_files:
+        return None
+
+    frames = []
+    processed_count = 0
+    
+    for name, url in ammonia_files:
+        try:
+            if name.endswith('.csv'):
+                df = read_csv_from_github(url)
+            else:
+                df = read_excel_from_github(url, header=0)
+                
+            df.columns = [str(c).strip() for c in df.columns]
+            
+            # Find date column
+            date_col = next((c for c in df.columns if 'date' in c.lower() or 'time' in c.lower()), None)
+            if not date_col:
+                if pd.api.types.is_datetime64_any_dtype(df.iloc[:,0]):
+                    date_col = df.columns[0]
+                    df.rename(columns={date_col: 'Date'}, inplace=True)
+                    date_col = 'Date'
+                else:
+                    continue
+                    
+            df[date_col] = pd.to_datetime(df[date_col], errors='coerce')
+            df = df.dropna(subset=[date_col])
+            
+            if date_col in df.columns:
+                df = df[df[date_col].dt.year > 2020]
+                
+            frames.append(df)
+            processed_count += 1
+        except Exception as e:
+            logger.warning(f"Failed to load ammonia file {name}: {e}")
+            continue
+            
+    if not frames:
+        return None
+        
+    master_ammonia = pd.concat(frames, ignore_index=True).drop_duplicates().sort_values(by=date_col).reset_index(drop=True)
+    st.session_state['ammonia_files_processed'] = processed_count
+    st.session_state['ammonia_rows'] = len(master_ammonia)
+    
+    return master_ammonia
+
+@st.cache_data(ttl=300)
 def load_excel_sheet(sheet_name, fallback_header_row):
-    """Loads a specific sheet from the Freon/Compressor Excel workbook automatically."""
+    """Legacy loader for generic runtime sheets if needed."""
     try:
         categorized = discover_and_categorize_files()
         freon_files = categorized.get('freon', [])
         if not freon_files:
             return None
         
-        # Use the first matching freon file (or the latest if sorted)
         match_url = freon_files[-1][1] 
 
         try:
             preview = read_excel_from_github(match_url, sheet_name=sheet_name, header=None, engine='openpyxl')
-        except Exception as e:
-            logger.warning(f"Could not preview sheet '{sheet_name}' from Freon file: {e}")
+        except Exception:
             return None
 
         hdr = fallback_header_row
@@ -876,8 +958,7 @@ def load_excel_sheet(sheet_name, fallback_header_row):
         
         try:
             df = read_excel_from_github(match_url, sheet_name=sheet_name, header=hdr, engine='openpyxl')
-        except Exception as e:
-            logger.warning(f"Failed to read data from sheet '{sheet_name}': {e}")
+        except Exception:
             return None
 
         if df.empty:
@@ -886,23 +967,11 @@ def load_excel_sheet(sheet_name, fallback_header_row):
         df.columns = [str(c).strip() for c in df.columns]
         df = df.dropna(axis=1, how='all')
         
-        if sheet_name == 'Sheet3':
-            if len(df.columns) >= 12:
-                if 'Saving in hrs' not in df.columns:
-                     df.columns.values[11] = 'Saving in hrs'
-            else:
-                last = df.columns[-1]
-                if 'unnamed' in str(last).lower():
-                    df = df.rename(columns={last: 'Saving in hrs'})
-                
         if not df.empty:
             fc = df.columns[0]
             mask = df[fc].astype(str).str.strip().str.lower() != 'total'
             df = df[mask]
             
-        st.session_state['freon_files_processed'] = 1 if freon_files else 0
-        st.session_state['freon_rows'] = len(df)
-        
         return df
 
     except Exception as e:
@@ -924,12 +993,10 @@ if 'dashboard_last_refresh' not in st.session_state:
     st.session_state['dashboard_last_refresh'] = now_ist.strftime("%d %b %Y, %H:%M IST")
 
 # Initialize diagnostic counters
-if 'energy_files_processed' not in st.session_state:
-    st.session_state['energy_files_processed'] = 0
-if 'temp_files_processed' not in st.session_state:
-    st.session_state['temp_files_processed'] = 0
-if 'freon_files_processed' not in st.session_state:
-    st.session_state['freon_files_processed'] = 0
+for key in ['energy_files_processed', 'temp_files_processed', 'freon_files_processed', 'ammonia_files_processed',
+            'energy_rows', 'temp_rows', 'freon_rows', 'ammonia_rows']:
+    if key not in st.session_state:
+        st.session_state[key] = 0
 
 with st.sidebar:
     st.markdown("""
@@ -964,6 +1031,7 @@ with st.sidebar:
     processed_energy_files = categorized.get('energy', [])
     csv_files = categorized.get('temperature', [])
     has_freon = len(categorized.get('freon', [])) > 0
+    has_ammonia = len(categorized.get('ammonia', [])) > 0
     has_utility = len(categorized.get('utility', [])) > 0
     has_operational = len(categorized.get('operational', [])) > 0
 
@@ -989,6 +1057,11 @@ with st.sidebar:
             </span>
         </div>
         <div style="margin-bottom:8px;">
+            <span class="status-pill status-{'ok' if has_ammonia else 'err'}">
+                {'●' if has_ammonia else '○'}&nbsp; Ammonia Logs · {'Found' if has_ammonia else 'Not Found'}
+            </span>
+        </div>
+        <div style="margin-bottom:8px;">
             <span class="status-pill status-{'ok' if has_utility else 'err'}">
                 {'●' if has_utility else '○'}&nbsp; Utility Reports · {'Found' if has_utility else 'Not Found'}
             </span>
@@ -1007,64 +1080,111 @@ with st.sidebar:
                     System Diagnostics</div>""", unsafe_allow_html=True)
     
     st.caption(f"Last Refresh: {st.session_state['dashboard_last_refresh']}")
-    st.caption(f"Energy Files: {st.session_state['energy_files_processed']}")
-    st.caption(f"Temp Files: {st.session_state['temp_files_processed']}")
+    st.caption(f"Energy Files: {st.session_state['energy_files_processed']} | Rows: {st.session_state['energy_rows']}")
+    st.caption(f"Temp Files: {st.session_state['temp_files_processed']} | Rows: {st.session_state['temp_rows']}")
+    st.caption(f"Freon Files: {st.session_state['freon_files_processed']} | Rows: {st.session_state['freon_rows']}")
+    st.caption(f"Ammonia Files: {st.session_state['ammonia_files_processed']} | Rows: {st.session_state['ammonia_rows']}")
 
-# Load data
+# ─────────────────────────────────────────────────────────────
+#  LOAD ALL DATA
+# ─────────────────────────────────────────────────────────────
 e_df = load_processed_energy_data()
 temp_df = load_temperature_data()
+freon_df = load_freon_data()
+ammonia_df = load_ammonia_data()
 runtime_df = load_excel_sheet('Sheet2', fallback_header_row=2)
 comp_raw = load_excel_sheet('Sheet3', fallback_header_row=1)
 
 # Validate data quality
 energy_validation = validate_dataframe(e_df, required_columns=['Date'])
 temp_validation = validate_dataframe(temp_df, required_columns=['Time'])
-runtime_validation = validate_dataframe(runtime_df)
-comp_validation = validate_dataframe(comp_raw)
-
-# ✅ Use preserved IST timestamp from session state
-last_refresh = st.session_state['dashboard_last_refresh']
+freon_validation = validate_dataframe(freon_df)
+ammonia_validation = validate_dataframe(ammonia_df)
 
 # Calculate data sources count
 data_sources_count = sum([
     len(categorized.get('energy', [])) > 0,
     len(categorized.get('temperature', [])) > 0,
     len(categorized.get('freon', [])) > 0,
+    len(categorized.get('ammonia', [])) > 0,
     len(categorized.get('utility', [])) > 0,
     len(categorized.get('operational', [])) > 0
 ])
 
-# MASTER DATE RANGE CALCULATION
-global_start, global_end, coverage_days = get_global_date_range(e_df, temp_df, runtime_df)
+# ─────────────────────────────────────────────────────────────
+#  MASTER DATE RANGE ENGINE (INDEPENDENT TRACKING)
+# ─────────────────────────────────────────────────────────────
+def get_dataset_range(df, date_col_name='Date'):
+    """Helper to safely extract range from a dataframe."""
+    if df is None or df.empty:
+        return None, None, 0, 0
+    
+    # Try to find date column
+    date_col = next((c for c in df.columns if date_col_name.lower() in c.lower() or 'time' in c.lower()), None)
+    if not date_col and len(df.columns) > 0:
+        date_col = df.columns[0] # Fallback to first column
+        
+    if date_col:
+        try:
+            dates = pd.to_datetime(df[date_col], errors='coerce').dropna()
+            if not dates.empty:
+                start = dates.min()
+                end = dates.max()
+                coverage = (end - start).days + 1
+                return start, end, coverage, len(df)
+        except Exception:
+            pass
+            
+    return None, None, 0, len(df) if df is not None else 0
 
+# Get independent ranges
+freon_start, freon_end, freon_days, freon_records = get_dataset_range(freon_df, 'Date')
+ammonia_start, ammonia_end, ammonia_days, ammonia_records = get_dataset_range(ammonia_df, 'Date')
+
+# Global Range (Union of all available data)
+all_starts = [s for s in [freon_start, ammonia_start] if s is not None]
+all_ends = [e for e in [freon_end, ammonia_end] if e is not None]
+
+global_start = min(all_starts) if all_starts else None
+global_end = max(all_ends) if all_ends else None
+global_coverage = (global_end - global_start).days + 1 if global_start and global_end else 0
+
+# Format strings for display
 if global_start and global_end:
     date_range_str = f"{global_start.strftime('%d %b %Y')} – {global_end.strftime('%d %b %Y')}"
 else:
     date_range_str = "No Data Loaded"
 
-data_freshness = "Current" if energy_validation['freshness'] > 90 else "Stale"
-file_processing_status = "Success" if energy_validation['is_valid'] else "Issues Detected"
+freon_range_str = f"{freon_start.strftime('%d %b %Y')} → {freon_end.strftime('%d %b %Y')}" if freon_start else "No Data Available"
+ammonia_range_str = f"{ammonia_start.strftime('%d %b %Y')} → {ammonia_end.strftime('%d %b %Y')}" if ammonia_start else "No Data Available"
 
+last_refresh = st.session_state['dashboard_last_refresh']
+
+# ────────────────────────────────────────────────────────────
+#  ENHANCED HEADER WITH INDEPENDENT COVERAGE
+# ─────────────────────────────────────────────────────────────
 st.markdown(f"""
 <div class="jfl-header-container">
     <div style="flex: 1; min-width: 280px;">
         <div class="jfl-header-subtitle">Supply Chain & Manufacturing · Noida Plant Group</div>
         <div class="jfl-header-title">Plant Operational Intelligence Hub</div>
     </div>
-    <div style="display: flex; gap: 12px; flex-wrap: wrap; min-width: 240px;">
-        <div class="jfl-header-meta-box" style="flex: 1;">
-            <div class="jfl-meta-label">Reporting Window</div>
+    <div style="display: flex; gap: 12px; flex-wrap: wrap; min-width: 300px;">
+        <div class="jfl-header-meta-box" style="flex: 1.2;">
+            <div class="jfl-meta-label">Overall Reporting Window</div>
             <div class="jfl-meta-value">{date_range_str}</div>
+            <div class="jfl-meta-sub">Freon: {freon_range_str}</div>
+            <div class="jfl-meta-sub">Ammonia: {ammonia_range_str}</div>
         </div>
-        <div class="jfl-header-meta-box" style="flex: 1;">
+        <div class="jfl-header-meta-box" style="flex: 0.8;">
             <div class="jfl-meta-label">Corporate Entity</div>
             <div class="jfl-meta-value" style="color: {SECONDARY_COLOR};">Jubilant FoodWorks</div>
         </div>
-        <div class="jfl-header-meta-box" style="flex: 1;">
+        <div class="jfl-header-meta-box" style="flex: 0.8;">
             <div class="jfl-meta-label">Last Refresh</div>
             <div class="jfl-meta-value">{last_refresh}</div>
         </div>
-        <div class="jfl-header-meta-box" style="flex: 1;">
+        <div class="jfl-header-meta-box" style="flex: 0.6;">
             <div class="jfl-meta-label">Data Sources</div>
             <div class="jfl-meta-value">{data_sources_count}</div>
         </div>
@@ -1093,7 +1213,6 @@ if temp_df is not None and not temp_df.empty:
 
 if comp_raw is not None and not comp_raw.empty:
     # DYNAMIC DATE RANGE FOR COMPRESSORS
-    # Instead of hardcoded Apr-May, use the global range or the range present in the compressor data
     if 'Parsed_Date' not in comp_raw.columns:
          comp_raw['Parsed_Date'] = pd.to_datetime(comp_raw.iloc[:, 0], errors='coerce')
          
@@ -1103,7 +1222,7 @@ if comp_raw is not None and not comp_raw.empty:
         comp_end = valid_comp_dates.max()
         total_days = (comp_end - comp_start).days + 1
     else:
-        total_days = 1 # Fallback
+        total_days = 1 
         
     total_available_hrs = total_days * 24.0
     
@@ -1123,7 +1242,6 @@ if comp_raw is not None and not comp_raw.empty:
     if compressor_config:
         total_runtime_hrs = 0.0
         for comp_name, cols in compressor_config.items():
-            # Simplified assumption for availability if detailed logs are sparse
             total_runtime_hrs += 20.0 * total_days 
         
         compressor_availability = (total_runtime_hrs / (len(compressor_config) * total_available_hrs)) * 100
@@ -1135,7 +1253,7 @@ if runtime_df is not None and not runtime_df.empty:
         operational_efficiency = equipment_utilization * 0.8 + thermal_compliance * 0.2
 
 # ═══════════════════════════════════════════════════════════════
-#  KPI CARDS — FIXED OVERLAP (wrapped in container with spacer)
+#  KPI CARDS
 # ═══════════════════════════════════════════════════════════════
 st.markdown('<div class="kpi-container">', unsafe_allow_html=True)
 st.markdown('<div class="sec-title">Key Performance Indicators</div>', unsafe_allow_html=True)
@@ -1160,7 +1278,59 @@ for i, (title, value, delta, color) in enumerate(kpi_data):
         """, unsafe_allow_html=True)
 
 st.markdown('</div>', unsafe_allow_html=True)
-# Explicit spacer to prevent overlap with tabs below
+st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
+
+# ═══════════════════════════════════════════════════════════════
+#  NEW SECTION: DATA AVAILABILITY SUMMARY
+# ═══════════════════════════════════════════════════════════════
+st.markdown('<div class="sec-title">Data Availability Summary</div>', unsafe_allow_html=True)
+
+avail_cols = st.columns(2)
+
+# FREON CARD
+with avail_cols[0]:
+    if freon_df is not None and not freon_df.empty:
+        st.markdown(f"""
+        <div class="avail-card">
+            <div class="avail-title">Freon Dataset</div>
+            <div class="avail-row"><span class="avail-label">Dataset:</span> <span class="avail-val">Freon Temperature Logs</span></div>
+            <div class="avail-row"><span class="avail-label">Start Date:</span> <span class="avail-val">{freon_start.strftime('%d %b %Y')}</span></div>
+            <div class="avail-row"><span class="avail-label">End Date:</span> <span class="avail-val">{freon_end.strftime('%d %b %Y')}</span></div>
+            <div class="avail-row"><span class="avail-label">Coverage:</span> <span class="avail-val">{freon_days} Days</span></div>
+            <div class="avail-row"><span class="avail-label">Records:</span> <span class="avail-val">{freon_records:,}</span></div>
+            <div class="avail-row"><span class="avail-label">Status:</span> <span class="avail-status">Active</span></div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+        <div class="avail-card">
+            <div class="avail-title">Freon Dataset</div>
+            <div class="avail-row"><span class="avail-label">Status:</span> <span class="avail-status inactive">No Data Available</span></div>
+        </div>
+        """, unsafe_allow_html=True)
+
+# AMMONIA CARD
+with avail_cols[1]:
+    if ammonia_df is not None and not ammonia_df.empty:
+        st.markdown(f"""
+        <div class="avail-card ammonia">
+            <div class="avail-title">Ammonia Dataset</div>
+            <div class="avail-row"><span class="avail-label">Dataset:</span> <span class="avail-val">Ammonia Temperature Logs</span></div>
+            <div class="avail-row"><span class="avail-label">Start Date:</span> <span class="avail-val">{ammonia_start.strftime('%d %b %Y')}</span></div>
+            <div class="avail-row"><span class="avail-label">End Date:</span> <span class="avail-val">{ammonia_end.strftime('%d %b %Y')}</span></div>
+            <div class="avail-row"><span class="avail-label">Coverage:</span> <span class="avail-val">{ammonia_days} Days</span></div>
+            <div class="avail-row"><span class="avail-label">Records:</span> <span class="avail-val">{ammonia_records:,}</span></div>
+            <div class="avail-row"><span class="avail-label">Status:</span> <span class="avail-status">Active</span></div>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+        <div class="avail-card ammonia">
+            <div class="avail-title">Ammonia Dataset</div>
+            <div class="avail-row"><span class="avail-label">Status:</span> <span class="avail-status inactive">No Data Available</span></div>
+        </div>
+        """, unsafe_allow_html=True)
+
 st.markdown('<div class="spacer-md"></div>', unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════
@@ -1246,7 +1416,7 @@ with tab_energy:
         existing_v_channels = [c for c in v_channels if c in e_df.columns]
         
         if existing_v_channels:
-            st.markdown('<div class="sec-title">📊 Daily Consumption Profile — V1 to V9 Channels</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sec-title"> Daily Consumption Profile — V1 to V9 Channels</div>', unsafe_allow_html=True)
             st.markdown(f"*Analyzing {len(existing_v_channels)} meter channels across {total_days} days*")
             
             fig = go.Figure()
@@ -1426,7 +1596,7 @@ with tab_energy:
             standardize_chart(fig_delta)
             st.plotly_chart(fig_delta, use_container_width=True)
         
-        st.markdown('<div class="sec-title">📋 Statistical Summary by Zone</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sec-title"> Statistical Summary by Zone</div>', unsafe_allow_html=True)
         summary_data = []
         zone_labels = {
             dunkin_col: "Dunkin'",
@@ -1919,7 +2089,7 @@ with tab_runtime:
                 standardize_chart(fig_variance)
                 st.plotly_chart(fig_variance, use_container_width=True)
 
-            st.markdown('<div class="sec-title">📥 Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
+            st.markdown('<div class="sec-title"> Raw Data Inspector & Export Portal</div>', unsafe_allow_html=True)
             with st.expander("📂 View & Download Asset Duty Cycle Raw Sheet Data", expanded=False):
                 st.dataframe(r.drop(columns=['Date_Key']), use_container_width=True, hide_index=True)
                 csv_data = daily_runtime.to_csv(index=False).encode('utf-8')
@@ -1934,7 +2104,7 @@ with tab_runtime:
         st.markdown('<div class="alert-info">Asset duty-cycle log metrics are not active.</div>', unsafe_allow_html=True)
 
 # ==============================================================================
-#  TAB 4 — EXECUTIVE SUMMARY (MOVED TO END)
+#  TAB 4 — EXECUTIVE SUMMARY (WITH INTEGRATED DATA COVERAGE)
 # ==============================================================================
 with tab_summary:
     st.markdown('<div class="sec-title">Plant Health Overview</div>', unsafe_allow_html=True)
@@ -2022,6 +2192,32 @@ with tab_summary:
             )
             standardize_chart(fig_trend)
             st.plotly_chart(fig_trend, use_container_width=True)
+    
+    # ────────────────────────────────────────────────────────
+    #  EXECUTIVE DATA COVERAGE SECTION
+    # ─────────────────────────────────────────────────────────
+    st.markdown('<div class="sec-title">Data Coverage</div>', unsafe_allow_html=True)
+    
+    cov_cols = st.columns(2)
+    with cov_cols[0]:
+        st.markdown(f"""
+        <div style="background:white; border:1px solid #E2E8F0; border-radius:8px; padding:16px; border-left:4px solid {PRIMARY_COLOR};">
+            <div style="font-size:10px; font-weight:700; color:#64748B; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Freon Coverage</div>
+            <div style="font-size:16px; font-weight:800; color:{PRIMARY_COLOR};">{freon_range_str}</div>
+            <div style="font-size:12px; color:#64748B; margin-top:4px;">{freon_days} Days · {freon_records:,} Records</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+    with cov_cols[1]:
+        st.markdown(f"""
+        <div style="background:white; border:1px solid #E2E8F0; border-radius:8px; padding:16px; border-left:4px solid #0EA5E9;">
+            <div style="font-size:10px; font-weight:700; color:#64748B; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px;">Ammonia Coverage</div>
+            <div style="font-size:16px; font-weight:800; color:#0EA5E9;">{ammonia_range_str}</div>
+            <div style="font-size:12px; color:#64748B; margin-top:4px;">{ammonia_days} Days · {ammonia_records:,} Records</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown('<div class="spacer-sm"></div>', unsafe_allow_html=True)
     
     # Executive Insights Panel
     st.markdown('<div class="sec-title">Executive Insights</div>', unsafe_allow_html=True)
@@ -2144,8 +2340,8 @@ with tab_summary:
     if energy_validation['issues']:
         st.markdown('<div class="sec-title">Data Issues Detected</div>', unsafe_allow_html=True)
         for issue in energy_validation['issues']:
-            st.markdown(f'<div class="alert-warn">⚠️ {issue}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="alert-warn">️ {issue}</div>', unsafe_allow_html=True)
     
     if temp_validation['issues']:
         for issue in temp_validation['issues']:
-            st.markdown(f'<div class="alert-warn">⚠️ {issue}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="alert-warn">️ {issue}</div>', unsafe_allow_html=True)
